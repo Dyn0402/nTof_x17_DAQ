@@ -11,6 +11,14 @@ Created as Cosmic_Bench_DAQ_Control/common_functions.py
 import os
 from datetime import datetime
 import time
+import yaml
+
+
+def load_yaml_config(file_path):
+    with open(file_path, 'r') as f:
+        # Loader=yaml.SafeLoader is recommended for security
+        config = yaml.load(f, Loader=yaml.SafeLoader)
+    return config
 
 
 def create_dir_if_not_exist(dir_path):
