@@ -11,7 +11,7 @@ Created as Cosmic_Bench_DAQ_Control/dream_daq_control
 import os
 import sys
 import re
-import subprocess
+from subprocess import Popen, PIPE, STDOUT
 import pty
 from time import sleep
 from datetime import datetime
@@ -24,243 +24,182 @@ from common_functions import *
 
 
 def main():
-    # Get system arguments: 1 is yaml config file path, 2 is sub-run name
-    if len(sys.argv) < 3:
-        print('Usage: dream_daq_control.py <yaml_config_file_path> <start/stop>')  # <sub_run_name>
-        sys.exit(1)
-    yaml_config_file_path = sys.argv[1]
-    command = sys.argv[2]  # 'start' or 'stop'
-    # sub_run_name = sys.argv[3]
-    cfg = load_yaml_config(yaml_config_file_path)
-    dream_info = cfg['dream_daq_info']
-    cfg_template_path = dream_info['daq_config_template_path']
-    run_directory = dream_info['run_directory']
-    out_directory = dream_info['data_out_dir']
-    raw_daq_inner_dir = dream_info['raw_daq_inner_dir']
-    copy_on_fly = dream_info['copy_on_fly']
-    zero_supress = dream_info.get('zero_suppress', False)
-    samples_per_waveform = dream_info.get('n_samples_per_waveform', None)
-    pedestals_dir = dream_info.get('pedestals_dir', None)
-    pedestals = dream_info.get('pedestals', None)
-    original_working_directory = os.getcwd()
+    port = 1101
+    while True:
+        try:
+            clear_terminal()  # Dream DAQ output can get messy, try to clear after
+            with Server(port=port) as server:
+                server.receive()
+                server.send('Dream DAQ control connected')
+                dream_info = server.receive_json()
+                cfg_template_path = dream_info['daq_config_template_path']
+                run_directory = dream_info['run_directory']
+                out_directory = dream_info['data_out_dir']
+                raw_daq_inner_dir = dream_info['raw_daq_inner_dir']
+                go_timeout = dream_info['go_timeout']
+                max_run_time_addition = dream_info['max_run_time_addition']
+                copy_on_fly = dream_info['copy_on_fly']
+                batch_mode = dream_info['batch_mode']
+                zero_supress = dream_info.get('zero_suppress', False)
+                samples_per_waveform = dream_info.get('n_samples_per_waveform', None)
+                pedestals_dir = dream_info.get('pedestals_dir', None)
+                pedestals = dream_info.get('pedestals', None)
+                original_working_directory = os.getcwd()
 
-    create_dir_if_not_exist(run_directory)
-    # create_dir_if_not_exist(out_directory)  # Think this is causing race condition with daq_control.py
+                create_dir_if_not_exist(run_directory)
+                # create_dir_if_not_exist(out_directory)  # Think this is causing race condition with daq_control.py
 
-    res_parts = res.strip().split()
-    run_name = res_parts[-3]
-    run_time = float(res_parts[-2])
-    cfg_file_run_time = float(res_parts[-1])
-    print(f'Run time: {run_time} minutes')
-    out_raw_inner_dir = f'{out_directory}/{raw_daq_inner_dir}/'
-    create_dir_if_not_exist(out_raw_inner_dir)
+                res = server.receive()
+                while 'Finished' not in res:
+                    if 'Start' in res:
+                        print(res)
+                        res_parts = res.strip().split()
+                        sub_run_name = res_parts[-3]
+                        run_time = float(res_parts[-2])
+                        cfg_file_run_time = float(res_parts[-1])
+                        print(f'Sub-run name: {sub_run_name}, Run time: {run_time} minutes')
+                        sub_run_out_raw_inner_dir = f'{out_directory}/{sub_run_name}/{raw_daq_inner_dir}/'
+                        create_dir_if_not_exist(sub_run_out_raw_inner_dir)
 
-    # Make cfg from template
-    cfg_run_path = make_config_from_template(run_directory, cfg_template_path, cfg_file_run_time,
-                                             zero_supress, samples_per_waveform)
+                        if run_directory is not None:
+                            sub_run_dir = f'{run_directory}{sub_run_name}/'
+                            create_dir_if_not_exist(sub_run_dir)
+                            os.chdir(sub_run_dir)
+                        else:
+                            sub_run_dir = os.getcwd()
 
-    # Copy dream config file to out directory for future reference
-    shutil.copy(cfg_run_path, out_raw_inner_dir)
+                        # Make cfg from template
+                        cfg_run_path = make_config_from_template(sub_run_dir, cfg_template_path, cfg_file_run_time,
+                                                                 zero_supress, samples_per_waveform)
 
-    if pedestals_dir is not None:  # If pedestals_dir is not None, copy pedestal files to run dir.
-        get_pedestals(pedestals_dir, pedestals, run_directory, out_raw_inner_dir)
+                        # Copy dream config file to out directory for future reference
+                        shutil.copy(cfg_run_path, sub_run_out_raw_inner_dir)
 
-    # run_command = f'RunCtrl -c {cfg_run_path} -f {sub_run_name}'
-    # if batch_mode:
-    #     run_command += ' -b'
+                        if pedestals_dir is not None:  # If pedestals_dir is not None, copy pedestal files to run dir.
+                            get_pedestals(pedestals_dir, pedestals, sub_run_dir, sub_run_out_raw_inner_dir)
 
-    run_command = ['RunCtrl', '-c', cfg_run_path, '-f', run_name, '-b']
+                        run_command = f'RunCtrl -c {cfg_run_path} -f {sub_run_name}'
+                        if batch_mode:
+                            run_command += ' -b'
 
-    # process = Popen(run_command, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, text=True)
-    # start, taking_pedestals, run_successful = time.time(), False, True
-    # server.send('Dream DAQ starting')
-    # max_run_time = run_time + max_run_time_addition
+                        process = Popen(run_command, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, text=True)
+                        start, taking_pedestals, run_successful = time.time(), False, True
+                        server.send('Dream DAQ starting')
+                        max_run_time = run_time + max_run_time_addition
 
-    if copy_on_fly:
-        daq_finished = threading.Event()
-        copy_files_args = (run_directory, out_raw_inner_dir, daq_finished)
-        copy_files_on_the_fly_thread = threading.Thread(
-            target=copy_files_on_the_fly,
-            args=copy_files_args,
-            daemon=True,  # <- important: thread lives independently
-        )
-        copy_files_on_the_fly_thread.start()
+                        # if copy_on_fly:
+                        #     daq_finished = threading.Event()
+                        #     copy_files_args = (sub_run_dir, sub_run_out_raw_inner_dir, daq_finished)
+                        #     copy_files_on_the_fly_thread = threading.Thread(target=copy_files_on_the_fly,
+                        #                                                        args=copy_files_args)
+                        #     copy_files_on_the_fly_thread.start()
+                        if copy_on_fly:
+                            daq_finished = threading.Event()
+                            copy_files_args = (sub_run_dir, sub_run_out_raw_inner_dir, daq_finished)
+                            copy_files_on_the_fly_thread = threading.Thread(
+                                target=copy_files_on_the_fly,
+                                args=copy_files_args,
+                                daemon=True,  # <- important: thread lives independently
+                            )
+                            copy_files_on_the_fly_thread.start()
 
-    print(f'Starting Dream DAQ with command: {run_command}')
-    ret = subprocess.call(run_command)
+                        while True:
+                            output = process.stdout.readline()
 
-    if copy_on_fly:
-        print('Signaling on-the-fly copier to finish soon (but not waiting).')
-        daq_finished.set()  # thread continues running in background
+                            if output == '' and process.poll() is not None:
+                                server.send("Dream DAQ has finished")  # If only taking pedestals or a failure
+                                break
 
-    os.chdir(original_working_directory)
+                            if batch_mode:
+                                if not taking_pedestals and '_TakePedThr' in output.strip():
+                                    taking_pedestals = True
+                                    server.send('Dream DAQ taking pedestals')
+                                elif '_TakeData' in output.strip():
+                                    server.send('Dream DAQ started')
+                                    break
+                            else:
+                                if not taking_pedestals and output.strip() == '***':  # Start of run, begin taking pedestals
+                                    process.stdin.write('G')
+                                    process.stdin.flush()  # Ensure the command is sent immediately
+                                    taking_pedestals = True
+                                    print('Taking pedestals.')
+                                    server.send('Dream DAQ taking pedestals')
+                                elif 'Press C to Continue' in output.strip():  # End of pedestals, begin taking data
+                                    process.stdin.write('C')  # Signal to start data taking
+                                    process.stdin.flush()
+                                    print('DAQ started.')
+                                    server.send('Dream DAQ started')
+                                    break
 
-# def main():
-#     port = 1101
-#     while True:
-#         try:
-#             clear_terminal()  # Dream DAQ output can get messy, try to clear after
-#             with Server(port=port) as server:
-#                 server.receive()
-#                 server.send('Dream DAQ control connected')
-#                 dream_info = server.receive_json()
-#                 cfg_template_path = dream_info['daq_config_template_path']
-#                 run_directory = dream_info['run_directory']
-#                 out_directory = dream_info['data_out_dir']
-#                 raw_daq_inner_dir = dream_info['raw_daq_inner_dir']
-#                 copy_on_fly = dream_info['copy_on_fly']
-#                 zero_supress = dream_info.get('zero_suppress', False)
-#                 samples_per_waveform = dream_info.get('n_samples_per_waveform', None)
-#                 pedestals_dir = dream_info.get('pedestals_dir', None)
-#                 pedestals = dream_info.get('pedestals', None)
-#                 original_working_directory = os.getcwd()
-#
-#                 create_dir_if_not_exist(run_directory)
-#                 # create_dir_if_not_exist(out_directory)  # Think this is causing race condition with daq_control.py
-#
-#                 res = server.receive()
-#                 while 'Finished' not in res:
-#                     if 'Start' in res:
-#                         print(res)
-#                         res_parts = res.strip().split()
-#                         run_name = res_parts[-3]
-#                         run_time = float(res_parts[-2])
-#                         cfg_file_run_time = float(res_parts[-1])
-#                         print(f'Run time: {run_time} minutes')
-#                         out_raw_inner_dir = f'{out_directory}/{raw_daq_inner_dir}/'
-#                         create_dir_if_not_exist(out_raw_inner_dir)
-#
-#                         # Make cfg from template
-#                         cfg_run_path = make_config_from_template(run_directory, cfg_template_path, cfg_file_run_time,
-#                                                                  zero_supress, samples_per_waveform)
-#
-#                         # Copy dream config file to out directory for future reference
-#                         shutil.copy(cfg_run_path, out_raw_inner_dir)
-#
-#                         if pedestals_dir is not None:  # If pedestals_dir is not None, copy pedestal files to run dir.
-#                             get_pedestals(pedestals_dir, pedestals, run_directory, out_raw_inner_dir)
-#
-#                         # run_command = f'RunCtrl -c {cfg_run_path} -f {sub_run_name}'
-#                         # if batch_mode:
-#                         #     run_command += ' -b'
-#
-#                         run_command = ['RunCtrl', '-c', cfg_run_path, '-f', run_name, '-b']
-#
-#                         # process = Popen(run_command, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, text=True)
-#                         # start, taking_pedestals, run_successful = time.time(), False, True
-#                         # server.send('Dream DAQ starting')
-#                         # max_run_time = run_time + max_run_time_addition
-#
-#                         if copy_on_fly:
-#                             daq_finished = threading.Event()
-#                             copy_files_args = (run_directory, out_raw_inner_dir, daq_finished)
-#                             copy_files_on_the_fly_thread = threading.Thread(
-#                                 target=copy_files_on_the_fly,
-#                                 args=copy_files_args,
-#                                 daemon=True,  # <- important: thread lives independently
-#                             )
-#                             copy_files_on_the_fly_thread.start()
-#
-#                         print(f'Starting Dream DAQ with command: {run_command}')
-#                         ret = subprocess.call(run_command)
-#
-#                         # while True:
-#                         #     output = process.stdout.readline()
-#                         #
-#                         #     if output == '' and process.poll() is not None:
-#                         #         server.send("Dream DAQ has finished")  # If only taking pedestals or a failure
-#                         #         break
-#                         #
-#                         #     if batch_mode:
-#                         #         if not taking_pedestals and '_TakePedThr' in output.strip():
-#                         #             taking_pedestals = True
-#                         #             server.send('Dream DAQ taking pedestals')
-#                         #         elif '_TakeData' in output.strip():
-#                         #             server.send('Dream DAQ started')
-#                         #             break
-#                         #     else:
-#                         #         if not taking_pedestals and output.strip() == '***':  # Start of run, begin taking pedestals
-#                         #             process.stdin.write('G')
-#                         #             process.stdin.flush()  # Ensure the command is sent immediately
-#                         #             taking_pedestals = True
-#                         #             print('Taking pedestals.')
-#                         #             server.send('Dream DAQ taking pedestals')
-#                         #         elif 'Press C to Continue' in output.strip():  # End of pedestals, begin taking data
-#                         #             process.stdin.write('C')  # Signal to start data taking
-#                         #             process.stdin.flush()
-#                         #             print('DAQ started.')
-#                         #             server.send('Dream DAQ started')
-#                         #             break
-#                         #
-#                         #     if output.strip() != '':
-#                         #         print(output.strip())
-#                         #
-#                         #     pedestals_time_out = time.time() - start > go_timeout and taking_pedestals
-#                         #     run_time_out = time.time() - start > max_run_time * 60
-#                         #     if pedestals_time_out or run_time_out:
-#                         #         print('DAQ process timed out.')
-#                         #         process.kill()
-#                         #         sleep(5)
-#                         #         run_successful = False
-#                         #         print('DAQ process timed out.')
-#                         #         server.send('Dream DAQ timed out')
-#                         #         break
-#                         #
-#                         # if process.poll() is None:  # Process still running, start main run
-#                         #     stop_event = threading.Event()
-#                         #     server.set_timeout(1.0)  # Set timeout for socket operations
-#                         #
-#                         #     stop_thread = threading.Thread(target=listen_for_stop, args=(server, stop_event))
-#                         #     stop_thread.start()
-#                         #     # screen_clear_period = 30
-#                         #     # screen_clear_timer = time.time()
-#                         #     while True:  # DAQ running
-#                         #         if stop_event.is_set():
-#                         #             process.stdin.write('g')
-#                         #             process.stdin.flush()
-#                         #             print('Stop command received. Stopping DAQ.')
-#                         #             break
-#                         #
-#                         #         # if time.time() - screen_clear_timer > screen_clear_period:  # Clear terminal every 5 minutes
-#                         #         #     clear_terminal()
-#                         #         #     screen_clear_timer = time.time()
-#                         #
-#                         #         output = process.stdout.readline()
-#                         #         if output == '' and process.poll() is not None:
-#                         #             print('DAQ process finished.')
-#                         #             break
-#                         #         if output.strip() != '':
-#                         #             print(output.strip())
-#                         #     print('Waiting for DAQ process to terminate.')
-#                         #     stop_event.set()  # Tell the listener thread to stop
-#                         #     stop_thread.join()
-#                         #     print('Listener thread joined.')
-#                         #     server.set_timeout(None)
-#
-#                         # DAQ finished
-#                         # if copy_on_fly:
-#                         #     print('Waiting for on-the-fly copy thread to finish.')
-#                         #     daq_finished.set()
-#                         #     copy_files_on_the_fly_thread.join()
-#                         if copy_on_fly:
-#                             print('Signaling on-the-fly copier to finish soon (but not waiting).')
-#                             daq_finished.set()  # thread continues running in background
-#
-#                         os.chdir(original_working_directory)
-#
-#                         # if run_successful:
-#                         #     print('Moving data files.')
-#                         #     move_data_files(sub_run_dir, sub_run_out_raw_inner_dir)
-#
-#                         server.send('Dream DAQ stopped')
-#                     else:
-#                         server.send('Unknown Command')
-#                     res = server.receive()
-#         except Exception as e:
-#             traceback.print_exc()
-#             print(f'Error: {e}')
-#             sleep(30)
-#     print('donzo')
+                            if output.strip() != '':
+                                print(output.strip())
+
+                            pedestals_time_out = time.time() - start > go_timeout and taking_pedestals
+                            run_time_out = time.time() - start > max_run_time * 60
+                            if pedestals_time_out or run_time_out:
+                                print('DAQ process timed out.')
+                                process.kill()
+                                sleep(5)
+                                run_successful = False
+                                print('DAQ process timed out.')
+                                server.send('Dream DAQ timed out')
+                                break
+
+                        if process.poll() is None:  # Process still running, start main run
+                            stop_event = threading.Event()
+                            server.set_timeout(1.0)  # Set timeout for socket operations
+
+                            stop_thread = threading.Thread(target=listen_for_stop, args=(server, stop_event))
+                            stop_thread.start()
+                            # screen_clear_period = 30
+                            # screen_clear_timer = time.time()
+                            while True:  # DAQ running
+                                if stop_event.is_set():
+                                    process.stdin.write('g')
+                                    process.stdin.flush()
+                                    print('Stop command received. Stopping DAQ.')
+                                    break
+
+                                # if time.time() - screen_clear_timer > screen_clear_period:  # Clear terminal every 5 minutes
+                                #     clear_terminal()
+                                #     screen_clear_timer = time.time()
+
+                                output = process.stdout.readline()
+                                if output == '' and process.poll() is not None:
+                                    print('DAQ process finished.')
+                                    break
+                                if output.strip() != '':
+                                    print(output.strip())
+                            print('Waiting for DAQ process to terminate.')
+                            stop_event.set()  # Tell the listener thread to stop
+                            stop_thread.join()
+                            print('Listener thread joined.')
+                            server.set_timeout(None)
+
+                        # DAQ finished
+                        # if copy_on_fly:
+                        #     print('Waiting for on-the-fly copy thread to finish.')
+                        #     daq_finished.set()
+                        #     copy_files_on_the_fly_thread.join()
+                        if copy_on_fly:
+                            print('Signaling on-the-fly copier to finish soon (but not waiting).')
+                            daq_finished.set()  # thread continues running in background
+
+                        os.chdir(original_working_directory)
+
+                        # if run_successful:
+                        #     print('Moving data files.')
+                        #     move_data_files(sub_run_dir, sub_run_out_raw_inner_dir)
+
+                        server.send('Dream DAQ stopped')
+                    else:
+                        server.send('Unknown Command')
+                    res = server.receive()
+        except Exception as e:
+            traceback.print_exc()
+            print(f'Error: {e}')
+            sleep(30)
+    print('donzo')
 
 
 def move_data_files(src_dir, dest_dir):
@@ -281,6 +220,30 @@ def listen_for_stop(server, stop_event):
         except socket.timeout:
             continue  # just loop again and check stop_event
 
+
+
+# def copy_files_on_the_fly(sub_run_dir, sub_out_dir, daq_finished_event, check_interval=5):
+#     """
+#     Continuously copy .fdf files from sub_run_dir to sud_out_dir while DAQ is running.
+#     :param sub_run_dir: Sub-run directory to monitor for new files.
+#     :param sub_out_dir: Sub-run output directory to copy files to.
+#     :param daq_finished_event: threading.Event() that is set when DAQ is finished.
+#     :param check_interval: Time in seconds between checks for new files.
+#     :return:
+#     """
+#
+#     create_dir_if_not_exist(sub_out_dir)
+#     sleep(60 * 1)  # Wait on start for daq to start running
+#     file_num = 0
+#     while not daq_finished_event.is_set():  # Running
+#         if not file_num_still_running(sub_run_dir, file_num, silent=True):
+#             for file_name in os.listdir(sub_run_dir):
+#                 if file_name.endswith('.fdf') and get_file_num_from_fdf_file_name(file_name, -2) == file_num:
+#                     # shutil.move(f'{sub_run_dir}{file_name}', f'{sub_out_dir}{file_name}')
+#                     # Copy instead of move to keep a redundant copy of the fdfs.
+#                     shutil.copy(f'{sub_run_dir}{file_name}', f'{sub_out_dir}{file_name}')
+#             file_num += 1
+#         sleep(check_interval)  # Check every 5 seconds
 
 def copy_files_on_the_fly(sub_run_dir, sub_out_dir, daq_finished_event, check_interval=5, extra_minutes_after_finish=3):
     """

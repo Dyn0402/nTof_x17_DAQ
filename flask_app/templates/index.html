@@ -1,31 +1,1196 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>n_TOF DAQ Control</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
+{% extends "base.html" %}
 
-<body class="bg-light">
-<div class="container py-5">
-  <div class="card shadow-lg p-4">
-    <h2 class="mb-4">n_TOF DAQ Control</h2>
+{% block content %}
+<!-- DAQ Overview Tab -->
+<div class="tab-pane fade show active" id="overview">
+  <h2>DAQ Overview</h2>
 
-    <div class="d-flex align-items-center mb-3">
-      <span class="me-3">Status:</span>
-      <span id="status-badge" class="badge bg-secondary">Unknown</span>
-    </div>
-
-    <div class="d-flex gap-2">
-      <button id="start-btn" class="btn btn-success">Start Run</button>
-      <button id="stop-btn" class="btn btn-danger">Stop Run</button>
-    </div>
-
-    <div id="message" class="mt-3 text-muted"></div>
+  <!-- Current run and banco display -->
+  <div class="mt-3 mb-3">
+    <h6 class="text-white mb-1" style="font-size:1.1rem; font-weight:600;">
+      Current run:&nbsp;<span id="run-display" style="color:#fff; font-weight:700;">None</span>
+    </h6>
+    <h6 class="text-white mb-0" style="font-size:1.1rem; font-weight:600;">
+      Banco position:&nbsp;<span id="banco-display" style="color:#fff; font-weight:700;">--</span>
+    </h6>
+    <h6 class="text-white mb-0" style="font-size:1.1rem; font-weight:600;">
+      Events this Run:&nbsp;<span id="events-display" style="color:#fff; font-weight:700;">0</span>
+    </h6>
   </div>
+
+  <!-- Banco control -->
+  <div class="mb-3 d-flex align-items-center gap-2">
+    <label for="banco-input" class="text-white me-2">Set banco position:</label>
+    <input id="banco-input" type="number" step="0.1" class="form-control" style="width:120px;">
+<!--    <button id="update-banco" class="btn btn-primary">Update</button>-->
+  </div>
+
+  <!-- Control buttons -->
+  <div class="mb-4 d-flex flex-wrap align-items-center gap-2">
+    <select id="run-select" class="form-select me-3 d-none" style="width:auto;"></select>
+    <button id="run-config-py" class="btn btn-success me-2 mb-2">Start Run</button>
+    <button id="stop-sub-run" class="btn btn-warning me-2 mb-2">Stop Sub-Run</button>
+    <button id="stop-run" class="btn btn-danger me-2 mb-2">Stop Run</button>
+    <button id="restart-all" class="btn btn-danger me-2 mb-2">Restart All</button>
+    <button id="take-pedestals" class="btn btn-secondary mb-2">Take Pedestals</button>
+  </div>
+
+    <div class="row" id="status-cards">
+        <!-- Status cards populated dynamically -->
+    </div>
+    <hr class="my-4">
+
+    <h3>HV Monitor</h3>
+    <p class="text-muted" style="color:#fff;">Latest voltage and current readings from HV control system</p>
+    <label for="hv-subrun-select" class="me-2">Subrun:</label>
+          <select id="hv-subrun-select" class="form-select me-3" style="width:auto;">
+            <option value="">(none)</option>
+          </select>
+
+    <div id="hv-voltage-plot" style="width:100%;height:400px;"></div>
+    <div id="hv-current-plot" style="width:100%;height:400px;"></div>
+
+    <script src="{{ url_for('static', filename='plotly.min.js') }}"></script>
+
 </div>
 
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
-</body>
-</html>
+<!--&lt;!&ndash; Live Screens Tab &ndash;&gt;-->
+<!--<div class="tab-pane fade" id="screens">-->
+<!--    <h2>Live Screen Sessions (tmux)</h2>-->
+<!--    <div class="grid">-->
+<!--    {% for name in screens %}-->
+<!--        <div class="term-container">-->
+<!--            <h2>{{name}}</h2>-->
+<!--            <div id="terminal-{{name}}" class="terminal"></div>-->
+<!--            <small class="text-muted">Connected to tmux session: {{name}}</small>-->
+<!--        </div>-->
+<!--    {% endfor %}-->
+<!--    </div>-->
+<!--</div>-->
+
+<!-- Run Config Tab -->
+<div class="tab-pane fade" id="json-templates">
+    <h2>JSON Templates</h2>
+
+    <div class="mb-3">
+        <label for="templateSelect" class="form-label">Select a template:</label>
+        <select id="templateSelect" class="form-select" style="max-width: 400px;">
+            <option value="">-- Choose a template --</option>
+        </select>
+    </div>
+
+    <div id="jsonControls" style="display:none;">
+        <div class="mb-3">
+            <label for="sectionSelect" class="form-label">Select a top-level section:</label>
+            <select id="sectionSelect" class="form-select" style="max-width: 400px;">
+                <option value="">-- Choose a section --</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label for="jsonEditor" class="form-label">Edit section JSON:</label>
+            <textarea id="jsonEditor"
+                      class="form-control"
+                      style="background:#111; color:#0f0; font-family: monospace; height:300px;"></textarea>
+        </div>
+
+        <div class="mb-3">
+            <button id="refreshSection" class="btn btn-secondary me-2">Update Section View</button>
+            <button id="saveSection" class="btn btn-success me-2">Save Changes Locally</button>
+            <button id="saveAsTemplate" class="btn btn-primary me-2">Save As Template</button>
+            <button id="saveRunConfig" class="btn btn-warning">Save Run Config</button>
+        </div>
+
+        <div class="mb-3" id="saveAsTemplateInput" style="display:none;">
+            <input type="text" id="newTemplateName" class="form-control" placeholder="Enter new template name (e.g., new_config.json)" style="max-width: 400px;">
+            <button id="confirmSaveAsTemplate" class="btn btn-success mt-2">Confirm Save</button>
+        </div>
+    </div>
+
+    <h5>Full JSON Preview:</h5>
+    <pre id="jsonDisplay" style="background:#111; color:#0f0; padding:1em; border-radius:6px; overflow-x:auto; max-height:400px;"></pre>
+</div>
+
+
+<!-- Run Config Editor Tab -->
+<div class="tab-pane fade" id="run-config-editor">
+    <h2>Run Config Editor</h2>
+
+    <!-- Load Config -->
+    <div class="mb-3">
+        <label for="configSelect" class="form-label">Select Config File:</label>
+        <select id="configSelect" class="form-select" style="max-width: 400px;">
+            <option value="">-- Choose a config --</option>
+        </select>
+        <button id="loadConfig" class="btn btn-primary mt-2">Load Config</button>
+    </div>
+
+    <div id="configEditor" style="display:none;">
+        <!-- Run Name -->
+        <div class="mb-3">
+            <label for="runName" class="form-label">Run Name:</label>
+            <input type="text" id="runName" class="form-control" style="max-width: 400px;">
+        </div>
+
+        <!-- Subruns -->
+        <div class="mb-4">
+            <h4>Sub-Runs</h4>
+            <div id="subRunsContainer"></div>
+            <button id="addSubRun" class="btn btn-secondary mt-2">+ Add Subrun</button>
+        </div>
+
+        <!-- Included Detectors -->
+        <div class="mb-4">
+            <h4>Included Detectors</h4>
+            <div id="includedDetectors"></div>
+        </div>
+
+        <!-- Detectors -->
+        <div class="mb-4">
+            <h4>Detectors</h4>
+            <div id="detectorsContainer"></div>
+        </div>
+
+        <!-- Save Buttons -->
+        <div class="mb-3">
+            <button id="saveRunConfigEditor" class="btn btn-warning me-2">Save Run Config</button>
+            <button id="saveAsTemplateEditor" class="btn btn-primary">Save As Template</button>
+        </div>
+    </div>
+</div>
+
+
+<!-- Online QA Viewer Tab -->
+<div class="tab-pane fade" id="png-viewer">
+  <h2>Online QA</h2>
+
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label for="run-select-qa" class="form-label">Run:</label>
+      <select id="run-select-qa" class="form-select">
+        <option value="">Select run...</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label for="subrun-select" class="form-label">Subrun:</label>
+      <select id="subrun-select" class="form-select" disabled>
+        <option value="">Select subrun...</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label for="detector-select" class="form-label">Detector:</label>
+      <select id="detector-select" class="form-select" disabled>
+        <option value="">Select detector...</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="load-pngs" class="btn btn-primary mt-3" disabled>Load Images</button>
+
+  <div id="png-gallery" class="row mt-4"></div>
+</div>
+
+
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// --- Live Screens JS ---
+// {% for name in screens %}
+// (function() {
+//     var term = new Terminal();
+//     term.open(document.getElementById("terminal-{{name}}"));
+//     var socket = io();
+//     socket.on("output-{{name}}", function(data) {
+//         term.write(data);
+//     });
+//     term.onData(function(data) {
+//         socket.emit("input-{{name}}", data);
+//     });
+//     socket.emit("start", {name: "{{name}}"});
+// })();
+// {% endfor %}
+
+let run = null;
+let lastSubrun = null;
+
+// --- DAQ Overview JS ---
+function updateStatus() {
+    fetch("/status")
+        .then(r => r.json())
+        .then(data => {
+            // Check subrun change
+            const daq = data["daq_control"];
+            const fields = daq?.fields || [];
+
+            // Find the "Subrun" field (if it exists)
+            const subrunField = fields.find(f => f.label === "Subrun");
+            const subrun = subrunField ? subrunField.value : null;
+
+            // Check if Subrun exists and changed
+            if (subrun && subrun !== lastSubrun) {
+                const select = document.getElementById("hv-subrun-select");
+
+                // Update dropdown selection
+                // First, check if this subrun already exists as an option
+                let option = Array.from(select.options).find(opt => opt.value === subrun);
+                if (!option) {
+                    option = new Option(subrun, subrun);
+                    select.add(option);
+                }
+
+                // Select it
+                select.value = subrun;
+
+                // Update tracker variable
+                lastSubrun = subrun;
+            }
+
+            let container = document.getElementById("status-cards");
+            container.innerHTML = "";
+            data.forEach(info => {
+                let details = info.fields.map(
+                    f => `<p>${f.label}: ${f.value}</p>`
+                ).join("");
+
+                container.innerHTML += `
+                  <div class="col-md-4 mb-3">
+                    <div class="card text-white bg-${info.color}">
+                      <div class="card-body">
+                        <h5 class="card-title">${info.name}</h5>
+                        <p class="card-text">Status: ${info.status}</p>
+                        ${details}
+                      </div>
+                    </div>
+                  </div>`;
+            });
+
+            // let container = document.getElementById("status-cards");
+            // container.innerHTML = "";
+            // Object.entries(data).forEach(([name, info]) => {
+            //     let details = info.fields.map(
+            //         f => `<p>${f.label}: ${f.value}</p>`
+            //     ).join("");
+            //
+            //     container.innerHTML += `
+            //       <div class="col-md-4 mb-3">
+            //         <div class="card text-white bg-${info.color}">
+            //           <div class="card-body">
+            //             <h5 class="card-title">${name}</h5>
+            //             <p class="card-text">Status: ${info.status}</p>
+            //             ${details}
+            //           </div>
+            //         </div>
+            //       </div>`;
+            // });
+        });
+}
+
+function showPopup(message, color) {
+  const popup = document.createElement("div");
+  popup.textContent = message;
+  popup.style.position = "fixed";
+  popup.style.top = "80px";
+  popup.style.left = "50%";
+  popup.style.transform = "translateX(-50%)";
+  popup.style.background = color;
+  popup.style.color = "#fff";
+  popup.style.padding = "1em 2em";
+  popup.style.borderRadius = "8px";
+  popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+  popup.style.zIndex = "9999";
+  popup.style.opacity = "1";
+  popup.style.transition = "opacity 1s";
+
+  document.body.appendChild(popup);
+
+  setTimeout(() => {
+    popup.style.opacity = "0";
+    setTimeout(() => popup.remove(), 1000);
+  }, 2500);
+}
+
+
+// STOP SUB-RUN button
+document.getElementById("stop-sub-run").addEventListener("click", async () => {
+  const ok = confirm("Are you sure you want to stop the *sub-run*?");
+  if (!ok) return;   // <-- Cancel → do nothing
+
+  const res = await fetch("/stop_sub_run", { method: "POST" });
+  const data = await res.json();
+
+  showPopup(data.message, "#dc7b35");
+
+  run = null;
+});
+
+
+// STOP RUN button
+document.getElementById("stop-run").addEventListener("click", async () => {
+  const ok = confirm("Are you sure you want to STOP the run?");
+  if (!ok) return;   // <-- Cancel → do nothing
+
+  const res = await fetch("/stop_run", { method: "POST" });
+  const data = await res.json();
+
+  showPopup(data.message, "#dc3545");
+
+  run = null;
+});
+
+
+// document.getElementById("stop-sub-run").addEventListener("click", async () => {
+//   const res = await fetch("/stop_sub_run", { method: "POST" });
+//   const data = await res.json();
+//
+//   // Create a fading popup
+//   const popup = document.createElement("div");
+//   popup.textContent = data.message;
+//   popup.style.position = "fixed";
+//   popup.style.top = "80px";
+//   popup.style.left = "50%";
+//   popup.style.transform = "translateX(-50%)";
+//   popup.style.background = "#dc7b35";
+//   popup.style.color = "#fff";
+//   popup.style.padding = "1em 2em";
+//   popup.style.borderRadius = "8px";
+//   popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+//   popup.style.zIndex = "9999";
+//   popup.style.opacity = "1";
+//   popup.style.transition = "opacity 1s";
+//
+//   document.body.appendChild(popup);
+//
+//   run = null;
+//
+//   setTimeout(() => {
+//     popup.style.opacity = "0";
+//     setTimeout(() => popup.remove(), 1000);
+//   }, 2500);
+// });
+//
+//
+// document.getElementById("stop-run").addEventListener("click", async () => {
+//   const res = await fetch("/stop_run", { method: "POST" });
+//   const data = await res.json();
+//
+//   // Create a fading popup
+//   const popup = document.createElement("div");
+//   popup.textContent = data.message;
+//   popup.style.position = "fixed";
+//   popup.style.top = "80px";
+//   popup.style.left = "50%";
+//   popup.style.transform = "translateX(-50%)";
+//   popup.style.background = "#dc3545";
+//   popup.style.color = "#fff";
+//   popup.style.padding = "1em 2em";
+//   popup.style.borderRadius = "8px";
+//   popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+//   popup.style.zIndex = "9999";
+//   popup.style.opacity = "1";
+//   popup.style.transition = "opacity 1s";
+//
+//   document.body.appendChild(popup);
+//
+//   run = null;
+//
+//   setTimeout(() => {
+//     popup.style.opacity = "0";
+//     setTimeout(() => popup.remove(), 1000);
+//   }, 2500);
+// });
+
+document.getElementById("restart-all").addEventListener("click", () => {
+  if (!confirm("Are you sure you want to restart all DAQ components?")) return;
+  fetch("/restart_all", { method: "POST" })
+    .then(res => res.json())
+    .then(data => alert(data.message))
+    .catch(err => alert("Error: " + err));
+});
+
+// --- Run Config JSON Templates Tab ---
+// function loadTemplateList() {
+//     fetch("/json_templates")
+//         .then(r => r.json())
+//         .then(data => {
+//             if (!data.success) throw data.message;
+//             let select = document.getElementById("templateSelect");
+//             select.innerHTML = '<option value="">-- Choose a template --</option>';
+//             data.templates.forEach(f => {
+//                 let opt = document.createElement("option");
+//                 opt.value = f;
+//                 opt.textContent = f;
+//                 select.appendChild(opt);
+//             });
+//         })
+//         .catch(err => alert("Failed to load templates: " + err));
+// }
+
+document.getElementById("templateSelect").addEventListener("change", e => {
+    let filename = e.target.value;
+    if (!filename) return;
+    fetch("/json_templates/" + filename)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) throw data.message;
+            document.getElementById("jsonDisplay").textContent =
+                JSON.stringify(data.content, null, 4);
+        })
+        .catch(err => alert("Failed to load JSON: " + err));
+});
+
+let currentJson = null;
+let currentFilename = null;
+
+function loadTemplateList() {
+    fetch("/json_templates")
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) throw data.message;
+            let select = document.getElementById("templateSelect");
+            select.innerHTML = '<option value="">-- Choose a template --</option>';
+            data.templates.forEach(f => {
+                let opt = document.createElement("option");
+                opt.value = f;
+                opt.textContent = f;
+                select.appendChild(opt);
+            });
+        })
+        .catch(err => alert("Failed to load templates: " + err));
+}
+
+document.getElementById("templateSelect").addEventListener("change", e => {
+    let filename = e.target.value;
+    if (!filename) return;
+    fetch("/json_templates/" + filename)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) throw data.message;
+            currentJson = data.content;
+            currentFilename = filename;
+            document.getElementById("jsonControls").style.display = "block";
+            document.getElementById("jsonDisplay").textContent = JSON.stringify(currentJson, null, 4);
+
+            // populate top-level keys
+            let sectionSelect = document.getElementById("sectionSelect");
+            sectionSelect.innerHTML = '<option value="">-- Choose a section --</option>';
+            Object.keys(currentJson).forEach(k => {
+                let opt = document.createElement("option");
+                opt.value = k;
+                opt.textContent = k;
+                sectionSelect.appendChild(opt);
+            });
+        })
+        .catch(err => alert("Failed to load JSON: " + err));
+});
+
+document.getElementById("sectionSelect").addEventListener("change", e => {
+    let section = e.target.value;
+    let editor = document.getElementById("jsonEditor");
+    if (!section || !currentJson) {
+        editor.value = "";
+        return;
+    }
+    editor.value = JSON.stringify(currentJson[section], null, 4);
+});
+
+document.getElementById("refreshSection").addEventListener("click", () => {
+    if (!currentJson) return;
+    document.getElementById("jsonDisplay").textContent = JSON.stringify(currentJson, null, 4);
+});
+
+document.getElementById("saveSection").addEventListener("click", () => {
+    let section = document.getElementById("sectionSelect").value;
+    if (!section) return alert("No section selected");
+    try {
+        let newValue = JSON.parse(document.getElementById("jsonEditor").value);
+        currentJson[section] = newValue;
+        document.getElementById("jsonDisplay").textContent = JSON.stringify(currentJson, null, 4);
+        alert("Section updated locally!");
+    } catch (e) {
+        alert("Invalid JSON: " + e.message);
+    }
+});
+
+// --- Save As Template ---
+document.getElementById("saveAsTemplate").addEventListener("click", () => {
+    document.getElementById("saveAsTemplateInput").style.display = "block";
+});
+
+document.getElementById("confirmSaveAsTemplate").addEventListener("click", () => {
+    let filename = document.getElementById("newTemplateName").value.trim();
+    if (!filename) return alert("Please enter a filename");
+    if (!filename.endsWith(".json")) filename += ".json";
+
+    fetch("/save_json_template", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({filename: filename, content: currentJson})
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert(data.message);
+        if (data.success) {
+            loadTemplateList();
+            document.getElementById("saveAsTemplateInput").style.display = "none";
+        }
+    })
+    .catch(err => alert("Failed to save: " + err));
+});
+
+// --- Save Run Config ---
+document.getElementById("saveRunConfig").addEventListener("click", () => {
+    if (!currentJson) return alert("No JSON loaded");
+    if (!currentJson.run_name) return alert("This JSON has no 'run_name' field");
+
+    fetch("/save_run_config", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({content: currentJson})
+    })
+    .then(r => r.json())
+    .then(data => alert(data.message))
+    .catch(err => alert("Failed to save run config: " + err));
+});
+
+// ========== RUN CONFIG EDITOR ==========
+
+let currentRunConfig = null;
+
+async function refreshConfigList() {
+    const res = await fetch('/list_json_configs');
+    const configs = await res.json();
+    const select = document.getElementById('configSelect');
+    select.innerHTML = '<option value="">-- Choose a config --</option>';
+    configs.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        select.appendChild(opt);
+    });
+}
+
+document.getElementById('loadConfig').addEventListener('click', async () => {
+    const name = document.getElementById('configSelect').value;
+    if (!name) return alert('Please select a config file.');
+
+    const res = await fetch(`/load_json_config/${name}`);
+    currentRunConfig = await res.json();
+    document.getElementById('configEditor').style.display = 'block';
+
+    document.getElementById('runName').value = currentRunConfig.run_name || '';
+
+    renderSubRuns();
+    renderDetectors();
+    renderIncludedDetectors();
+});
+
+function renderSubRuns() {
+    const container = document.getElementById('subRunsContainer');
+    container.innerHTML = '';
+
+    (currentRunConfig.sub_runs || []).forEach((sub, i) => {
+        const div = document.createElement('div');
+        div.className = 'border rounded p-3 mb-3';
+        div.innerHTML = `
+            <div class="d-flex justify-content-between">
+                <h5>Subrun ${i + 1}: <input type="text" class="form-control form-control-sm w-auto d-inline" value="${sub.sub_run_name}"></h5>
+                <button class="btn btn-danger btn-sm">Remove</button>
+            </div>
+            <label>Run Time (min):</label>
+            <input type="number" class="form-control mb-2" value="${sub.run_time}">
+            <div><b>HVs:</b></div>
+            <div class="ms-3" id="hvContainer-${i}"></div>
+            <button class="btn btn-sm btn-secondary mt-1" id="addSlot-${i}">+ Add Slot</button>
+        `;
+
+        // Remove subrun
+        div.querySelector('button.btn-danger').addEventListener('click', () => {
+            currentRunConfig.sub_runs.splice(i, 1);
+            renderSubRuns();
+        });
+
+        // Edit name and runtime
+        const [nameInput, timeInput] = div.querySelectorAll('input');
+        nameInput.addEventListener('input', e => sub.sub_run_name = e.target.value);
+        timeInput.addEventListener('input', e => sub.run_time = Number(e.target.value));
+
+        // HV structure
+        const hvContainer = div.querySelector(`#hvContainer-${i}`);
+        renderHVStructure(sub.hvs, hvContainer);
+
+        // Add slot
+        div.querySelector(`#addSlot-${i}`).addEventListener('click', () => {
+            const newSlot = Object.keys(sub.hvs).length;
+            sub.hvs[newSlot] = { "0": 0 };
+            renderSubRuns();
+        });
+
+        container.appendChild(div);
+    });
+}
+
+function renderHVStructure(hvs, container) {
+    container.innerHTML = '';
+    for (const [slot, channels] of Object.entries(hvs)) {
+        const slotDiv = document.createElement('div');
+        slotDiv.className = 'border p-2 mb-2';
+        slotDiv.innerHTML = `<b>Slot ${slot}</b> <button class="btn btn-sm btn-danger float-end">Remove Slot</button>`;
+
+        slotDiv.querySelector('button').addEventListener('click', () => {
+            delete hvs[slot];
+            renderSubRuns();
+        });
+
+        for (const [ch, val] of Object.entries(channels)) {
+            const chDiv = document.createElement('div');
+            chDiv.className = 'd-flex align-items-center mt-1';
+            chDiv.innerHTML = `
+                <label class="me-2">Ch ${ch}:</label>
+                <input type="number" class="form-control form-control-sm w-auto" value="${val}">
+                <button class="btn btn-sm btn-outline-danger ms-2">x</button>
+            `;
+            chDiv.querySelector('input').addEventListener('input', e => {
+                channels[ch] = Number(e.target.value);
+            });
+            chDiv.querySelector('button').addEventListener('click', () => {
+                delete channels[ch];
+                renderSubRuns();
+            });
+            slotDiv.appendChild(chDiv);
+        }
+
+        const addChBtn = document.createElement('button');
+        addChBtn.className = 'btn btn-sm btn-secondary mt-2';
+        addChBtn.textContent = '+ Add Channel';
+        addChBtn.addEventListener('click', () => {
+            const next = Object.keys(channels).length;
+            channels[next] = 0;
+            renderSubRuns();
+        });
+
+        slotDiv.appendChild(addChBtn);
+        container.appendChild(slotDiv);
+    }
+}
+
+document.getElementById('addSubRun').addEventListener('click', () => {
+    const newSub = {
+        sub_run_name: `subrun_${(currentRunConfig.sub_runs?.length || 0) + 1}`,
+        run_time: 60,
+        hvs: { "2": { "0": 10 } }
+    };
+    currentRunConfig.sub_runs = currentRunConfig.sub_runs || [];
+    currentRunConfig.sub_runs.push(newSub);
+    renderSubRuns();
+});
+
+function renderIncludedDetectors() {
+    const div = document.getElementById('includedDetectors');
+    div.innerHTML = '';
+    const included = currentRunConfig.included_detectors || [];
+    currentRunConfig.detectors.forEach(det => {
+        const label = document.createElement('label');
+        label.className = 'form-check';
+        const checked = included.includes(det.name) ? 'checked' : '';
+        label.innerHTML = `<input type="checkbox" class="form-check-input" ${checked}> ${det.name}`;
+        const cb = label.querySelector('input');
+        cb.addEventListener('change', () => {
+            if (cb.checked) included.push(det.name);
+            else included.splice(included.indexOf(det.name), 1);
+        });
+        div.appendChild(label);
+    });
+}
+
+function renderDetectors() {
+    const div = document.getElementById('detectorsContainer');
+    div.innerHTML = '';
+    currentRunConfig.detectors.forEach(det => {
+        const detDiv = document.createElement('div');
+        detDiv.className = 'border rounded p-3 mb-3';
+        detDiv.innerHTML = `
+            <h5>${det.name}</h5>
+            <label>Type:</label>
+            <input type="text" class="form-control mb-2" value="${det.det_type}">
+        `;
+        const typeInput = detDiv.querySelector('input');
+        typeInput.addEventListener('input', e => det.det_type = e.target.value);
+        div.appendChild(detDiv);
+    });
+}
+
+// ----- Save Run Config -----
+document.getElementById('saveRunConfigEditor').addEventListener('click', async () => {
+    currentRunConfig.run_name = document.getElementById('runName').value;
+    const res = await fetch('/save_json_config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(currentRunConfig)
+    });
+    alert(await res.text());
+});
+
+// ----- Save As Template -----
+document.getElementById('saveAsTemplateEditor').addEventListener('click', async () => {
+    const newName = prompt('Enter new template name (e.g., my_template.json):');
+    if (!newName) return;
+    const res = await fetch('/save_json_template', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: newName, data: currentRunConfig})
+    });
+    alert(await res.text());
+});
+
+// Initialize list on load
+document.addEventListener('DOMContentLoaded', refreshConfigList);
+
+
+// --- HV Plots ---
+async function fetchHVData() {
+    const run = document.getElementById("run-select").value;
+    const subrun = document.getElementById("hv-subrun-select").value;
+    const res = await fetch(`/hv_data?run=${encodeURIComponent(run)}&subrun=${encodeURIComponent(subrun)}`);
+    const data = await res.json();
+    if (!data || Object.keys(data).length === 0) return null;
+    if (!data.success) throw data.message;
+    return data;
+}
+
+async function updateHVPlots() {
+    try {
+        const data = await fetchHVData();
+        if (!data) {
+            console.log("No HV data available");
+            return;
+        }
+        const time = data.time;
+
+        const voltageTraces = Object.entries(data.voltage).map(([key, values]) => ({
+            x: time,
+            y: values,
+            mode: 'lines',
+            name: key
+        }));
+
+        const currentTraces = Object.entries(data.current).map(([key, values]) => ({
+            x: time,
+            y: values,
+            mode: 'lines',
+            name: key
+        }));
+
+        Plotly.newPlot('hv-voltage-plot', voltageTraces, {
+            title: 'Voltage (V) vs Time',
+            xaxis: { title: 'Time' },
+            yaxis: { title: 'Voltage (V)' },
+            legend: { orientation: 'h' },
+            template: 'plotly_dark'
+        });
+
+        Plotly.newPlot('hv-current-plot', currentTraces, {
+            title: 'Current (µA) vs Time',
+            xaxis: { title: 'Time' },
+            yaxis: { title: 'Current (µA)' },
+            legend: { orientation: 'h' },
+            template: 'plotly_dark'
+        });
+
+    } catch (err) {
+        console.error("HV update failed:", err);
+    }
+}
+
+async function loadRuns() {
+    // Hack to only allow run_config_beam.json
+  const runSelect = document.getElementById("run-select");
+  runSelect.innerHTML = "";
+  const opt = document.createElement("option");
+  opt.value = "run_config_beam.json";
+  opt.textContent = "run_config_beam.json";
+  runSelect.appendChild(opt);
+  runSelect.value = "run_config_beam.json";
+  loadSubruns();
+}
+
+async function loadSubruns() {
+  const runName = document.getElementById("run-select").value;
+  const res = await fetch(`/get_subruns?run=${encodeURIComponent(runName)}`);
+  const subruns = await res.json();
+  const subrunSelect = document.getElementById("hv-subrun-select");
+  const prev = subrunSelect.value;
+  subrunSelect.innerHTML = "";
+  subruns.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s;
+    opt.textContent = s;
+    subrunSelect.appendChild(opt);
+  });
+  if (subruns.includes(prev)) {
+    subrunSelect.value = prev; // preserve selection
+  } else if (subruns.length > 0) {
+    subrunSelect.value = subruns[subruns.length - 1]; // default to latest
+  }
+}
+
+// reload subruns periodically
+setInterval(loadSubruns, 5000);
+
+// reload subruns when run changes
+document.getElementById("run-select").addEventListener("change", loadSubruns);
+
+// initial load
+loadRuns();
+
+// take pedestals button handler
+document.getElementById("take-pedestals").addEventListener("click", async () => {
+  const res = await fetch("/take_pedestals", { method: "POST" });
+  const data = await res.json();
+
+  // Create a fading popup
+    const popup = document.createElement("div");
+    popup.textContent = data.message;
+    popup.style.position = "fixed";
+    popup.style.top = "80px";
+    popup.style.left = "50%";
+    popup.style.transform = "translateX(-50%)";
+    popup.style.background = "#17a2b8";
+    popup.style.color = "#fff";
+    popup.style.padding = "1em 2em";
+    popup.style.borderRadius = "8px";
+    popup.style.boxShadow = "0 2px 8px rgba(0,0,0.2)";
+    popup.style.zIndex = "9999";
+    popup.style.opacity = "1";
+    popup.style.transition = "opacity 1s";
+
+    document.body.appendChild(popup);
+
+    setTimeout(() => {
+      popup.style.opacity = "0";
+      setTimeout(() => popup.remove(), 1000);
+    }, 2500);
+});
+
+let retryingRunConfig = false;
+
+document.getElementById("run-config-py").addEventListener("click", async function runConfigHandler() {
+
+  // ----- STEP 0: On first click, read user input -----
+  let bancoInput = document.getElementById("banco-input").value;
+
+  if (!retryingRunConfig) {
+    if (bancoInput === "") {
+      alert("Please enter a banco position before starting the run.");
+      return;
+    }
+
+    // ----- STEP 1: Update banco position -----
+    const updateRes = await fetch("/update_run_config_py", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ banco_position: bancoInput }),
+    });
+
+    const updateData = await updateRes.json();
+    if (!updateData.success) {
+      alert("Error updating banco position: " + updateData.message);
+      return;
+    }
+
+    console.log(updateData.message);
+  }
+
+  // ----- STEP 2: Fetch updated config -----
+  const configRes = await fetch("/get_config_py", { method: "GET" });
+  const configData = await configRes.json();
+
+  if (!configData.success) {
+    alert("Could not load config: " + configData.message);
+    return;
+  }
+
+  const runName = configData.run_name;
+  const bancoPosition = configData.banco_position;
+
+  // Refresh input value (in case user changed it before second click)
+  bancoInput = document.getElementById("banco-input").value;
+
+  // ----- STEP 2b: Detect stale config → auto retry once -----
+  if (!retryingRunConfig && bancoPosition != bancoInput) {
+    console.warn("Config mismatch (stale import). Retrying...");
+    retryingRunConfig = true;
+    this.click();   // Run the handler again
+    return;
+  }
+
+  // If we made it here, config is correct → reset retry flag
+  retryingRunConfig = false;
+
+  // ----- STEP 3: Ask user for confirmation -----
+  const confirmMsg =
+    `Start run?\n\n` +
+    `Run name: ${runName}\n` +
+    `Banco position: ${bancoPosition}\n\n` +
+    `Are you sure you want to continue?`;
+
+  const confirmRun = confirm(confirmMsg);
+  if (!confirmRun) return;
+
+  // ----- STEP 4: Start the run -----
+  const res = await fetch("/run_config_py", { method: "POST" });
+  const data = await res.json();
+
+  // ----- STEP 5: Popup status -----
+  const popup = document.createElement("div");
+  popup.textContent = data.message;
+  popup.style.position = "fixed";
+  popup.style.top = "80px";
+  popup.style.left = "50%";
+  popup.style.transform = "translateX(-50%)";
+  popup.style.background = data.success ? "#28a745" : "#dc3545";
+  popup.style.color = "#fff";
+  popup.style.padding = "1em 2em";
+  popup.style.borderRadius = "8px";
+  popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+  popup.style.zIndex = "9999";
+  popup.style.opacity = "1";
+  popup.style.transition = "opacity 1s";
+  document.body.appendChild(popup);
+  setTimeout(() => {
+    popup.style.opacity = "0";
+    setTimeout(() => popup.remove(), 1000);
+  }, 2500);
+
+  // ----- STEP 6: Update displayed info -----
+  if (data.success) {
+    document.getElementById("run-display").textContent = data.run_name;
+
+    await loadRuns();
+
+    const runSelect = document.getElementById("run-select");
+    runSelect.value = "run_config_beam.json";
+
+    await loadSubruns();
+    updateHVPlots();
+  }
+});
+
+
+
+async function updateRunAndBancoDisplay() {
+  try {
+    const res = await fetch("/get_config_py", { method: "GET" });
+    const data = await res.json();
+
+    if (!data.success) return;
+
+    document.getElementById("run-display").textContent = data.run_name;
+    document.getElementById("banco-display").textContent = data.banco_position;
+
+    const bancoInput = document.getElementById("banco-input");
+    if (bancoInput && (bancoInput.value === "" || bancoInput.value == null)) {
+      bancoInput.value = data.banco_position;
+    }
+  } catch (err) {
+    console.error("Error updating run/banco display:", err);
+  }
+}
+
+// Update every 5 seconds
+setInterval(updateRunAndBancoDisplay, 5000);
+
+// Also load immediately on page load
+updateRunAndBancoDisplay();
+
+
+async function updateRunEventsDisplay() {
+    try {
+        const res = await fetch("/get_run_events", { method: "GET" });
+        const data = await res.json();
+
+        if (!data.success) return;
+
+        document.getElementById("events-display").textContent = data.total_events;
+    } catch (err) {
+        console.error("Error updating run events display:", err);
+    }
+}
+
+// update every 5 seconds
+setInterval(updateRunEventsDisplay, 5000);
+
+updateRunEventsDisplay();
+
+// --- PNG Viewer JS ---
+async function fetchDirs(subdir = "") {
+    const res = await fetch(`/list_analysis_dirs?subdir=${encodeURIComponent(subdir)}`);
+    return await res.json();
+}
+
+// Populate first-level runs on load
+document.addEventListener("DOMContentLoaded", async () => {
+    const runSelect = document.getElementById("run-select-qa");
+    const res = await fetchDirs();
+    if (res.success) {
+        res.subdirs.forEach(d => {
+            const opt = document.createElement("option");
+            opt.value = d;
+            opt.textContent = d;
+            runSelect.appendChild(opt);
+        });
+    }
+});
+
+// Handle Run selection → populate Subruns
+document.getElementById("run-select-qa").addEventListener("change", async (e) => {
+    const run = e.target.value;
+    const subrunSelect = document.getElementById("subrun-select");
+    const detectorSelect = document.getElementById("detector-select");
+    const loadBtn = document.getElementById("load-pngs");
+
+    subrunSelect.innerHTML = '<option value="">Select subrun...</option>';
+    detectorSelect.innerHTML = '<option value="">Select detector...</option>';
+    subrunSelect.disabled = true;
+    detectorSelect.disabled = true;
+    loadBtn.disabled = true;
+
+    if (!run) return;
+
+    const res = await fetchDirs(run);
+    if (res.success) {
+        res.subdirs.forEach(d => {
+            const opt = document.createElement("option");
+            opt.value = `${run}/${d}`;
+            opt.textContent = d;
+            subrunSelect.appendChild(opt);
+        });
+        subrunSelect.disabled = false;
+    }
+});
+
+// Handle Subrun selection → populate Detectors
+document.getElementById("subrun-select").addEventListener("change", async (e) => {
+    const subrun = e.target.value;
+    const detectorSelect = document.getElementById("detector-select");
+    const loadBtn = document.getElementById("load-pngs");
+
+    detectorSelect.innerHTML = '<option value="">Select detector...</option>';
+    detectorSelect.disabled = true;
+    loadBtn.disabled = true;
+
+    if (!subrun) return;
+
+    const res = await fetchDirs(subrun);
+    if (res.success) {
+        res.subdirs.forEach(d => {
+            const opt = document.createElement("option");
+            opt.value = `${subrun}/${d}`;
+            opt.textContent = d;
+            detectorSelect.appendChild(opt);
+        });
+        detectorSelect.disabled = false;
+    }
+});
+
+// Handle Detector selection → enable Load button
+document.getElementById("detector-select").addEventListener("change", (e) => {
+    document.getElementById("load-pngs").disabled = !e.target.value;
+});
+
+// Load PNGs
+// Common function to load PNGs
+async function loadPNGs() {
+    const run_dir = document.getElementById("run-select-qa").value;
+    if (!run_dir) return; // no alert, just wait until selected
+
+    const subrun_dir = document.getElementById("subrun-select").value;
+    if (!subrun_dir) return;
+
+    const det_dir = document.getElementById("detector-select").value;
+    if (!det_dir) return;
+
+    const dir = osJoin(run_dir, subrun_dir.split('/').pop(), det_dir.split('/').pop());
+
+    const res = await fetch(`/list_pngs?dir=${encodeURIComponent(dir)}`);
+    const data = await res.json();
+    const gallery = document.getElementById("png-gallery");
+    gallery.innerHTML = "";
+
+    if (!data.success) {
+        gallery.innerHTML = `<p class="text-danger">Error: ${data.message}</p>`;
+        return;
+    }
+    if (data.images.length === 0) {
+        gallery.innerHTML = "<p>No PNGs found in this directory.</p>";
+        return;
+    }
+
+    data.images.forEach(imgUrl => {
+        const col = document.createElement("div");
+        col.className = "col-md-3 mb-3";
+        col.innerHTML = `
+            <div class="card bg-dark text-white border-0">
+                <img src="${imgUrl}" class="card-img-top"
+                     style="object-fit:contain;max-height:200px;cursor:pointer;"
+                     alt="PNG image">
+            </div>
+        `;
+        gallery.appendChild(col);
+
+        // Add click-to-enlarge behavior
+        const img = col.querySelector("img");
+        img.addEventListener("click", () => openFullscreenImage(imgUrl));
+    });
+}
+
+// Helper: fullscreen modal for image
+function openFullscreenImage(imgUrl) {
+    const overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.top = 0;
+    overlay.style.left = 0;
+    overlay.style.width = "100vw";
+    overlay.style.height = "100vh";
+    overlay.style.background = "rgba(0, 0, 0, 0.9)";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.style.zIndex = 9999;
+    overlay.style.cursor = "zoom-out";
+
+    const img = document.createElement("img");
+    img.src = imgUrl;
+    img.style.maxWidth = "95%";
+    img.style.maxHeight = "95%";
+    img.style.borderRadius = "8px";
+    img.style.boxShadow = "0 0 20px rgba(255,255,255,0.3)";
+    img.alt = "Enlarged image";
+
+    overlay.appendChild(img);
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", () => overlay.remove());
+}
+
+// Option 1: Keep button (optional, for manual refresh)
+document.getElementById("load-pngs").addEventListener("click", loadPNGs);
+
+// ✅ Option 2: Auto-load when detector changes
+document.getElementById("detector-select").addEventListener("change", loadPNGs);
+
+
+// Helper for joining paths safely
+function osJoin(...parts) {
+    return parts.map(p => p.replace(/^\/+|\/+$/g, "")).join("/");
+}
+
+
+setInterval(updateStatus, 1000);  // update every 1s
+updateStatus();
+loadTemplateList();
+
+updateHVPlots();
+setInterval(updateHVPlots, 5000);  // update every 5s
+</script>
+{% endblock %}
