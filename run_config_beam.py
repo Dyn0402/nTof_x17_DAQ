@@ -8,16 +8,20 @@ Created as Cosmic_Bench_DAQ_Control/run_config_template.py
 @author: Dylan Neff, Dylan
 """
 
-import sys
-import json
-import copy
+from run_config_base import RunConfigBase
 
 
-class Config:
+class Config(RunConfigBase):
     def __init__(self, config_path=None):
-        self.run_name = 'run_199'
-        self.base_out_dir = '/mnt/data/beam_sps_25/'
-        self.data_out_dir = f'{self.base_out_dir}Run/'
+        if not config_path:
+            self._set_defaults()
+
+        super().__init__(config_path)
+
+    def _set_defaults(self, config_path=None):
+        self.run_name = 'run_1'
+        self.base_out_dir = '/media/dylan/data/x17/'
+        self.data_out_dir = f'{self.base_out_dir}out_test/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
         self.raw_daq_inner_dir = 'raw_daq_data'
         self.decoded_root_inner_dir = 'decoded_root'
@@ -43,10 +47,10 @@ class Config:
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
-            'daq_config_template_path': f'{self.base_out_dir}dream_run/config/TbSPS25.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
-            'run_directory': f'/local/home/banco/beam_test_2025/Run/{self.run_name}/',
-            'data_out_dir': f'{self.base_out_dir}Run/{self.run_name}',
+            'run_directory': f'{self.base_out_dir}/{self.run_name}/',
+            'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
             'n_samples_per_waveform': 24,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
@@ -67,8 +71,8 @@ class Config:
             'run_dir': f'{self.base_out_dir}Run/{self.run_name}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
             'decoded_root_inner_dir': self.decoded_root_inner_dir,
-            'decode_path': '/local/home/banco/dylan/decode/decode',
-            'convert_path': '/local/home/banco/dylan/decode/convert_vec_tree_to_array',
+            'decode_path': '/home/dylan/CLionProjects/mm_strip_reconstruction/cmake-build-debug/decoder/decode',
+            # 'convert_path': '/local/home/banco/dylan/decode/convert_vec_tree_to_array',
             'detector_info_dir': self.detector_info_dir,
             'out_type': 'both',  # 'vec', 'array', or 'both'
             'on-the-fly_timeout': 2  # hours or None If running on-the-fly, time out and die after this time.
@@ -184,24 +188,10 @@ class Config:
         if not self.write_all_dectors_to_json:
             self.detectors = [det for det in self.detectors if det['name'] in self.included_detectors]
 
-        if config_path:  # Clear everything and load from file
-            self.load_from_file(config_path)
-
-    def write_to_file(self, file_path):
-        with open(file_path, 'w') as file:
-            json.dump(self.__dict__, file, indent=4)
-
-    def load_from_file(self, file_path):
-        with open(file_path, 'r') as file:
-            data = json.load(file)
-            self.__dict__.clear()
-            self.__dict__.update(data)
-
-
 if __name__ == '__main__':
     out_run_dir = 'config/json_run_configs/'
 
-    config_name = 'run_config_beam.json'
+    config_name = 'run_config_test.json'
 
     config = Config()
 
