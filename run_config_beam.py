@@ -20,34 +20,38 @@ class Config(RunConfigBase):
 
     def _set_defaults(self, config_path=None):
         self.run_name = 'run_1'
-        self.base_out_dir = '/media/dylan/data/x17/'
+        # self.base_out_dir = '/media/dylan/data/x17/'
+        self.base_out_dir = '/mnt/data/x17/'
         self.data_out_dir = f'{self.base_out_dir}out_test/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
         self.raw_daq_inner_dir = 'raw_daq_data'
         self.decoded_root_inner_dir = 'decoded_root'
         self.detector_info_dir = f'{self.base_out_dir}config/detectors/'
         self.start_time = None
+        self.process_on_fly = False  # True to process fdfs on the  fly.
+        self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
         self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         self.beam_type = 'neutrons'
         self.target_type = 'Boron?'
 
-        self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
-            'ip': '192.168.10.222',
-            'channels': {  # Check only the channels which exist here
-                'U0': {
-                    'expected_voltage': 4.5,  # V
-                    'expected_current': 30,  # A
-                    'voltage_tolerance': 0.4,  # V
-                    'current_tolerance': 5,  # A
-                },
-            }
-        }
+        # self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
+        #     'ip': '192.168.10.222',
+        #     'channels': {  # Check only the channels which exist here
+        #         'U0': {
+        #             'expected_voltage': 4.5,  # V
+        #             'expected_current': 30,  # A
+        #             'voltage_tolerance': 0.4,  # V
+        #             'current_tolerance': 5,  # A
+        #         },
+        #     }
+        # }
 
         self.dream_daq_info = {
-            'ip': '192.168.10.8',
+            'ip': '192.168.10.2',
             'port': 1101,
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -65,8 +69,8 @@ class Config(RunConfigBase):
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
         }
 
-        self.dedip196_processor_info = {
-            'ip': '192.168.10.8',
+        self.processor_info = {
+            'ip': '192.168.10.2',
             'port': 1200,
             'run_dir': f'{self.base_out_dir}Run/{self.run_name}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
@@ -79,12 +83,13 @@ class Config(RunConfigBase):
         }
 
         self.hv_control_info = {
-            'ip': '192.168.10.8',
+            'ip': '192.168.10.2',
             'port': 1100,
         }
 
         self.hv_info = {
-            'ip': '192.168.10.199',
+            # 'ip': '192.168.10.199',
+            'ip': '192.168.10.81',
             'username': 'admin',
             'password': 'admin',
             'n_cards': 6,
@@ -103,11 +108,11 @@ class Config(RunConfigBase):
                         '1': 600,
                         '2': 600,
                     },
-                    '5': {
-                        '0': 500,
-                        '1': 500,
-                        '2': 470,
-                    },
+                    # '5': {
+                    #     '0': 500,
+                    #     '1': 500,
+                    #     '2': 470,
+                    # },
                 }
             },
         ]
@@ -191,7 +196,7 @@ class Config(RunConfigBase):
 if __name__ == '__main__':
     out_run_dir = 'config/json_run_configs/'
 
-    config_name = 'run_config_test.json'
+    config_name = 'run_config_beam.json'
 
     config = Config()
 

@@ -41,18 +41,18 @@ def main():
 
     hv_ip, hv_port = config.hv_control_info['ip'], config.hv_control_info['port']
     if config.process_on_fly:
-        dedip196_ip, dedip196_port = config.dedip196_processor_info['ip'], config.dedip196_processor_info['port']
+        processor_ip, processor_port = config.processor_info['ip'], config.processor_info['port']
     else:
-        dedip196_ip, dedip196_port = None, None
+        processor_ip, processor_port = None, None
 
     dream_daq_ip, dream_daq_port = config.dream_daq_info['ip'], config.dream_daq_info['port']
 
     hv_client = Client(hv_ip, hv_port)
-    dedip196_processor_client = Client(dedip196_ip, dedip196_port) if config.process_on_fly else nullcontext()
+    processor_client = Client(processor_ip, processor_port) if config.process_on_fly else nullcontext()
     dream_daq_client = Client(dream_daq_ip, dream_daq_port)
 
     with hv_client as hv, \
-            dedip196_processor_client as dedip196_processor, \
+            processor_client as processor, \
             dream_daq_client as dream_daq:
 
         hv.send('Connected to daq_control')
@@ -67,14 +67,14 @@ def main():
         dream_daq.send_json(config.dream_daq_info)
 
         if config.process_on_fly:
-            dedip196_processor.send('Connected to daq_control')
-            dedip196_processor.receive()
-            dedip196_processor.send_json(config.dedip196_processor_info)
-            dedip196_processor.receive()
-            dedip196_processor.send_json({'included_detectors': config.included_detectors})
-            dedip196_processor.receive()
-            dedip196_processor.send_json({'detectors': config.detectors})
-            dedip196_processor.receive()
+            processor.send('Connected to daq_control')
+            processor.receive()
+            processor.send_json(config.processor_info)
+            processor.receive()
+            processor.send_json({'included_detectors': config.included_detectors})
+            processor.receive()
+            processor.send_json({'detectors': config.detectors})
+            processor.receive()
 
         sleep(2)  # Wait for all clients to do what they need to do (specifically, create directories)
         try:
@@ -107,8 +107,8 @@ def main():
                 if 'HV Set' in res:
                     print(f'Prepping DAQs for {sub_run_name}')
 
-                    daq_control_args = (config.dream_daq_info['daq_config_template_path'], sub_run_name, sub_run['run_time'],
-                                        sub_out_dir, daq_trigger_switch, dream_daq)
+                    daq_control_args = (config.dream_daq_info['daq_config_template_path'], sub_run_name,
+                                        sub_run['run_time'], sub_out_dir, dream_daq)
 
                     print(f'Starting run for sub run {sub_run_name}')
                     run_daq_controller(*daq_control_args)
@@ -138,79 +138,19 @@ def main():
         hv.send('Finished')
         dream_daq.send('Finished')
         if config.process_on_fly:
-            dedip196_processor.send('Finished')
+            processor.send('Finished')
     print('donzo')
 
 
-def run_daq_controller(config_template_path, sub_run_name, run_time, sub_out_dir, daq_trigger_switch,
+def run_daq_controller(config_template_path, sub_run_name, run_time, sub_out_dir,
                        dream_daq_client):
     daq_controller = DAQController(cfg_template_file_path=config_template_path, run_time=run_time, out_dir=sub_out_dir,
-                                   out_name=sub_run_name, trigger_switch_client=daq_trigger_switch,
-                                   dream_daq_client=dream_daq_client)
+                                   out_name=sub_run_name, dream_daq_client=dream_daq_client)
 
     daq_success = False
     while not daq_success:  # Rerun if failure
         print('Starting DAQ Controller')
         daq_success = daq_controller.run()
-
-
-def process_files_on_the_fly(sub_run_dir, sub_out_dir, sub_run_name, dedip196_processor, sedip28_processor,
-                             daq_finished, m3_tracking=True, filtering=True):
-    """
-    Process files on the fly as they are created by the DAQ.
-    :param sub_run_dir: Directory where DAQ is writing files.
-    :param sub_out_dir: Directory where processed files will be moved to.
-    :param sub_run_name: Name of subrun.
-    :param dedip196_processor: Client to dedip196 processor.
-    :param sedip28_processor: Client to sedip28 processor.
-    :param daq_finished: Event to signal when DAQ is finished.
-    :param m3_tracking: Run M3 tracking after decoding.
-    :param filtering: Run filtering after tracking.
-    :return:
-    """
-
-    create_dir_if_not_exist(sub_out_dir)
-    sleep(60 * 5)  # Wait on start for daq to start running
-    file_num, running = 0, True
-    while running:
-        if not daq_finished.is_set() and file_num_still_running(sub_run_dir, file_num, silent=True):
-            if not daq_finished.is_set():  # Check again to see if daq finished while checking if file was still running
-                sleep(30)  # Wait for file to finish
-        else:  # File is done, process it
-            if daq_finished.is_set():
-                print('DAQ Finished, processing last files')
-                sleep(3)  # If daq finished, give it a second to finish writing files then process them
-            for file_name in os.listdir(sub_run_dir):
-                if file_name.endswith('.fdf') and get_file_num_from_fdf_file_name(file_name, -2) == file_num:
-                    shutil.move(f'{sub_run_dir}{file_name}', f'{sub_out_dir}{file_name}')
-
-            dedip196_processor.send(f'Decode FDFs file_num={file_num} {sub_run_name}', silent=True)
-            dedip196_processor.receive(silent=True)
-            if m3_tracking:
-                sedip28_processor.send(f'Run M3 Tracking file_num={file_num} {sub_run_name}', silent=True)
-                sedip28_processor.receive(silent=True)
-                sedip28_processor.receive(silent=True)  # Wait for tracking to finish
-            dedip196_processor.receive(silent=True)  # Wait for decoding to finish
-
-            if m3_tracking and filtering:
-                # Run filtering
-                dedip196_processor.send(f'Filter By M3 file_num={file_num} {sub_run_name}', silent=True)
-                dedip196_processor.receive(silent=True)
-                dedip196_processor.receive(silent=True)  # Wait for filtering to finish
-            else:
-                dedip196_processor.send(f'Copy To Filtered file_num={file_num} {sub_run_name}', silent=True)
-                dedip196_processor.receive(silent=True)
-                dedip196_processor.receive(silent=True)  # Wait for copy to finish
-
-            # Remove all but filtered files
-            dedip196_processor.send(f'Clean Up Unfiltered file_num={file_num} {sub_run_name}', silent=True)
-            dedip196_processor.receive(silent=True)
-            dedip196_processor.receive(silent=True)  # Wait for cleanup to finish
-
-            if found_file_num(sub_run_dir, file_num + 1):
-                file_num += 1  # Move on to next file
-            else:
-                running = False  # Subrun over, exit
 
 
 def found_file_num(fdf_dir, file_num):
