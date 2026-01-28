@@ -14,7 +14,7 @@ from subprocess import Popen, PIPE
 import json
 
 
-BASE_DIR = "/local/home/banco/dylan/Cosmic_Bench_DAQ_Control"
+BASE_DIR = "/home/mx17/PycharmProjects/nTof_x17_DAQ"
 # BASE_DIR = "/local/home/dn277127/PycharmProjects/Cosmic_Bench_DAQ_Control"
 RUNCONFIG_DIR = f"{BASE_DIR}/config/json_run_configs/"
 BASH_DIR = f"{BASE_DIR}/bash_scripts/"
@@ -30,10 +30,10 @@ def main():
     # Get open tmux port by looking at live tmux session names
     decoder_port = get_open_decoder_port(min_decoder_port)
 
-    # Update run_config_path json with new port in dedip196_processor_info:port
+    # Update run_config_path json with new port in processor_info:port
     with open(run_config_path, 'r') as file:
         data = json.load(file)
-    data['dedip196_processor_info']['port'] = decoder_port
+    data['processor_info']['port'] = decoder_port
     with open(run_config_path, 'w') as file:
         json.dump(data, file)
 

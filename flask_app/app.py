@@ -26,13 +26,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 
 from run_config_beam import Config
 from get_run_events import get_total_events_for_run
 
-BASE_DIR = "/home/dylan/PycharmProjects/nTof_x17_DAQ"
+# BASE_DIR = "/home/dylan/PycharmProjects/nTof_x17_DAQ"
+BASE_DIR = "/home/mx17/PycharmProjects/nTof_x17_DAQ"
 CONFIG_TEMPLATE_DIR = f"{BASE_DIR}/config/json_templates"
 CONFIG_RUN_DIR = f"{BASE_DIR}/config/json_run_configs"
 CONFIG_PY_PATH = f"{BASE_DIR}/run_config_beam.py"
 BASH_DIR = f"{BASE_DIR}/bash_scripts"
-ANALYSIS_DIR = "/media/dylan/data/x17"
-RUN_DIR = "/media/dylan/data/x17/dream_run_test"
+# ANALYSIS_DIR = "/media/dylan/data/x17"
+# RUN_DIR = "/media/dylan/data/x17/dream_run_test"
+ANALYSIS_DIR = "/mnt/data/x17/Analysis"
+RUN_DIR = "/mnt/data/x17/Run"
 HV_TAIL = 1000  # number of most recent rows to show
 
 
@@ -61,14 +64,6 @@ def status_all():
             info = get_hv_control_status()
         elif s == "daq_control":
             info = get_daq_control_status()
-        elif s == "trigger_veto_control":
-            info = get_trigger_veto_control_status()
-        elif s == "trigger_gen_control":
-            info = get_trigger_gen_control_status()
-        elif s == "banco_tracker":
-            info = get_banco_tracker_status()
-        elif s == "desync_monitor":
-            info = get_desync_monitor_status()
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 
@@ -140,41 +135,7 @@ def update_run_config_py():
         subprocess.Popen(["python", f"{BASE_DIR}/iterate_run_num.py"])
         time.sleep(0.2)  # Give it a moment to complete
 
-        data = request.get_json()
-        new_position = data.get("banco_position")
-
-        if new_position is None:
-            return jsonify({"success": False, "message": "Missing banco_position"}), 400
-
-        config_file = CONFIG_PY_PATH
-
-        # Read file lines
-        with open(config_file, "r") as f:
-            lines = f.readlines()
-
-        # Replace banco_moveable_y_position value
-        updated = False
-        for i, line in enumerate(lines):
-            if "'banco_moveable_y_position'" in line:
-                # Replace the value in this line (handle comments cleanly)
-                prefix = line.split(":")[0]
-                comment = ""
-                if "#" in line:
-                    parts = line.split("#", 1)
-                    prefix = parts[0]
-                    comment = "#" + parts[1].rstrip("\n")
-                lines[i] = f"            'banco_moveable_y_position': {float(new_position) / 10},  {comment}\n"
-                updated = True
-                break
-
-        if not updated:
-            return jsonify({"success": False, "message": "banco_moveable_y_position not found"}), 404
-
-        # Write updated file
-        with open(config_file, "w") as f:
-            f.writelines(lines)
-
-        return jsonify({"success": True, "message": f"Banco position updated to {new_position}"})
+        return jsonify({"success": True, "message": f"Run number iterated"})
 
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
@@ -325,113 +286,6 @@ def hv_data():
         return jsonify({"success": False, "message": str(e)})
 
 
-@app.route("/json_templates")
-def list_json_templates():
-    try:
-        files = [f for f in os.listdir(CONFIG_TEMPLATE_DIR) if f.endswith(".json")]
-        return jsonify({"success": True, "templates": files})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route("/json_templates/<template_name>")
-def load_json_template(template_name):
-    try:
-        path = os.path.join(CONFIG_TEMPLATE_DIR, template_name)
-        if not os.path.isfile(path):
-            return jsonify({"success": False, "message": "File not found"}), 404
-        with open(path, "r") as f:
-            data = json.load(f)
-        return jsonify({"success": True, "content": data})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-@app.route("/save_run_config", methods=["POST"])
-def save_run_config():
-    try:
-        data = request.get_json()
-        content = data.get("content")
-
-        if not isinstance(content, dict):
-            return jsonify({"success": False, "message": "Invalid JSON content"}), 400
-
-        run_name = content.get("run_name")
-        if not run_name:
-            return jsonify({"success": False, "message": "Missing 'run_name' field in config"}), 400
-
-        os.makedirs(CONFIG_RUN_DIR, exist_ok=True)
-
-        filename = f"{run_name}.json"
-        path = os.path.join(CONFIG_RUN_DIR, filename)
-        with open(path, "w") as f:
-            json.dump(content, f, indent=4)
-
-        return jsonify({"success": True, "message": f"Run config saved as {filename}"})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route('/list_json_configs')
-def list_json_configs():
-    folder = "./config/json_run_configs"
-    files = [f for f in os.listdir(folder) if f.endswith('.json')]
-    return jsonify(files)
-
-@app.route('/load_json_config/<filename>')
-def load_json_config(filename):
-    path = os.path.join("./config/json_run_configs", filename)
-    with open(path) as f:
-        return jsonify(json.load(f))
-
-@app.route('/save_json_config', methods=['POST'])
-def save_json_config():
-    data = request.get_json()
-    run_name = data.get('run_name', 'unnamed')
-    path = f"./config/json_run_configs/{run_name}.json"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w') as f:
-        json.dump(data, f, indent=4)
-    return f"Saved to {path}"
-
-@app.route('/save_json_template', methods=['POST'])
-def save_json_template():
-    req = request.get_json()
-    name = req.get('name')
-    data = req.get('data')
-    path = f"./config/json_templates/{name}"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w') as f:
-        json.dump(data, f, indent=4)
-    return f"Template saved to {path}"
-
-
-@socketio.on("start")
-def start(data):
-    name = data.get("name")
-    if name in sessions:
-        return  # already attached
-
-    pid, fd = pty.fork()
-    if pid == 0:
-        # Child: attach to tmux session
-        os.execvp("tmux", ["tmux", "attach-session", "-t", name])
-    else:
-        # Parent: keep FD for reading/writing
-        sessions[name] = fd
-
-        def read_fd(fd, session_name):
-            while True:
-                try:
-                    r, _, _ = select.select([fd], [], [], 0.1)
-                    if fd in r:
-                        output = os.read(fd, 1024).decode(errors="ignore")
-                        socketio.emit(f"output-{session_name}", output)
-                except OSError:
-                    break
-
-        threading.Thread(target=read_fd, args=(fd, name), daemon=True).start()
-
-
 @app.route("/list_analysis_dirs")
 def list_analysis_dirs():
     subdir = request.args.get("subdir", "")
@@ -478,9 +332,6 @@ def serve_png():
 @app.route("/get_config_py", methods=['GET'])
 def get_config_py():
     try:
-        # config = Config()
-        # run_name = config.run_name
-        # banco_position = config.bench_geometry['banco_moveable_y_position']
         # Call get_config function from run_config_beam.py
         result = subprocess.run(
             ["python", f"{BASE_DIR}/get_config_py.py"],
@@ -492,18 +343,10 @@ def get_config_py():
         output = result.stdout.strip()
         config_data = json.loads(output)
         run_name = config_data.get("run_name", "Unknown")
-        banco_position = config_data.get("banco_position", "Unknown")
-
-        # If banco_possition is a number, multiply by 10 to convert back to motor units
-        try:
-            banco_position = float(banco_position) * 10
-        except ValueError:
-            pass
 
         return jsonify({
             "success": True,
             "run_name": run_name,
-            "banco_position": banco_position
         })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500

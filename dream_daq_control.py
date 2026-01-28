@@ -11,6 +11,7 @@ Created as Cosmic_Bench_DAQ_Control/dream_daq_control
 import os
 import sys
 import re
+import subprocess
 from subprocess import Popen, PIPE, STDOUT
 import pty
 from time import sleep
@@ -78,14 +79,16 @@ def main():
                         if pedestals_dir is not None:  # If pedestals_dir is not None, copy pedestal files to run dir.
                             get_pedestals(pedestals_dir, pedestals, sub_run_dir, sub_run_out_raw_inner_dir)
 
-                        run_command = f'RunCtrl -c {cfg_run_path} -f {sub_run_name}'
-                        if batch_mode:
-                            run_command += ' -b'
+                        # run_command = f'RunCtrl -c {cfg_run_path} -f {sub_run_name}'
+                        # if batch_mode:
+                        #     run_command += ' -b'
+                        #
+                        # process = Popen(run_command, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, text=True)
+                        # start, taking_pedestals, run_successful = time.time(), False, True
+                        # server.send('Dream DAQ starting')
+                        # max_run_time = run_time + max_run_time_addition
 
-                        process = Popen(run_command, shell=True, stdin=PIPE, stdout=PIPE, stderr=STDOUT, text=True)
-                        start, taking_pedestals, run_successful = time.time(), False, True
-                        server.send('Dream DAQ starting')
-                        max_run_time = run_time + max_run_time_addition
+                        run_command = ['RunCtrl', '-c', cfg_run_path, '-f', sub_run_name, '-b']
 
                         # if copy_on_fly:
                         #     daq_finished = threading.Event()
@@ -102,79 +105,82 @@ def main():
                                 daemon=True,  # <- important: thread lives independently
                             )
                             copy_files_on_the_fly_thread.start()
+                        server.send('Dream DAQ starting')
+                        print(f'Starting Dream DAQ with command: {run_command}')
+                        ret = subprocess.call(run_command)
 
-                        while True:
-                            output = process.stdout.readline()
-
-                            if output == '' and process.poll() is not None:
-                                server.send("Dream DAQ has finished")  # If only taking pedestals or a failure
-                                break
-
-                            if batch_mode:
-                                if not taking_pedestals and '_TakePedThr' in output.strip():
-                                    taking_pedestals = True
-                                    server.send('Dream DAQ taking pedestals')
-                                elif '_TakeData' in output.strip():
-                                    server.send('Dream DAQ started')
-                                    break
-                            else:
-                                if not taking_pedestals and output.strip() == '***':  # Start of run, begin taking pedestals
-                                    process.stdin.write('G')
-                                    process.stdin.flush()  # Ensure the command is sent immediately
-                                    taking_pedestals = True
-                                    print('Taking pedestals.')
-                                    server.send('Dream DAQ taking pedestals')
-                                elif 'Press C to Continue' in output.strip():  # End of pedestals, begin taking data
-                                    process.stdin.write('C')  # Signal to start data taking
-                                    process.stdin.flush()
-                                    print('DAQ started.')
-                                    server.send('Dream DAQ started')
-                                    break
-
-                            if output.strip() != '':
-                                print(output.strip())
-
-                            pedestals_time_out = time.time() - start > go_timeout and taking_pedestals
-                            run_time_out = time.time() - start > max_run_time * 60
-                            if pedestals_time_out or run_time_out:
-                                print('DAQ process timed out.')
-                                process.kill()
-                                sleep(5)
-                                run_successful = False
-                                print('DAQ process timed out.')
-                                server.send('Dream DAQ timed out')
-                                break
-
-                        if process.poll() is None:  # Process still running, start main run
-                            stop_event = threading.Event()
-                            server.set_timeout(1.0)  # Set timeout for socket operations
-
-                            stop_thread = threading.Thread(target=listen_for_stop, args=(server, stop_event))
-                            stop_thread.start()
-                            # screen_clear_period = 30
-                            # screen_clear_timer = time.time()
-                            while True:  # DAQ running
-                                if stop_event.is_set():
-                                    process.stdin.write('g')
-                                    process.stdin.flush()
-                                    print('Stop command received. Stopping DAQ.')
-                                    break
-
-                                # if time.time() - screen_clear_timer > screen_clear_period:  # Clear terminal every 5 minutes
-                                #     clear_terminal()
-                                #     screen_clear_timer = time.time()
-
-                                output = process.stdout.readline()
-                                if output == '' and process.poll() is not None:
-                                    print('DAQ process finished.')
-                                    break
-                                if output.strip() != '':
-                                    print(output.strip())
-                            print('Waiting for DAQ process to terminate.')
-                            stop_event.set()  # Tell the listener thread to stop
-                            stop_thread.join()
-                            print('Listener thread joined.')
-                            server.set_timeout(None)
+                        # while True:
+                        #     output = process.stdout.readline()
+                        #
+                        #     if output == '' and process.poll() is not None:
+                        #         server.send("Dream DAQ has finished")  # If only taking pedestals or a failure
+                        #         break
+                        #
+                        #     if batch_mode:
+                        #         if not taking_pedestals and '_TakePedThr' in output.strip():
+                        #             taking_pedestals = True
+                        #             server.send('Dream DAQ taking pedestals')
+                        #         elif '_TakeData' in output.strip():
+                        #             server.send('Dream DAQ started')
+                        #             break
+                        #     else:
+                        #         if not taking_pedestals and output.strip() == '***':  # Start of run, begin taking pedestals
+                        #             process.stdin.write('G')
+                        #             process.stdin.flush()  # Ensure the command is sent immediately
+                        #             taking_pedestals = True
+                        #             print('Taking pedestals.')
+                        #             server.send('Dream DAQ taking pedestals')
+                        #         elif 'Press C to Continue' in output.strip():  # End of pedestals, begin taking data
+                        #             process.stdin.write('C')  # Signal to start data taking
+                        #             process.stdin.flush()
+                        #             print('DAQ started.')
+                        #             server.send('Dream DAQ started')
+                        #             break
+                        #
+                        #     if output.strip() != '':
+                        #         print(output.strip())
+                        #
+                        #     pedestals_time_out = time.time() - start > go_timeout and taking_pedestals
+                        #     run_time_out = time.time() - start > max_run_time * 60
+                        #     if pedestals_time_out or run_time_out:
+                        #         print('DAQ process timed out.')
+                        #         process.kill()
+                        #         sleep(5)
+                        #         run_successful = False
+                        #         print('DAQ process timed out.')
+                        #         server.send('Dream DAQ timed out')
+                        #         break
+                        #
+                        # if process.poll() is None:  # Process still running, start main run
+                        #     stop_event = threading.Event()
+                        #     server.set_timeout(1.0)  # Set timeout for socket operations
+                        #
+                        #     stop_thread = threading.Thread(target=listen_for_stop, args=(server, stop_event))
+                        #     stop_thread.start()
+                        #     # screen_clear_period = 30
+                        #     # screen_clear_timer = time.time()
+                        #     while True:  # DAQ running
+                        #         if stop_event.is_set():
+                        #             process.stdin.write('g')
+                        #             process.stdin.flush()
+                        #             print('Stop command received. Stopping DAQ.')
+                        #             break
+                        #
+                        #         # if time.time() - screen_clear_timer > screen_clear_period:  # Clear terminal every 5 minutes
+                        #         #     clear_terminal()
+                        #         #     screen_clear_timer = time.time()
+                        #
+                        #         output = process.stdout.readline()
+                        #         if output == '' and process.poll() is not None:
+                        #             print('DAQ process finished.')
+                        #             break
+                        #         if output.strip() != '':
+                        #             print(output.strip())
+                        #     print('Waiting for DAQ process to terminate.')
+                        #     stop_event.set()  # Tell the listener thread to stop
+                        #     stop_thread.join()
+                        #     print('Listener thread joined.')
+                        #     server.set_timeout(None)
 
                         # DAQ finished
                         # if copy_on_fly:

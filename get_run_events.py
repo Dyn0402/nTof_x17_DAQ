@@ -12,7 +12,7 @@ import os
 import sys
 import pandas as pd
 
-RUN_DIR = '/mnt/data/beam_sps_25/Run/'
+RUN_DIR = '/mnt/data/x17/Run/'
 
 def main():
     if len(sys.argv) != 2:

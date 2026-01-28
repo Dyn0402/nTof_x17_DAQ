@@ -4,3 +4,5 @@ bs4~=0.0.2
 numpy~=2.4.1
 pandas~=2.3.3
 requests~=2.32.5
+caen-hv-py
+setuptools
