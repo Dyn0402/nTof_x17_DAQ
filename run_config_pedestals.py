@@ -8,6 +8,8 @@ Created as Cosmic_Bench_DAQ_Control/run_config_template.py
 @author: Dylan Neff, Dylan
 """
 
+from datetime import datetime
+
 from run_config_base import RunConfigBase
 
 
@@ -19,10 +21,11 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_9'
+        date_time_str = datetime.now().strftime('%m-%d-%y_%H-%M-%S')
+        self.run_name = f'pedestals_{date_time_str}'
         # self.base_out_dir = '/media/dylan/data/x17/'
         self.base_out_dir = '/mnt/data/x17/beam_feb/'
-        self.data_out_dir = f'{self.base_out_dir}runs/'
+        self.data_out_dir = f'{self.base_out_dir}pedestals/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
         self.raw_daq_inner_dir = 'raw_daq_data'
         self.decoded_root_inner_dir = 'decoded_root'
@@ -52,7 +55,7 @@ class Config(RunConfigBase):
             'ip': '192.168.10.2',
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17_ped.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -102,8 +105,8 @@ class Config(RunConfigBase):
 
         self.sub_runs = [
             {
-                'sub_run_name': f'run',
-                'run_time': 10,  # Minutes
+                'sub_run_name': f'pedestals',
+                'run_time': 1,  # Minutes
                 'hvs': {
                     '1': {
                         '1': 600,
@@ -271,7 +274,7 @@ class Config(RunConfigBase):
 if __name__ == '__main__':
     out_run_dir = 'config/json_run_configs/'
 
-    config_name = 'run_config_beam.json'
+    config_name = 'run_config_pedestals.json'
 
     config = Config()
 

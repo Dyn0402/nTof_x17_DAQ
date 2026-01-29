@@ -34,8 +34,8 @@ CONFIG_PY_PATH = f"{BASE_DIR}/run_config_beam.py"
 BASH_DIR = f"{BASE_DIR}/bash_scripts"
 # ANALYSIS_DIR = "/media/dylan/data/x17"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
-ANALYSIS_DIR = "/mnt/data/x17/Analysis"
-RUN_DIR = "/mnt/data/x17/Run"
+ANALYSIS_DIR = "/mnt/data/x17/beam_feb/analysis"
+RUN_DIR = "/mnt/data/x17/beam_feb/runs"
 HV_TAIL = 1000  # number of most recent rows to show
 
 

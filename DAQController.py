@@ -25,7 +25,7 @@ class DAQController:
         self.run_start_time = None
         self.measured_run_time = None
 
-        # self.stop_dream_sh_path = '/home/mx17/PycharmProjects/nTof_x17_DAQ/bash_scripts/stop_dream_daq.sh'
+        # self.stop_dream_sh_path = '/home/mx17/PycharmProjects/nTof_x17_DAQ/bash_scripts/stop_dream.sh'
         self.stop_dream_sh_path = './bash_scripts/stop_dream.sh'
 
     def __enter__(self):
@@ -45,9 +45,6 @@ class DAQController:
                 return False
             self.run_start_time = time()
 
-            if res == 'Dream DAQ started':
-                self.run_start_time = time()
-
             res = self.dream_daq_client.receive()  # Wait for dream daq to finish
             if res != 'Dream DAQ stopped':
                 print('Error stopping DAQ')
@@ -66,6 +63,7 @@ class DAQController:
 
             if self.run_start_time is not None:
                 self.measured_run_time = time() - self.run_start_time
+                run_successful = True  # Low bar for a successful run, but maybe ok?
             else:
                 self.measured_run_time = 0
             # self.dream_daq_client.send('Stop')
