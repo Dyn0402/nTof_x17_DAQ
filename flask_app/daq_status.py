@@ -142,7 +142,7 @@ def get_daq_control_status():
         ("Prepping DAQs for ", "Prepping DAQs", "warning"),
         ("Ramping HVs for ", "Ramping HV", "warning"),
         ("Starting DAQ Control", "STARTING", "warning"),
-        ("Dream DAQ started", "RUNNING", "success"),
+        ("Dream DAQ starting", "RUNNING", "success"),
         ("Stopping DAQ process", "Stopping DAQ", "warning"),
     ]
 

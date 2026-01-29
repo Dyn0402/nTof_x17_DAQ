@@ -17,5 +17,3 @@ tmux send-keys -t "$SESSION" "$COMMAND" C-m
 
 # Send config to processor
 python send_run_config_to_processor.py "$CONFIG_PATH"
-
-python elog_json_converter.py "$CONFIG_PATH"
