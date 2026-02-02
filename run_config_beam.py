@@ -34,7 +34,7 @@ class Config(RunConfigBase):
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
         self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         self.beam_type = 'neutrons'
-        self.target_type = 'Timepix'
+        self.target_type = 'None'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
             'ip': '192.168.10.222',
@@ -53,8 +53,8 @@ class Config(RunConfigBase):
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -67,7 +67,8 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-            'latency': 110,  # Latency setting for DAQ in clock cycles
+            # 'latency': 110,  # Latency setting for DAQ in clock cycles
+            'latency': 12,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
         }
@@ -91,12 +92,11 @@ class Config(RunConfigBase):
         }
 
         self.hv_info = {
-            # 'ip': '192.168.10.199',
+            'ip': '192.168.10.199',
             # # 'ip': '192.168.10.81',
-            # 'username': 'admin',
-            # 'password': 'admin',
-            'ip': '128.141.177.244',
-            # 'ip': '192.168.10.81',
+            'username': 'admin',
+            'password': 'admin',
+            # 'ip': '128.141.177.244',
             'n_cards': 6,
             'n_channels_per_card': 12,
             'run_out_dir': self.run_out_dir,
@@ -104,10 +104,10 @@ class Config(RunConfigBase):
             'monitor_interval': 1,  # Seconds between HV monitoring
         }
 
-        with open('hv_creds.txt') as f:
-            lines = f.readlines()
-            self.hv_info['username'] = lines[0].strip()
-            self.hv_info['password'] = lines[1].strip()
+        # with open('hv_creds.txt') as f:
+        #     lines = f.readlines()
+        #     self.hv_info['username'] = lines[0].strip()
+        #     self.hv_info['password'] = lines[1].strip()
 
         self.sub_runs = [
             # {
@@ -207,22 +207,21 @@ class Config(RunConfigBase):
             #     }
             # },
             {
-                'sub_run_name': f'resist_hv_490V',
+                'sub_run_name': f'resist_hv_440V',
                 'run_time': 5,  # Minutes
                 'hvs': {
                     '1': {
                         '1': 600,
                     },
                     '5': {
-                        '0': 490,
+                        '0': 440,
                     },
                 }
             },
         ]
 
         # Add more hv_subruns
-        template = self.sub_runs[0]
-        hvs = [495, 500, 505, 510, 515, 520, 525]
+        hvs = [445, 450, 455, 460, 465, 470, 475, 480, 485, 490, 495, 500, 505, 510, 515, 520, 525]
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_hv_{hv}V',
@@ -237,6 +236,19 @@ class Config(RunConfigBase):
                 }
             }
             self.sub_runs.append(new_subrun)
+
+        self.sub_runs.append({
+            'sub_run_name': f'final_run_495V',
+            'run_time': 60 * 24,  # Minutes
+            'hvs': {
+                '1': {
+                    '1': 600,
+                },
+                '5': {
+                    '0': 495,
+                },
+            }
+        })
 
         self.bench_geometry = {
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
