@@ -91,10 +91,12 @@ class Config(RunConfigBase):
         }
 
         self.hv_info = {
-            'ip': '192.168.10.199',
+            # 'ip': '192.168.10.199',
+            # # 'ip': '192.168.10.81',
+            # 'username': 'admin',
+            # 'password': 'admin',
+            'ip': '128.141.177.244',
             # 'ip': '192.168.10.81',
-            'username': 'admin',
-            'password': 'admin',
             'n_cards': 6,
             'n_channels_per_card': 12,
             'run_out_dir': self.run_out_dir,
@@ -102,17 +104,22 @@ class Config(RunConfigBase):
             'monitor_interval': 1,  # Seconds between HV monitoring
         }
 
+        with open('hv_creds.txt') as f:
+            lines = f.readlines()
+            self.hv_info['username'] = lines[0].strip()
+            self.hv_info['password'] = lines[1].strip()
+
         self.sub_runs = [
             {
                 'sub_run_name': f'run',
                 'run_time': 60 * 24,  # Minutes
                 'hvs': {
-                    # '1': {
-                    #     '1': 600,
-                    # },
-                    # '5': {
-                    #     '0': 400,
-                    # },
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': 450,
+                    },
                 }
             },
         ]
