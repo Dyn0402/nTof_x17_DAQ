@@ -424,7 +424,8 @@ def get_pedestals(pedestals_dir, pedestals, run_dir, out_dir=None):
     :param out_dir: If a copy of pedestal files should also be placed in out_dir
     :return:
     """
-    sub_run_name = 'pedestals_noise'  # Standard name for pedestal runs
+    # sub_run_name = 'pedestals_noise'  # Standard name for pedestal runs
+    sub_run_name = 'pedestals'  # Standard name for pedestal runs
     if not os.path.isdir(pedestals_dir):
         print(f'Pedestals directory `{pedestals_dir}` does not exist.')
         return None
