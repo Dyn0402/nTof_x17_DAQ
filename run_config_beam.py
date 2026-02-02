@@ -210,11 +210,11 @@ class Config(RunConfigBase):
                 'sub_run_name': f'resist_hv_440V',
                 'run_time': 5,  # Minutes
                 'hvs': {
-                    '1': {
-                        '1': 600,
+                    '2': {
+                        '0': 440,
                     },
                     '5': {
-                        '0': 440,
+                        '0': 600,
                     },
                 }
             },
@@ -227,11 +227,11 @@ class Config(RunConfigBase):
                 'sub_run_name': f'resist_hv_{hv}V',
                 'run_time': 5,  # Minutes
                 'hvs': {
-                    '1': {
-                        '1': 600,
+                    '2': {
+                        '0': hv,
                     },
                     '5': {
-                        '0': hv,
+                        '0': 600,
                     },
                 }
             }
