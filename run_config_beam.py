@@ -49,7 +49,7 @@ class Config(RunConfigBase):
         }
 
         self.dream_daq_info = {
-            'ip': '192.168.10.2',
+            'ip': '192.168.10.8',
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
@@ -72,7 +72,7 @@ class Config(RunConfigBase):
         }
 
         self.processor_info = {
-            'ip': '192.168.10.2',
+            'ip': '192.168.10.8',
             'port': 1200,
             'run_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
@@ -85,7 +85,7 @@ class Config(RunConfigBase):
         }
 
         self.hv_control_info = {
-            'ip': '192.168.10.2',
+            'ip': '192.168.10.8',
             'port': 1100,
         }
 
