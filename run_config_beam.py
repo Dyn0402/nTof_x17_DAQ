@@ -111,14 +111,110 @@ class Config(RunConfigBase):
 
         self.sub_runs = [
             {
-                'sub_run_name': f'run',
-                'run_time': 60 * 24,  # Minutes
+                'sub_run_name': f'resist_hv_450V',
+                'run_time': 5,  # Minutes
                 'hvs': {
                     '1': {
                         '1': 600,
                     },
                     '5': {
                         '0': 450,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_hv_455V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': 455,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_hv_460V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': 460,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_hv_465V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': 465,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_hv_470V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': 470,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_hv_475V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': 475,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_hv_480V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': 480,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_hv_485V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': 485,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_hv_490V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': 490,
                     },
                 }
             },
