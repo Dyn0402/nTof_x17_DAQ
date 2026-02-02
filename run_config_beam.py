@@ -67,8 +67,8 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-            'latency': 33,  # Latency setting for DAQ in clock cycles
-            'sample_period': 40,  # ns, sampling period
+            'latency': 110,  # Latency setting for DAQ in clock cycles
+            'sample_period': 20,  # ns, sampling period
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
         }
 
@@ -110,102 +110,102 @@ class Config(RunConfigBase):
             self.hv_info['password'] = lines[1].strip()
 
         self.sub_runs = [
-            {
-                'sub_run_name': f'resist_hv_450V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '1': {
-                        '1': 600,
-                    },
-                    '5': {
-                        '0': 450,
-                    },
-                }
-            },
-            {
-                'sub_run_name': f'resist_hv_455V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '1': {
-                        '1': 600,
-                    },
-                    '5': {
-                        '0': 455,
-                    },
-                }
-            },
-            {
-                'sub_run_name': f'resist_hv_460V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '1': {
-                        '1': 600,
-                    },
-                    '5': {
-                        '0': 460,
-                    },
-                }
-            },
-            {
-                'sub_run_name': f'resist_hv_465V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '1': {
-                        '1': 600,
-                    },
-                    '5': {
-                        '0': 465,
-                    },
-                }
-            },
-            {
-                'sub_run_name': f'resist_hv_470V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '1': {
-                        '1': 600,
-                    },
-                    '5': {
-                        '0': 470,
-                    },
-                }
-            },
-            {
-                'sub_run_name': f'resist_hv_475V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '1': {
-                        '1': 600,
-                    },
-                    '5': {
-                        '0': 475,
-                    },
-                }
-            },
-            {
-                'sub_run_name': f'resist_hv_480V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '1': {
-                        '1': 600,
-                    },
-                    '5': {
-                        '0': 480,
-                    },
-                }
-            },
-            {
-                'sub_run_name': f'resist_hv_485V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '1': {
-                        '1': 600,
-                    },
-                    '5': {
-                        '0': 485,
-                    },
-                }
-            },
+            # {
+            #     'sub_run_name': f'resist_hv_450V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '1': {
+            #             '1': 600,
+            #         },
+            #         '5': {
+            #             '0': 450,
+            #         },
+            #     }
+            # },
+            # {
+            #     'sub_run_name': f'resist_hv_455V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '1': {
+            #             '1': 600,
+            #         },
+            #         '5': {
+            #             '0': 455,
+            #         },
+            #     }
+            # },
+            # {
+            #     'sub_run_name': f'resist_hv_460V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '1': {
+            #             '1': 600,
+            #         },
+            #         '5': {
+            #             '0': 460,
+            #         },
+            #     }
+            # },
+            # {
+            #     'sub_run_name': f'resist_hv_465V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '1': {
+            #             '1': 600,
+            #         },
+            #         '5': {
+            #             '0': 465,
+            #         },
+            #     }
+            # },
+            # {
+            #     'sub_run_name': f'resist_hv_470V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '1': {
+            #             '1': 600,
+            #         },
+            #         '5': {
+            #             '0': 470,
+            #         },
+            #     }
+            # },
+            # {
+            #     'sub_run_name': f'resist_hv_475V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '1': {
+            #             '1': 600,
+            #         },
+            #         '5': {
+            #             '0': 475,
+            #         },
+            #     }
+            # },
+            # {
+            #     'sub_run_name': f'resist_hv_480V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '1': {
+            #             '1': 600,
+            #         },
+            #         '5': {
+            #             '0': 480,
+            #         },
+            #     }
+            # },
+            # {
+            #     'sub_run_name': f'resist_hv_485V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '1': {
+            #             '1': 600,
+            #         },
+            #         '5': {
+            #             '0': 485,
+            #         },
+            #     }
+            # },
             {
                 'sub_run_name': f'resist_hv_490V',
                 'run_time': 5,  # Minutes
@@ -219,6 +219,24 @@ class Config(RunConfigBase):
                 }
             },
         ]
+
+        # Add more hv_subruns
+        template = self.sub_runs[0]
+        hvs = [495, 500, 505, 510, 515, 520, 525]
+        for hv in hvs:
+            new_subrun = {
+                'sub_run_name': f'resist_hv_{hv}V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '1': {
+                        '1': 600,
+                    },
+                    '5': {
+                        '0': hv,
+                    },
+                }
+            }
+            self.sub_runs.append(new_subrun)
 
         self.bench_geometry = {
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!

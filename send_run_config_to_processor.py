@@ -39,10 +39,10 @@ def main():
 
     # Start a tmux decoder_port session --> Just run python processing_control.py port
     # bash_scripts/start_tmux.sh decoder "python processing_control.py"
-    start_tmux(f'decoder_{decoder_port}', f'"python processing_control.py {decoder_port}"')
-
-    # Start a tmux processor_port session --> Wait for decoder to start, then run the on-the-fly processing loop
-    start_tmux(f'processor_{decoder_port}', f'"sleep 20; python processor_runner.py {decoder_port} {run_config_path}"')
+    # start_tmux(f'decoder_{decoder_port}', f'"python processing_control.py {decoder_port}"')
+    #
+    # # Start a tmux processor_port session --> Wait for decoder to start, then run the on-the-fly processing loop
+    # start_tmux(f'processor_{decoder_port}', f'"sleep 20; python processor_runner.py {decoder_port} {run_config_path}"')
 
     # Start a tmux analyzer session --> Let analyzer wait for data and process
 
