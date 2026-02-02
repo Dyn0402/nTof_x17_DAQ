@@ -19,7 +19,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_9'
+        self.run_name = 'run_1'
         # self.base_out_dir = '/media/dylan/data/x17/'
         self.base_out_dir = '/mnt/data/x17/beam_feb/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
@@ -34,30 +34,31 @@ class Config(RunConfigBase):
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
         self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         self.beam_type = 'neutrons'
-        self.target_type = 'Boron?'
+        self.target_type = 'Timepix'
 
-        # self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
-        #     'ip': '192.168.10.222',
-        #     'channels': {  # Check only the channels which exist here
-        #         'U0': {
-        #             'expected_voltage': 4.5,  # V
-        #             'expected_current': 30,  # A
-        #             'voltage_tolerance': 0.4,  # V
-        #             'current_tolerance': 5,  # A
-        #         },
-        #     }
-        # }
+        self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
+            'ip': '192.168.10.222',
+            'channels': {  # Check only the channels which exist here
+                'U0': {
+                    'expected_voltage': 4.5,  # V
+                    'expected_current': 30,  # A
+                    'voltage_tolerance': 0.4,  # V
+                    'current_tolerance': 5,  # A
+                },
+            }
+        }
 
         self.dream_daq_info = {
             'ip': '192.168.10.2',
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Nov_test.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-            'n_samples_per_waveform': 24,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 500,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -103,17 +104,14 @@ class Config(RunConfigBase):
         self.sub_runs = [
             {
                 'sub_run_name': f'run',
-                'run_time': 10,  # Minutes
+                'run_time': 60 * 24,  # Minutes
                 'hvs': {
                     '1': {
                         '1': 600,
-                        '2': 600,
                     },
-                    # '5': {
-                    #     '0': 500,
-                    #     '1': 500,
-                    #     '2': 470,
-                    # },
+                    '5': {
+                        '0': 400,
+                    },
                 }
             },
         ]
@@ -161,6 +159,24 @@ class Config(RunConfigBase):
                     'y_7': (6, 7),
                     'y_8': (6, 8),
                 },
+                'dream_feu_inversion': {  # If True, connector is inverted --> 1, 0, 3, 2 ...
+                    'x_1': True,
+                    'x_2': True,
+                    'x_3': True,
+                    'x_4': True,
+                    'x_5': True,
+                    'x_6': True,
+                    'x_7': True,
+                    'x_8': True,
+                    'y_1': True,
+                    'y_2': True,
+                    'y_3': True,
+                    'y_4': True,
+                    'y_5': True,
+                    'y_6': True,
+                    'y_7': True,
+                    'y_8': True,
+                }
             },
             {
                 'name': 'mx17_2',
@@ -198,68 +214,23 @@ class Config(RunConfigBase):
                     'y_7': (6, 7),
                     'y_8': (6, 8),
                 },
-            },
-            {
-                'name': 'rd5_plein_saral_2',
-                'det_type': 'rd5_plein_saral',
-                'det_center_coords': {  # Center of detector
-                    'x': -200,  # mm
-                    'y': +400,  # mm
-                    'z': +100,  # mm
-                },
-                'det_orientation': {
-                    'x': 0,  # deg  Rotation about x axis
-                    'y': +90,  # deg  Rotation about y axis
-                    'z': 0,  # deg  Rotation about z axis
-                },
-                'hv_channels': {
-                    'drift': (1, 1),
-                    'resist_2': (5, 2)
-                },
-                'dream_feus': {
-                    'x_1': (5, 8),  # Unplugged!
-                    'x_2': (5, 5),  # Runs along x direction, indicates y hit location
-                    'y_1': (5, 6),  # Runs along y direction, indicates x hit location
-                    'y_2': (5, 7),
-                },
                 'dream_feu_inversion': {  # If True, connector is inverted --> 1, 0, 3, 2 ...
                     'x_1': True,
                     'x_2': True,
-                    'y_1': False,
-                    'y_2': False,
-                },
-                'kel_connectors': '100 cm kel cable on y_2 (Feu 1 channel 8). With 2 1.5m bluejean cables.'
-            },
-
-            {
-                'name': 'rd5_strip_saral_1',
-                'det_type': 'rd5_strip_saral',
-                'det_center_coords': {  # Center of detector
-                    'x': -200,  # mm
-                    'y': +500,  # mm
-                    'z': -100 ,  # mm
-                },
-                'det_orientation': {
-                    'x': 0,  # deg  Rotation about x axis
-                    'y': +90,  # deg  Rotation about y axis
-                    'z': 0,  # deg  Rotation about z axis
-                },
-                'hv_channels': {
-                    'drift': (1, 2),
-                    'resist_1': (5, 0),
-                    'resist_2': (5, 1)
-                },
-                'dream_feus': {
-                    'x_1': (5, 1),  # Runs along x direction, indicates y hit location
-                    'x_2': (5, 2),
-                    'y_1': (5, 3),  # Runs along y direction, indicates x hit location
-                    'y_2': (5, 4),
-                },
-                'dream_feu_inversion': {  # If True, connector is inverted --> 1, 0, 3, 2 ...
-                    'x_1': True,
-                    'x_2': True,
-                    'y_1': False,
-                    'y_2': False,
+                    'x_3': True,
+                    'x_4': True,
+                    'x_5': True,
+                    'x_6': True,
+                    'x_7': True,
+                    'x_8': True,
+                    'y_1': True,
+                    'y_2': True,
+                    'y_3': True,
+                    'y_4': True,
+                    'y_5': True,
+                    'y_6': True,
+                    'y_7': True,
+                    'y_8': True,
                 }
             },
 
