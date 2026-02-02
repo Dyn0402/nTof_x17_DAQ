@@ -106,12 +106,12 @@ class Config(RunConfigBase):
                 'sub_run_name': f'run',
                 'run_time': 60 * 24,  # Minutes
                 'hvs': {
-                    '1': {
-                        '1': 600,
-                    },
-                    '5': {
-                        '0': 400,
-                    },
+                    # '1': {
+                    #     '1': 600,
+                    # },
+                    # '5': {
+                    #     '0': 400,
+                    # },
                 }
             },
         ]
@@ -159,24 +159,6 @@ class Config(RunConfigBase):
                     'y_7': (6, 7),
                     'y_8': (6, 8),
                 },
-                'dream_feu_inversion': {  # If True, connector is inverted --> 1, 0, 3, 2 ...
-                    'x_1': True,
-                    'x_2': True,
-                    'x_3': True,
-                    'x_4': True,
-                    'x_5': True,
-                    'x_6': True,
-                    'x_7': True,
-                    'x_8': True,
-                    'y_1': True,
-                    'y_2': True,
-                    'y_3': True,
-                    'y_4': True,
-                    'y_5': True,
-                    'y_6': True,
-                    'y_7': True,
-                    'y_8': True,
-                }
                 'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
                     'x_1': 'inverted',
                     'x_2': 'inverted',
@@ -232,24 +214,24 @@ class Config(RunConfigBase):
                     'y_7': (6, 7),
                     'y_8': (6, 8),
                 },
-                'dream_feu_inversion': {  # If True, connector is inverted --> 1, 0, 3, 2 ...
-                    'x_1': True,
-                    'x_2': True,
-                    'x_3': True,
-                    'x_4': True,
-                    'x_5': True,
-                    'x_6': True,
-                    'x_7': True,
-                    'x_8': True,
-                    'y_1': True,
-                    'y_2': True,
-                    'y_3': True,
-                    'y_4': True,
-                    'y_5': True,
-                    'y_6': True,
-                    'y_7': True,
-                    'y_8': True,
-                }
+                'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
+                    'x_1': 'inverted',
+                    'x_2': 'inverted',
+                    'x_3': 'inverted',
+                    'x_4': 'inverted',
+                    'x_5': 'inverted',
+                    'x_6': 'inverted',
+                    'x_7': 'inverted',
+                    'x_8': 'inverted',
+                    'y_1': 'inverted',
+                    'y_2': 'inverted',
+                    'y_3': 'inverted',
+                    'y_4': 'inverted',
+                    'y_5': 'inverted',
+                    'y_6': 'inverted',
+                    'y_7': 'inverted',
+                    'y_8': 'inverted',
+                },
             },
 
         ]

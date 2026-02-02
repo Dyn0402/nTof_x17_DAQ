@@ -55,7 +55,8 @@ class Config(RunConfigBase):
             'ip': '192.168.10.2',
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17_ped.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17_ped.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test_ped.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -108,12 +109,12 @@ class Config(RunConfigBase):
                 'sub_run_name': f'pedestals',
                 'run_time': 1,  # Minutes
                 'hvs': {
-                    '1': {
-                        '1': 300,
-                    },
-                    '5': {
-                        '0': 300,
-                    },
+                    # '1': {
+                    #     '1': 300,
+                    # },
+                    # '5': {
+                    #     '0': 300,
+                    # },
                 }
             },
         ]
