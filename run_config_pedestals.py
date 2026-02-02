@@ -107,7 +107,7 @@ class Config(RunConfigBase):
         self.sub_runs = [
             {
                 'sub_run_name': f'pedestals',
-                'run_time': 1,  # Minutes
+                'run_time': 10.0 / 60,  # Minutes
                 'hvs': {
                     # '1': {
                     #     '1': 300,
