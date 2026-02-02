@@ -77,6 +77,7 @@ def main():
                         shutil.copy(cfg_run_path, sub_run_out_raw_inner_dir)
 
                         if pedestals_dir is not None:  # If pedestals_dir is not None, copy pedestal files to run dir.
+                            print(f'Getting pedestal files from {pedestals_dir}...')
                             get_pedestals(pedestals_dir, pedestals, sub_run_dir, sub_run_out_raw_inner_dir)
 
                         # run_command = f'RunCtrl -c {cfg_run_path} -f {sub_run_name}'
@@ -434,6 +435,7 @@ def get_pedestals(pedestals_dir, pedestals, run_dir, out_dir=None):
         # Find latest pedestal files in pedestals_dir. Directories named pedestals_MM-DD-YY_HH-MM-SS or pedestals_MM-DD-YYYY_HH-MM-SS
         valid_dirs = []
         for item in os.listdir(pedestals_dir):
+            print(f'Checking pedestal item: {item}')
             full_path = os.path.join(pedestals_dir, item)
             if not os.path.isdir(full_path) or not item.startswith('pedestals_'):
                 continue
@@ -469,6 +471,7 @@ def get_pedestals(pedestals_dir, pedestals, run_dir, out_dir=None):
     # get the type (_thr.prg or _ped.prg) and feu number (_03_) and copy to run_dir with name reconstructed with these
     # two parameters (eg dream_pedestals_thresholds_03_thr.prg)
     for file in os.listdir(pedestals_prg_dir):
+        print(f'Checking pedestal file: {file}')
         if file.endswith('.prg') and sub_run_name in file:
             feu_num_search = re.search(r'_(\d{2})_', file)
             if feu_num_search:
@@ -480,6 +483,7 @@ def get_pedestals(pedestals_dir, pedestals, run_dir, out_dir=None):
                 else:
                     print(f'Unknown pedestal file type for {file}, skipping.')
                     continue
+                print(f'Copying pedestal file {file} for FEU {feu_num}...')
                 shutil.copy(f'{pedestals_prg_dir}{file}', f'{run_dir}{dest_file_name}')
                 if out_dir:
                     shutil.copy(f'{pedestals_prg_dir}{file}', f'{out_dir}{file}')
