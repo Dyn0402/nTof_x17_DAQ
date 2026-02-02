@@ -58,7 +58,8 @@ class Config(RunConfigBase):
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17_ped.cfg',
             'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test_ped.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
-            'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
+            # 'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
+            'run_directory': f'{self.run_out_dir}',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
             'n_samples_per_waveform': 24,  # Number of samples per waveform to configure in DAQ
