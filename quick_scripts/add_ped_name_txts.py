@@ -19,12 +19,15 @@ def main():
         if not os.path.isdir(run_dir):
             continue
         for sub_run in os.listdir(run_dir):
+            print(f'Adding pedestal_run.txt to {run}/{sub_run}')
             subrun_dir = os.path.join(run_dir, sub_run)
             if not os.path.isdir(subrun_dir):
                 continue
             ped_name_txt_path = os.path.join(subrun_dir, 'pedestal_run.txt')
             with open(ped_name_txt_path, 'w') as f:
                 f.write(ped_run_name)
+        print()
+
     print('donzo')
 
 
