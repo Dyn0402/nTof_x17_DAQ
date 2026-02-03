@@ -111,14 +111,26 @@ class Config(RunConfigBase):
 
         self.sub_runs = [
             {
-                'sub_run_name': f'resist_hv_450V',
-                'run_time': 5,  # Minutes
+                'sub_run_name': f'resist_0V_drift_0V',
+                'run_time': 1,  # Minutes
                 'hvs': {
                     '2': {
-                        '0': 600,
+                        '0': 0,
                     },
                     '5': {
-                        '0': 450,
+                        '0': 0,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_0V_drift_300V',
+                'run_time': 1,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 300,
                     },
                 }
             },
@@ -137,34 +149,34 @@ class Config(RunConfigBase):
         ]
 
         # Add more hv_subruns
-        # hvs = [350, 360, 370, 380, 390, 400, 410, 420, 430, 440, 450, 460, 470, 480, 490]
-        # for hv in hvs:
-        #     new_subrun = {
-        #         'sub_run_name': f'resist_hv_{hv}V',
-        #         'run_time': 5,  # Minutes
-        #         'hvs': {
-        #             '2': {
-        #                 '0': hv,
-        #             },
-        #             '5': {
-        #                 '0': 600,
-        #             },
-        #         }
-        #     }
-        #     self.sub_runs.append(new_subrun)
-        #
-        # self.sub_runs.append({
-        #     'sub_run_name': f'final_run_495V',
-        #     'run_time': 60 * 24,  # Minutes
-        #     'hvs': {
-        #         '2': {
-        #             '0': 600,
-        #         },
-        #         '5': {
-        #             '0': 495,
-        #         },
-        #     }
-        # })
+        hvs = list(range(0, 530, 10))
+        for hv in hvs:
+            new_subrun = {
+                'sub_run_name': f'resist_{hv}V_drift_600V',
+                'run_time': 1,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': hv,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                }
+            }
+            self.sub_runs.append(new_subrun)
+
+        self.sub_runs.append({
+            'sub_run_name': f'final_run_495V',
+            'run_time': 60 * 24,  # Minutes
+            'hvs': {
+                '2': {
+                    '0': 600,
+                },
+                '5': {
+                    '0': 495,
+                },
+            }
+        })
 
         self.bench_geometry = {
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
