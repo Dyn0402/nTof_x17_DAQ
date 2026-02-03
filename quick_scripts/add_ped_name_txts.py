@@ -26,7 +26,7 @@ def main():
             print(f'Adding pedestal_run.txt to {run}/{sub_run}')
             ped_name_txt_path_bad = os.path.join(subrun_dir, 'pedestal_run.txt')
             os.remove(ped_name_txt_path_bad) if os.path.exists(ped_name_txt_path_bad) else None
-            ped_name_txt_path = os.path.join(f'{subrun_dir}{raw_daq_data_name}/', 'pedestal_run.txt')
+            ped_name_txt_path = os.path.join(f'{subrun_dir}/{raw_daq_data_name}/', 'pedestal_run.txt')
             with open(ped_name_txt_path, 'w') as f:
                 f.write(ped_run_name)
         print()
