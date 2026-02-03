@@ -30,11 +30,12 @@ class Config(RunConfigBase):
         self.save_fdfs = True  # True to save FDF files, False to delete after decoding
         self.start_time = None
         self.process_on_fly = False  # True to process fdfs on the  fly.
-        self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
+        self.power_off_hv_at_end = True  # True to power off all CAEN HV at the end of the run.
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
-        self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
+        # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
+        self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         self.beam_type = 'neutrons'
-        self.target_type = 'None'
+        self.target_type = 'Timepix'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
             'ip': '192.168.10.222',
@@ -111,8 +112,20 @@ class Config(RunConfigBase):
 
         self.sub_runs = [
             {
+                'sub_run_name': f'long_resist_450V_drift_600V',
+                'run_time': 60,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 450,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                }
+            },
+            {
                 'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 1,  # Minutes
+                'run_time': 5,  # Minutes
                 'hvs': {
                     '2': {
                         '0': 0,
@@ -124,7 +137,7 @@ class Config(RunConfigBase):
             },
             {
                 'sub_run_name': f'resist_0V_drift_300V',
-                'run_time': 1,  # Minutes
+                'run_time': 5,  # Minutes
                 'hvs': {
                     '2': {
                         '0': 0,
@@ -153,7 +166,7 @@ class Config(RunConfigBase):
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 1,  # Minutes
+                'run_time': 5,  # Minutes
                 'hvs': {
                     '2': {
                         '0': hv,
@@ -166,17 +179,17 @@ class Config(RunConfigBase):
             self.sub_runs.append(new_subrun)
 
         self.sub_runs.append({
-            'sub_run_name': f'final_run_495V',
-            'run_time': 60 * 24,  # Minutes
-            'hvs': {
-                '2': {
-                    '0': 600,
-                },
-                '5': {
-                    '0': 495,
-                },
-            }
-        })
+                'sub_run_name': f'final_resist_450V_drift_600V',
+                'run_time': 60 * 2,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 450,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                }
+            })
 
         self.bench_geometry = {
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!

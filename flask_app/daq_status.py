@@ -71,6 +71,9 @@ def get_dream_daq_status():
     elif "Moving data files." in output or "Waiting for on-the-fly copy thread to finish" in output:
         status = "Copying fdfs"
         color = "info"
+    elif "Sent: Dream DAQ stopped" in output:
+        status = "DAQ Stopped"
+        color = "info"
     else:
         status = "UNKNOWN STATE"
         color = "danger"
