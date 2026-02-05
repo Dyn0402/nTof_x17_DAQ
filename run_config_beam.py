@@ -35,7 +35,7 @@ class Config(RunConfigBase):
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         self.beam_type = 'neutrons'
-        self.target_type = 'none'
+        self.target_type = 'lead'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
             'ip': '192.168.10.222',
@@ -111,18 +111,18 @@ class Config(RunConfigBase):
         #     self.hv_info['password'] = lines[1].strip()
 
         self.sub_runs = [
-            # {
-            #     'sub_run_name': f'resist_450V_drift_600V',
-            #     'run_time': 60 * 24,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 450,
-            #         },
-            #         '5': {
-            #             '0': 600,
-            #         },
-            #     }
-            # },
+            {
+                'sub_run_name': f'initial_resist_450V_drift_600V',
+                'run_time': 30,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 450,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                }
+            },
             {
                 'sub_run_name': f'resist_0V_drift_0V',
                 'run_time': 5,  # Minutes
@@ -162,7 +162,8 @@ class Config(RunConfigBase):
         ]
 
         # Add more hv_subruns
-        hvs = list(range(0, 520, 10))
+        hvs = list(range(0, 300, 20))
+        hvs.extend(list(range(300, 520, 10)))
         # hvs = [400, 425, 450, 475]
         for hv in hvs:
             new_subrun = {
@@ -226,14 +227,14 @@ class Config(RunConfigBase):
                     'x_6': (4, 6),
                     'x_7': (4, 7),
                     'x_8': (4, 8),
-                    'y_1': (6, 1),  # Runs along y direction, indicates x hit location
-                    'y_2': (6, 2),
-                    'y_3': (6, 3),
-                    'y_4': (6, 4),
-                    'y_5': (6, 5),
-                    'y_6': (6, 6),
-                    'y_7': (6, 7),
-                    'y_8': (6, 8),
+                    'y_1': (5, 1),  # Runs along y direction, indicates x hit location
+                    'y_2': (5, 2),
+                    'y_3': (5, 3),
+                    'y_4': (5, 4),
+                    'y_5': (5, 5),
+                    'y_6': (5, 6),
+                    'y_7': (5, 7),
+                    'y_8': (5, 8),
                 },
                 'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
                     'x_1': 'inverted',
