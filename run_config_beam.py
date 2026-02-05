@@ -124,30 +124,30 @@ class Config(RunConfigBase):
             #         },
             #     }
             # },
-            # {
-            #     'sub_run_name': f'resist_0V_drift_0V',
-            #     'run_time': 5,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 0,
-            #         },
-            #     }
-            # },
-            # {
-            #     'sub_run_name': f'resist_0V_drift_300V',
-            #     'run_time': 5,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 300,
-            #         },
-            #     }
-            # },
+            {
+                'sub_run_name': f'resist_0V_drift_0V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 0,
+                    },
+                }
+            },
+            {
+                'sub_run_name': f'resist_0V_drift_300V',
+                'run_time': 5,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 300,
+                    },
+                }
+            },
             # {
             #     'sub_run_name': f'resist_hv_420V_drift_600V',
             #     'run_time': 5,  # Minutes
@@ -163,9 +163,9 @@ class Config(RunConfigBase):
         ]
 
         # Add more hv_subruns
-        # hvs = list(range(0, 300, 20))
-        # hvs.extend(list(range(300, 520, 10)))
-        hvs = [400, 425, 450, 475]
+        hvs = list(range(0, 300, 20))
+        hvs.extend(list(range(300, 520, 10)))
+        # hvs = [400, 425, 450, 475]
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
@@ -182,11 +182,11 @@ class Config(RunConfigBase):
             self.sub_runs.append(new_subrun)
 
         self.sub_runs.append({
-                'sub_run_name': f'final_resist_450V_drift_600V',
+                'sub_run_name': f'final_resist_420V_drift_600V',
                 'run_time': 60 * 24,  # Minutes
                 'hvs': {
                     '2': {
-                        '0': 450,
+                        '0': 420,
                     },
                     '5': {
                         '0': 600,
