@@ -181,6 +181,15 @@ def take_pedestals():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/git_reset", methods=["POST"])
+def git_reset():
+    try:
+        subprocess.Popen([f"{BASH_DIR}/git_reset.sh"])
+        return jsonify({"success": True, "message": "Git now up to date"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/get_runs")
 def get_runs():
     runs = []

@@ -23,6 +23,7 @@
     <button id="stop-run" class="btn btn-danger me-2 mb-2">Stop Run</button>
     <button id="restart-all" class="btn btn-danger me-2 mb-2">Restart All</button>
     <button id="take-pedestals" class="btn btn-secondary mb-2">Take Pedestals</button>
+    <button id="git-reset" class="btn btn-secondary mb-2">Take Pedestals</button>
   </div>
 
     <div class="row" id="status-cards">
@@ -420,6 +421,36 @@ document.getElementById("take-pedestals").addEventListener("click", async () => 
     }, 2500);
 });
 
+
+// git reset button handler
+document.getElementById("git-reset").addEventListener("click", async () => {
+  // Run git reset
+  const res = await fetch("/git_reset", { method: "POST" });
+  const data = await res.json();
+
+  // Create popup
+  const popup = document.createElement("div");
+  popup.textContent = data.message;
+  popup.style.position = "fixed";
+  popup.style.top = "80px";
+  popup.style.left = "50%";
+  popup.style.transform = "translateX(-50%)";
+  popup.style.background = "#17a2b8";
+  popup.style.color = "#fff";
+  popup.style.padding = "1em 2em";
+  popup.style.borderRadius = "8px";
+  popup.style.boxShadow = "0 2px 8px rgba(0,0,0.2)";
+  popup.style.zIndex = "9999";
+  popup.style.opacity = "1";
+  popup.style.transition = "opacity 1s";
+
+  document.body.appendChild(popup);
+
+  setTimeout(() => {
+    popup.style.opacity = "0";
+    setTimeout(() => popup.remove(), 1000);
+  }, 2500);
+});
 
 document.getElementById("run-config-py").addEventListener("click", async function runConfigHandler() {
 
