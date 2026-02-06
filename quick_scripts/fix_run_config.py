@@ -8,24 +8,32 @@ Created as nTof_x17_DAQ/fix_run_config.py
 @author: Dylan Neff, dylan
 """
 
+import os
+import numpy as np
 import json
 
 
 def main():
-    base_path = '/media/dylan/data/x17/feb_beam/runs/'
-    run = 'run_25'
-    sub_run = 'resist_450V_drift_600V'
+    # base_path = '/media/dylan/data/x17/feb_beam/runs/'
+    base_path = '/mnt/data/x17/beam_feb/runs/'
+    run_nums = np.arange(1, 30)
 
-    run_config_path = f'{base_path}{run}/run_config.json'
+    for run_num in run_nums:
+        run = f'run_{run_num}'
 
-    with open(run_config_path) as f:
-        run_cfg = json.load(f)
-    print(run_cfg)
+        run_config_path = f'{base_path}{run}/run_config.json'
+        if not os.path.exists(run_config_path):
+            print(f'Run config file does not exist: {run_config_path}')
+            continue
 
-    run_cfg = fix_dream_feus(run_cfg)
+        with open(run_config_path) as f:
+            run_cfg = json.load(f)
+        print('\n', run_cfg)
 
-    with open(run_config_path, 'w') as f:
-        json.dump(run_cfg, f)
+        run_cfg = fix_dream_feus(run_cfg)
+
+        with open(run_config_path, 'w') as f:
+            json.dump(run_cfg, f)
 
     print('donzo')
 
@@ -42,7 +50,6 @@ def fix_dream_feus(run_cfg):
     det_name = 'mx17_1'
 
     for det in run_cfg['detectors']:
-        print(det['name'])
         if det['name'] != det_name:
             continue
         print(det['dream_feus'])
