@@ -35,7 +35,7 @@ class Config(RunConfigBase):
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         self.beam_type = 'neutrons'
-        self.target_type = 'none'
+        self.target_type = 'carbon'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
             'ip': '192.168.10.222',
@@ -112,18 +112,18 @@ class Config(RunConfigBase):
         #     self.hv_info['password'] = lines[1].strip()
 
         self.sub_runs = [
-            # {
-            #     'sub_run_name': f'initial_resist_450V_drift_600V',
-            #     'run_time': 30,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 450,
-            #         },
-            #         '5': {
-            #             '0': 600,
-            #         },
-            #     }
-            # },
+            {
+                'sub_run_name': f'initial_resist_440V_drift_600V',
+                'run_time': 1,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 440,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                }
+            },
             {
                 'sub_run_name': f'resist_0V_drift_0V',
                 'run_time': 5,  # Minutes
@@ -182,11 +182,11 @@ class Config(RunConfigBase):
             self.sub_runs.append(new_subrun)
 
         self.sub_runs.append({
-                'sub_run_name': f'final_resist_420V_drift_600V',
+                'sub_run_name': f'final_resist_440V_drift_600V',
                 'run_time': 60 * 24,  # Minutes
                 'hvs': {
                     '2': {
-                        '0': 420,
+                        '0': 440,
                     },
                     '5': {
                         '0': 600,
