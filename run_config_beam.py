@@ -35,7 +35,7 @@ class Config(RunConfigBase):
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         self.beam_type = 'neutrons'
-        self.target_type = 'B4C'
+        self.target_type = 'none'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
             'ip': '192.168.10.222',
@@ -124,30 +124,30 @@ class Config(RunConfigBase):
             #         },
             #     }
             # },
-            {
-                'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 0,
-                    },
-                }
-            },
-            {
-                'sub_run_name': f'resist_0V_drift_300V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 300,
-                    },
-                }
-            },
+            # {
+            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #     }
+            # },
+            # {
+            #     'sub_run_name': f'resist_0V_drift_300V',
+            #     'run_time': 5,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 300,
+            #         },
+            #     }
+            # },
             # {
             #     'sub_run_name': f'resist_hv_420V_drift_600V',
             #     'run_time': 5,  # Minutes
@@ -163,13 +163,13 @@ class Config(RunConfigBase):
         ]
 
         # Add more hv_subruns
-        hvs = list(range(0, 300, 20))
-        hvs.extend(list(range(300, 520, 10)))
-        # hvs = [400, 425, 450, 475]
+        # hvs = list(range(0, 300, 20))
+        # hvs.extend(list(range(300, 520, 10)))
+        hvs = [400, 425, 450, 475]
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 5,  # Minutes
+                'run_time': 1,  # Minutes
                 'hvs': {
                     '2': {
                         '0': hv,
@@ -181,18 +181,18 @@ class Config(RunConfigBase):
             }
             self.sub_runs.append(new_subrun)
 
-        self.sub_runs.append({
-                'sub_run_name': f'final_resist_420V_drift_600V',
-                'run_time': 60 * 24,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 420,
-                    },
-                    '5': {
-                        '0': 600,
-                    },
-                }
-            })
+        # self.sub_runs.append({
+        #         'sub_run_name': f'final_resist_420V_drift_600V',
+        #         'run_time': 60 * 24,  # Minutes
+        #         'hvs': {
+        #             '2': {
+        #                 '0': 420,
+        #             },
+        #             '5': {
+        #                 '0': 600,
+        #             },
+        #         }
+        #     })
 
         self.bench_geometry = {
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
