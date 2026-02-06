@@ -488,7 +488,7 @@ def get_pedestals(pedestals_dir, pedestals, run_dir, out_dir=None):
                 if out_dir:
                     shutil.copy(f'{pedestals_prg_dir}{file}', f'{out_dir}{file}')
                 # Write the pedestal_prg_dir directory name to a text file in the run directory for reference
-                ped_run = pedestals_prg_dir.strip('/').split('_')[-2]
+                ped_run = pedestals_prg_dir.strip('/').split('/')[-2]
                 with open(f'{run_dir}pedestal_run.txt', 'w') as f:
                     f.write(ped_run)
                 if out_dir:
