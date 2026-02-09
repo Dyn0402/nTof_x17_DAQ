@@ -31,7 +31,8 @@ class Config(RunConfigBase):
         self.process_on_fly = False  # True to process fdfs on the  fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
-        self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
+        self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
+        # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics'
@@ -55,9 +56,9 @@ class Config(RunConfigBase):
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -114,29 +115,29 @@ class Config(RunConfigBase):
 
         self.sub_runs = [
             {
-                'sub_run_name': f'initial_resist_650V_drift_600V',
-                'run_time': 60 * 1.5,  # Minutes
+                'sub_run_name': f'initial_resist_680V_drift_600V',
+                'run_time': 60 * 2,  # Minutes
                 'hvs': {
                     '2': {
-                        '0': 650,
+                        '0': 680,
                     },
                     '5': {
                         '0': 600,
                     },
                 }
             },
-            {
-                'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 1,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 0,
-                    },
-                }
-            },
+            # {
+            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'run_time': 1,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #     }
+            # },
             # {
             #     'sub_run_name': f'resist_0V_drift_300V',
             #     'run_time': 5,  # Minutes
@@ -165,7 +166,8 @@ class Config(RunConfigBase):
 
         # Add more hv_subruns
         # hvs = list(range(200, 300, 20))
-        hvs = list(range(270, 520, 10))
+        # hvs = list(range(270, 520, 10))
+        hvs = list(range(700, 550, -10))
         # hvs = [400, 425, 450, 475, 485, 500, 510]
         # hvs = [475, 485, 500, 510]
         for hv in hvs:
@@ -184,11 +186,24 @@ class Config(RunConfigBase):
             self.sub_runs.append(new_subrun)
 
         self.sub_runs.append({
-                'sub_run_name': f'final_resist_490V_drift_600V',
+            'sub_run_name': f'resist_0V_drift_0V',
+            'run_time': 2,  # Minutes
+            'hvs': {
+                '2': {
+                    '0': 0,
+                },
+                '5': {
+                    '0': 0,
+                },
+            }
+        })
+
+        self.sub_runs.append({
+                'sub_run_name': f'final_resist_690V_drift_600V',
                 'run_time': 60 * 24,  # Minutes
                 'hvs': {
                     '2': {
-                        '0': 490,
+                        '0': 690,
                     },
                     '5': {
                         '0': 600,
