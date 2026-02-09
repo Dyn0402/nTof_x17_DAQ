@@ -56,9 +56,9 @@ class Config(RunConfigBase):
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -115,11 +115,11 @@ class Config(RunConfigBase):
 
         self.sub_runs = [
             {
-                'sub_run_name': f'initial_resist_680V_drift_600V',
+                'sub_run_name': f'initial_resist_710V_drift_600V',
                 'run_time': 60 * 2,  # Minutes
                 'hvs': {
                     '2': {
-                        '0': 680,
+                        '0': 710,
                     },
                     '5': {
                         '0': 600,
@@ -173,7 +173,7 @@ class Config(RunConfigBase):
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 10,  # Minutes
+                'run_time': 25,  # Minutes
                 'hvs': {
                     '2': {
                         '0': hv,
@@ -185,18 +185,18 @@ class Config(RunConfigBase):
             }
             self.sub_runs.append(new_subrun)
 
-        self.sub_runs.append({
-            'sub_run_name': f'resist_0V_drift_0V',
-            'run_time': 2,  # Minutes
-            'hvs': {
-                '2': {
-                    '0': 0,
-                },
-                '5': {
-                    '0': 0,
-                },
-            }
-        })
+        # self.sub_runs.append({
+        #     'sub_run_name': f'resist_0V_drift_0V',
+        #     'run_time': 2,  # Minutes
+        #     'hvs': {
+        #         '2': {
+        #             '0': 0,
+        #         },
+        #         '5': {
+        #             '0': 0,
+        #         },
+        #     }
+        # })
 
         self.sub_runs.append({
                 'sub_run_name': f'final_resist_690V_drift_600V',
