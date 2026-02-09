@@ -164,11 +164,11 @@ class Config(RunConfigBase):
         # Add more hv_subruns
         # hvs = list(range(0, 300, 20))
         # hvs.extend(list(range(300, 520, 10)))
-        hvs = [400, 425, 450, 475, 490, 500, 510]
+        hvs = [400, 425, 450, 475, 485, 500, 510]
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 2 * 60,  # Minutes
+                'run_time': 10,  # Minutes
                 'hvs': {
                     '2': {
                         '0': hv,
