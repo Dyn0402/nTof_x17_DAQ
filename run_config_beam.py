@@ -33,8 +33,10 @@ class Config(RunConfigBase):
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
         self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
-        self.beam_type = 'neutrons'
-        self.target_type = 'carbon'
+        # self.beam_type = 'neutrons'
+        self.beam_type = 'cosmics'
+        # self.target_type = 'carbon'
+        self.target_type = 'none'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
             'ip': '192.168.10.222',
@@ -164,7 +166,8 @@ class Config(RunConfigBase):
         # Add more hv_subruns
         # hvs = list(range(0, 300, 20))
         # hvs.extend(list(range(300, 520, 10)))
-        hvs = [400, 425, 450, 475, 485, 500, 510]
+        # hvs = [400, 425, 450, 475, 485, 500, 510]
+        hvs = [475, 485, 500, 510]
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
