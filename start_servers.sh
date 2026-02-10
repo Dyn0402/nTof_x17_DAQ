@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Source the venv
+source .venv/bin/activate
+
 # Start sessions
 bash_scripts/start_tmux.sh hv_control "python hv_control.py"
 bash_scripts/start_tmux.sh dream_daq "python dream_daq_control.py"
