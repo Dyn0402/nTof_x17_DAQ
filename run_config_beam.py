@@ -19,7 +19,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_1'
+        self.run_name = 'run_49'
         self.base_out_dir = '/mnt/data/x17/beam_feb/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -31,11 +31,13 @@ class Config(RunConfigBase):
         self.process_on_fly = False  # True to process fdfs on the  fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
-        self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
+        # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
+        self.gas = 'Ar/CF4 90/10'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics'
+        # self.beam_type = 'bi-207'
         self.target_type = 'carbon'
         # self.target_type = 'none'
 
@@ -114,18 +116,18 @@ class Config(RunConfigBase):
         #     self.hv_info['password'] = lines[1].strip()
 
         self.sub_runs = [
-            # {
-            #     'sub_run_name': f'initial_resist_750V_drift_600V',
-            #     'run_time': 60 * 2,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 750,
-            #         },
-            #         '5': {
-            #             '0': 600,
-            #         },
-            #     }
-            # },
+            {
+                'sub_run_name': f'initial_resist_350V_drift_600V',
+                'run_time': 60 * 2,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 350,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                }
+            },
             # {
             #     'sub_run_name': f'resist_0V_drift_0V',
             #     'run_time': 1,  # Minutes
@@ -164,26 +166,26 @@ class Config(RunConfigBase):
             # },
         ]
 
-        # Add more hv_subruns
-        # hvs = list(range(200, 300, 20))
-        # hvs = list(range(270, 520, 10))
-        hvs = list(range(860, 750, -10))
-        # hvs = [400, 425, 450, 475, 485, 500, 510]
-        # hvs = [475, 485, 500, 510]
-        for hv in hvs:
-            new_subrun = {
-                'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': hv,
-                    },
-                    '5': {
-                        '0': 600,
-                    },
-                }
-            }
-            self.sub_runs.append(new_subrun)
+        # # Add more hv_subruns
+        # # hvs = list(range(200, 300, 20))
+        # # hvs = list(range(270, 520, 10))
+        # hvs = list(range(860, 750, -10))
+        # # hvs = [400, 425, 450, 475, 485, 500, 510]
+        # # hvs = [475, 485, 500, 510]
+        # for hv in hvs:
+        #     new_subrun = {
+        #         'sub_run_name': f'resist_{hv}V_drift_600V',
+        #         'run_time': 5,  # Minutes
+        #         'hvs': {
+        #             '2': {
+        #                 '0': hv,
+        #             },
+        #             '5': {
+        #                 '0': 600,
+        #             },
+        #         }
+        #     }
+        #     self.sub_runs.append(new_subrun)
 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
@@ -198,18 +200,34 @@ class Config(RunConfigBase):
         #     }
         # })
 
-        self.sub_runs.append({
-                'sub_run_name': f'final_resist_830V_drift_600V',
-                'run_time': 60 * 24,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 830,
-                    },
-                    '5': {
-                        '0': 600,
-                    },
-                }
-            })
+        # self.sub_runs.append({
+        #         'sub_run_name': f'final_resist_830V_drift_600V',
+        #         'run_time': 60 * 24,  # Minutes
+        #         'hvs': {
+        #             '2': {
+        #                 '0': 830,
+        #             },
+        #             '5': {
+        #                 '0': 600,
+        #             },
+        #         }
+        #     })
+
+        # for i in range(30):
+        #     self.sub_runs.append(
+        #     {
+        #         'sub_run_name': f'drift_600V_{i}',
+        #         'run_time': 60 * 2,  # Minutes
+        #         'hvs': {
+        #             '2': {
+        #                 '0': 680,
+        #             },
+        #             '5': {
+        #                 '0': 600,
+        #             },
+        #         }
+        #     })
+
 
         self.bench_geometry = {
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
