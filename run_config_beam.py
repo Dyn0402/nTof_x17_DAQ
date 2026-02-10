@@ -58,9 +58,9 @@ class Config(RunConfigBase):
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -166,26 +166,26 @@ class Config(RunConfigBase):
             # },
         ]
 
-        # # Add more hv_subruns
-        # # hvs = list(range(200, 300, 20))
-        # # hvs = list(range(270, 520, 10))
-        # hvs = list(range(860, 750, -10))
-        # # hvs = [400, 425, 450, 475, 485, 500, 510]
-        # # hvs = [475, 485, 500, 510]
-        # for hv in hvs:
-        #     new_subrun = {
-        #         'sub_run_name': f'resist_{hv}V_drift_600V',
-        #         'run_time': 5,  # Minutes
-        #         'hvs': {
-        #             '2': {
-        #                 '0': hv,
-        #             },
-        #             '5': {
-        #                 '0': 600,
-        #             },
-        #         }
-        #     }
-        #     self.sub_runs.append(new_subrun)
+        # Add more hv_subruns
+        # hvs = list(range(200, 300, 20))
+        # hvs = list(range(270, 520, 10))
+        hvs = list(range(620, 400, -10))
+        # hvs = [400, 425, 450, 475, 485, 500, 510]
+        # hvs = [475, 485, 500, 510]
+        for hv in hvs:
+            new_subrun = {
+                'sub_run_name': f'resist_{hv}V_drift_600V',
+                'run_time': 15,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': hv,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                }
+            }
+            self.sub_runs.append(new_subrun)
 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
@@ -200,18 +200,18 @@ class Config(RunConfigBase):
         #     }
         # })
 
-        # self.sub_runs.append({
-        #         'sub_run_name': f'final_resist_830V_drift_600V',
-        #         'run_time': 60 * 24,  # Minutes
-        #         'hvs': {
-        #             '2': {
-        #                 '0': 830,
-        #             },
-        #             '5': {
-        #                 '0': 600,
-        #             },
-        #         }
-        #     })
+        self.sub_runs.append({
+                'sub_run_name': f'final_resist_500V_drift_600V',
+                'run_time': 60 * 24,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 500,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                }
+            })
 
         # for i in range(30):
         #     self.sub_runs.append(
