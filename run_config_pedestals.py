@@ -110,12 +110,12 @@ class Config(RunConfigBase):
                 'sub_run_name': f'pedestals',
                 'run_time': 10.0 / 60,  # Minutes
                 'hvs': {
-                    # '1': {
-                    #     '1': 300,
-                    # },
-                    # '5': {
-                    #     '0': 300,
-                    # },
+                    '2': {
+                        '0': 300,
+                    },
+                    '5': {
+                        '0': 300,
+                    },
                 }
             },
         ]
