@@ -117,21 +117,21 @@ class Config(RunConfigBase):
         #     self.hv_info['password'] = lines[1].strip()
 
         self.sub_runs = [
-            {
-                'sub_run_name': f'initial_resist_610V_drift_600V',
-                'run_time': 60 * 24,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 610,
-                    },
-                    '5': {
-                        '0': 600,
-                    },
-                    '12': {
-                        '0': 55,
-                    },
-                }
-            },
+            # {
+            #     'sub_run_name': f'initial_resist_610V_drift_600V',
+            #     'run_time': 60 * 24,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 610,
+            #         },
+            #         '5': {
+            #             '0': 600,
+            #         },
+            #         '12': {
+            #             '0': 55,
+            #         },
+            #     }
+            # },
             # {
             #     'sub_run_name': f'resist_0V_drift_0V',
             #     'run_time': 1,  # Minutes
@@ -170,26 +170,26 @@ class Config(RunConfigBase):
             # },
         ]
 
-        # # Add more hv_subruns
-        # # hvs = list(range(200, 300, 20))
-        # # hvs = list(range(270, 520, 10))
-        # hvs = list(range(700, 400, -20))
-        # # hvs = [400, 425, 450, 475, 485, 500, 510]
-        # # hvs = [475, 485, 500, 510]
-        # for hv in hvs:
-        #     new_subrun = {
-        #         'sub_run_name': f'resist_{hv}V_drift_600V',
-        #         'run_time': 5,  # Minutes
-        #         'hvs': {
-        #             '2': {
-        #                 '0': hv,
-        #             },
-        #             '5': {
-        #                 '0': 600,
-        #             },
-        #         }
-        #     }
-        #     self.sub_runs.append(new_subrun)
+        # Add more hv_subruns
+        # hvs = list(range(200, 300, 20))
+        # hvs = list(range(270, 520, 10))
+        hvs = list(range(620, 400, -20))
+        # hvs = [400, 425, 450, 475, 485, 500, 510]
+        # hvs = [475, 485, 500, 510]
+        for hv in hvs:
+            new_subrun = {
+                'sub_run_name': f'resist_{hv}V_drift_600V',
+                'run_time': 1.5 * 60,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': hv,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                }
+            }
+            self.sub_runs.append(new_subrun)
 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
