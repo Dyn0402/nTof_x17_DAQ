@@ -397,24 +397,43 @@ def is_dream_daq_running():
               "Dream Subrun complete." has NOT appeared.
     """
     try:
-        # Grab last ~10 lines of the pane
+        # Increase the buffer slightly to ensure we don't miss the transition
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-10", "-t", "daq_control:0.0"],
+            ["tmux", "capture-pane", "-pS", "-20", "-t", "daq_control:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
-        # If tmux session doesn't exist or some error occurs
         return False
 
-    # Normalize
     lines = output.splitlines()
 
-    # State checks
-    saw_start = any("Received: Dream DAQ starting" in line for line in lines)
-    saw_complete = any("Dream Subrun complete." in line for line in lines)
+    # We iterate backwards (from most recent to oldest)
+    for line in reversed(lines):
+        if "Received: Dream DAQ starting" in line:
+            return True
+        if "Dream Subrun complete." in line:
+            return False
 
-    # Running only if started AND not complete
-    return saw_start and not saw_complete
+    return False  # Neither found in recent history
+    # try:
+    #     # Grab last ~10 lines of the pane
+    #     output = subprocess.check_output(
+    #         ["tmux", "capture-pane", "-pS", "-10", "-t", "daq_control:0.0"],
+    #         text=True
+    #     )
+    # except subprocess.CalledProcessError:
+    #     # If tmux session doesn't exist or some error occurs
+    #     return False
+    #
+    # # Normalize
+    # lines = output.splitlines()
+    #
+    # # State checks
+    # saw_start = any("Received: Dream DAQ starting" in line for line in lines)
+    # saw_complete = any("Dream Subrun complete." in line for line in lines)
+    #
+    # # Running only if started AND not complete
+    # return saw_start and not saw_complete
 
 
 if __name__ == "__main__":
