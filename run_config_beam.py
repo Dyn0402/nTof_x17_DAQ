@@ -174,7 +174,7 @@ class Config(RunConfigBase):
         # Add more hv_subruns
         # hvs = list(range(200, 300, 20))
         # hvs = list(range(270, 520, 10))
-        hvs = list(range(620, 400, -20))
+        hvs = list(range(620, 400, -10))
         # hvs = [400, 425, 450, 475, 485, 500, 510]
         # hvs = [475, 485, 500, 510]
         for hv in hvs:
