@@ -35,8 +35,8 @@ class Config(RunConfigBase):
         self.gas = 'Ar/CF4 90/10'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
-        # self.beam_type = 'neutrons'
-        self.beam_type = 'cosmics+beam'
+        self.beam_type = 'neutrons'
+        # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.target_type = 'carbon'
         self.target_type = 'none'
@@ -133,21 +133,21 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            # {
-            #     'sub_run_name': f'resist_0V_drift_0V',
-            #     'run_time': 1,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 0,
-            #         },
-            #     }
-            # },
+            {
+                'sub_run_name': f'resist_0V_drift_0V',
+                'run_time': 2,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 0,
+                    },
+                }
+            },
             # {
             #     'sub_run_name': f'resist_0V_drift_300V',
-            #     'run_time': 5,  # Minutes
+            #     'run_time': 2,  # Minutes
             #     'hvs': {
             #         '2': {
             #             '0': 0,
@@ -174,13 +174,13 @@ class Config(RunConfigBase):
         # Add more hv_subruns
         # hvs = list(range(200, 300, 20))
         # hvs = list(range(270, 520, 10))
-        hvs = list(range(620, 400, -10))
+        hvs = list(range(620, 400, -5))
         # hvs = [400, 425, 450, 475, 485, 500, 510]
         # hvs = [475, 485, 500, 510]
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 2,  # Minutes
+                'run_time': 10,  # Minutes
                 'hvs': {
                     '2': {
                         '0': hv,
