@@ -132,6 +132,7 @@ class Config(RunConfigBase):
             #         },
             #     }
             # },
+
             # {
             #     'sub_run_name': f'resist_0V_drift_0V',
             #     'run_time': 1,  # Minutes
@@ -179,13 +180,16 @@ class Config(RunConfigBase):
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 10,  # Minutes
+                'run_time': 2,  # Minutes
                 'hvs': {
                     '2': {
                         '0': hv,
                     },
                     '5': {
                         '0': 600,
+                    },
+                    '12': {
+                        '0': 55,
                     },
                 }
             }
