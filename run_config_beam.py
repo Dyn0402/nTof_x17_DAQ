@@ -58,10 +58,10 @@ class Config(RunConfigBase):
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_SiPMs.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -174,13 +174,13 @@ class Config(RunConfigBase):
         # Add more hv_subruns
         # hvs = list(range(200, 300, 20))
         # hvs = list(range(270, 520, 10))
-        hvs = list(range(620, 400, -5))
+        # hvs = list(range(620, 400, -20))
         # hvs = [400, 425, 450, 475, 485, 500, 510]
-        # hvs = [475, 485, 500, 510]
+        hvs = [620, 610, 600, 580, 560, 540, 520, 500, 480, 450, 420]
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 10,  # Minutes
+                'run_time': 20,  # Minutes
                 'hvs': {
                     '2': {
                         '0': hv,
