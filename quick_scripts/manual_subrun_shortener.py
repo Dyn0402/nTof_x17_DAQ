@@ -17,7 +17,7 @@ def main():
     for i in range(n_stops):
         # Run bash script to stop DAQ then wait to do again.
         print(f'Stopping sub-run {i + 1} / {n_stops}')
-        os.system(f'/bash_scripts/stop_subrun.sh')
+        os.system(f'/bash_scripts/stop_sub_run.sh')
         print(f'Waiting {sub_run_time} seconds before stopping again.\n')
         sleep(sub_run_time)
     print('donzo')
