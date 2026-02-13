@@ -19,7 +19,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_57'
+        self.run_name = 'run_58'
         self.base_out_dir = '/mnt/data/x17/beam_feb/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -66,7 +66,7 @@ class Config(RunConfigBase):
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-            'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -208,18 +208,21 @@ class Config(RunConfigBase):
         #     }
         # })
 
-        # self.sub_runs.append({
-        #         'sub_run_name': f'final_resist_6V_drift_600V',
-        #         'run_time': 60 * 24,  # Minutes
-        #         'hvs': {
-        #             '2': {
-        #                 '0': 500,
-        #             },
-        #             '5': {
-        #                 '0': 600,
-        #             },
-        #         }
-        #     })
+        self.sub_runs.append({
+                'sub_run_name': f'final_resist_500V_drift_600V',
+                'run_time': 60 * 24,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 500,
+                    },
+                    '5': {
+                        '0': 600,
+                    },
+                    '12': {
+                        '0': 55,
+                    },
+                }
+            })
 
         # for i in range(30):
         #     self.sub_runs.append(
