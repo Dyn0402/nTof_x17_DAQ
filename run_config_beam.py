@@ -137,21 +137,21 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            {
-                'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 2,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 0,
-                    },
-                    '12': {
-                        '0': 0,
-                    },
-                }
-            },
+            # {
+            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'run_time': 2,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #         '12': {
+            #             '0': 0,
+            #         },
+            #     }
+            # },
 
             # {
             #     'sub_run_name': f'resist_0V_drift_300V',
@@ -185,25 +185,25 @@ class Config(RunConfigBase):
         # hvs = list(range(620, 400, -5))
         # hvs = [400, 425, 450, 475, 485, 500, 510]
         # hvs = [620, 610, 600, 580, 560, 540, 520, 500, 480, 450, 420]
-        hvs = [620, 610, 600, 590, 580, 570, 560, 550, 530, 510, 490, 470]
-        # hvs = [610, 590, 570, 550, 530, 510]
-        for hv in hvs:
-            new_subrun = {
-                'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 5,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': hv,
-                    },
-                    '5': {
-                        '0': 600,
-                    },
-                    '12': {
-                        '0': 55,
-                    },
-                }
-            }
-            self.sub_runs.append(new_subrun)
+        # hvs = [620, 610, 600, 590, 580, 570, 560, 550, 530, 510, 490, 470]
+        # # hvs = [610, 590, 570, 550, 530, 510]
+        # for hv in hvs:
+        #     new_subrun = {
+        #         'sub_run_name': f'resist_{hv}V_drift_600V',
+        #         'run_time': 5,  # Minutes
+        #         'hvs': {
+        #             '2': {
+        #                 '0': hv,
+        #             },
+        #             '5': {
+        #                 '0': 600,
+        #             },
+        #             '12': {
+        #                 '0': 55,
+        #             },
+        #         }
+        #     }
+        #     self.sub_runs.append(new_subrun)
 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
@@ -218,21 +218,37 @@ class Config(RunConfigBase):
         #     }
         # })
 
+        # self.sub_runs.append({
+        #         'sub_run_name': f'final_resist_560V_drift_600V',
+        #         'run_time': 60 * 24,  # Minutes
+        #         'hvs': {
+        #             '2': {
+        #                 '0': 560,
+        #             },
+        #             '5': {
+        #                 '0': 600,
+        #             },
+        #             '12': {
+        #                 '0': 55,
+        #             },
+        #         }
+        #     })
+
         self.sub_runs.append({
-                'sub_run_name': f'final_resist_560V_drift_600V',
-                'run_time': 60 * 24,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 560,
-                    },
-                    '5': {
-                        '0': 600,
-                    },
-                    '12': {
-                        '0': 55,
-                    },
-                }
-            })
+            'sub_run_name': f'gas_change_resist_610V_drift_600V',
+            'run_time': 60 * 24,  # Minutes
+            'hvs': {
+                '2': {
+                    '0': 610,
+                },
+                '5': {
+                    '0': 600,
+                },
+                '12': {
+                    '0': 55,
+                },
+            }
+        })
 
         # for i in range(30):
         #     self.sub_runs.append(
