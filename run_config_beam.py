@@ -185,16 +185,16 @@ class Config(RunConfigBase):
         # hvs = list(range(200, 300, 20))
         # hvs = list(range(270, 520, 10))
         # hvs = list(range(620, 400, -5))
-        hvs = list(range(740, 400, -10))
+        # hvs = list(range(740, 400, -10))
         # hvs = list(range(440, 775, -10))
         # hvs = [400, 425, 450, 475, 485, 500, 510]
         # hvs = [620, 610, 600, 580, 560, 540, 520, 500, 480, 450, 420]
         # hvs = [620, 610, 600, 590, 580, 570, 560, 550, 530, 510, 490, 470]
-        # hvs = [610, 590, 570, 550, 530, 510]
+        hvs = [730, 720, 710, 700, 690, 680]
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_600V',
-                'run_time': 10,  # Minutes
+                'run_time': 60,  # Minutes
                 'hvs': {
                     '2': {
                         '0': hv,
@@ -223,7 +223,7 @@ class Config(RunConfigBase):
         # })
 
         self.sub_runs.append({
-                'sub_run_name': f'final_resist_700V_drift_600V',
+                'sub_run_name': f'final_resist_670V_drift_600V',
                 'run_time': 60 * 24,  # Minutes
                 'hvs': {
                     '2': {
