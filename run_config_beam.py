@@ -63,16 +63,16 @@ class Config(RunConfigBase):
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_SiPMs.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
-            #  'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+             'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-             # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
+             'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
+            # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -80,8 +80,8 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-             # 'latency': 100,  # Latency setting for DAQ in clock cycles
-            'latency': 1,  # Latency setting for DAQ in clock cycles
+             'latency': 100,  # Latency setting for DAQ in clock cycles
+            # 'latency': 1,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
         }
@@ -139,21 +139,21 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            {
-                'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 2,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 0,
-                    },
-                    # '12': {
-                    #     '0': 0,
-                    # },
-                }
-            },
+            # {
+            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'run_time': 2,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #         # '12': {
+            #         #     '0': 0,
+            #         # },
+            #     }
+            # },
 
             # {
             #     'sub_run_name': f'resist_0V_drift_300V',
@@ -209,13 +209,13 @@ class Config(RunConfigBase):
         #     }
         #     self.sub_runs.append(new_subrun)
 
-        drifts = [0, 1000, 500]
+        drifts = [1000, 500]
         for drift in drifts:
-            hvs = [450, 500, 550, 640, 660, 680, 710, 730]
+            hvs = [640, 660, 680, 710]
             for hv in hvs:
                 new_subrun = {
                     'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                    'run_time': 5,  # Minutes
+                    'run_time': 60,  # Minutes
                     'hvs': {
                         '2': {
                             '0': hv,
