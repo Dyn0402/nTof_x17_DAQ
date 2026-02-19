@@ -215,7 +215,7 @@ class Config(RunConfigBase):
         drifts = [1000]
         for drift in drifts:
             # hvs = [690, 710]
-            hvs = list(range(720, 500, -5))
+            hvs = list(range(720, 500, -10))
             for hv in hvs:
                 new_subrun = {
                     'sub_run_name': f'resist_{hv}V_drift_{drift}V',
