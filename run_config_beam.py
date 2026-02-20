@@ -36,16 +36,16 @@ class Config(RunConfigBase):
         self.gas = 'Ar/CO2 70/30'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
-        self.beam_type = 'neutrons'
+        # self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
-        # self.beam_type = 'cs-137'
+        self.beam_type = 'cs-137'
         # self.target_type = 'carbon'
         # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
-        self.target_type = 'Lead'
+        # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
-        # self.target_type = 'none'
+        self.target_type = 'none'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
             'ip': '192.168.10.222',
@@ -183,57 +183,58 @@ class Config(RunConfigBase):
         ]
 
         # Add more hv_subruns
-        # hvs = list(range(200, 300, 20))
-        # hvs = list(range(270, 520, 10))
-        # hvs = list(range(730, 450, -5))
-        # hvs = list(range(720, 600, -5))
-        # hvs = list(range(440, 775, -10))
-        # hvs = [400, 425, 450, 475, 485, 500, 510]
-        # hvs = [620, 610, 600, 580, 560, 540, 520, 500, 480, 450, 420]
-        # hvs = [620, 610, 600, 590, 580, 570, 560, 550, 530, 510, 490, 470]
-        hvs = [720, 710, 700, 690, 680, 670, 660, 650, 640, 630, 620, 610]
-        # drift = 600
-        drift = 1000
-        for hv in hvs:
-            new_subrun = {
-                'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                'run_time': 60,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': hv,
-                    },
-                    '5': {
-                        '0': drift,
-                    },
-                    # '12': {
-                    #     '0': 55,
-                    # },
-                }
-            }
-            self.sub_runs.append(new_subrun)
+        # # hvs = list(range(200, 300, 20))
+        # # hvs = list(range(270, 520, 10))
+        # # hvs = list(range(730, 450, -5))
+        # # hvs = list(range(720, 600, -5))
+        # # hvs = list(range(440, 775, -10))
+        # # hvs = [400, 425, 450, 475, 485, 500, 510]
+        # # hvs = [620, 610, 600, 580, 560, 540, 520, 500, 480, 450, 420]
+        # # hvs = [620, 610, 600, 590, 580, 570, 560, 550, 530, 510, 490, 470]
+        # hvs = [720, 710, 700, 690, 680, 670, 660, 650, 640, 630, 620, 610]
+        # # drift = 600
+        # drift = 1000
+        # for hv in hvs:
+        #     new_subrun = {
+        #         'sub_run_name': f'resist_{hv}V_drift_{drift}V',
+        #         'run_time': 60,  # Minutes
+        #         'hvs': {
+        #             '2': {
+        #                 '0': hv,
+        #             },
+        #             '5': {
+        #                 '0': drift,
+        #             },
+        #             # '12': {
+        #             #     '0': 55,
+        #             # },
+        #         }
+        #     }
+        #     self.sub_runs.append(new_subrun)
 
         # drifts = [1000, 500, 2000]
-        # # drifts = [1000]
-        # for drift in drifts:
-        #     # hvs = [710, 700, 690]
-        #     hvs = [720, 715, 710, 705, 700, 695, 690, 685, 680, 670, 660, 650, 640, 630, 620, 600, 580, 560, 540, 520]
-        #     for hv in hvs:
-        #         new_subrun = {
-        #             'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-        #             'run_time': 5,  # Minutes
-        #             'hvs': {
-        #                 '2': {
-        #                     '0': hv,
-        #                 },
-        #                 '5': {
-        #                     '0': drift,
-        #                 },
-        #                 # '12': {
-        #                 #     '0': 55,
-        #                 # },
-        #             }
-        #         }
-        #         self.sub_runs.append(new_subrun)
+        drifts = [1000]
+        for drift in drifts:
+            # hvs = [710, 700, 690]
+            # hvs = [720, 715, 710, 705, 700, 695, 690, 685, 680, 670, 660, 650, 640, 630, 620, 600, 580, 560, 540, 520]
+            hvs = list(range(720, 500, -5))
+            for hv in hvs:
+                new_subrun = {
+                    'sub_run_name': f'resist_{hv}V_drift_{drift}V',
+                    'run_time': 5,  # Minutes
+                    'hvs': {
+                        '2': {
+                            '0': hv,
+                        },
+                        '5': {
+                            '0': drift,
+                        },
+                        # '12': {
+                        #     '0': 55,
+                        # },
+                    }
+                }
+                self.sub_runs.append(new_subrun)
 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
