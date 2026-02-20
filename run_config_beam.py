@@ -213,28 +213,28 @@ class Config(RunConfigBase):
         #     self.sub_runs.append(new_subrun)
 
         # drifts = [1000, 500, 2000]
-        # drifts = [1000]
-        # for drift in drifts:
-        #     hvs = [740, 730, 720, 710, 700, 690]
-        #     # hvs = [720, 715, 710, 705, 700, 695, 690, 685, 680, 670, 660, 650, 640, 630, 620, 600, 580, 560, 540, 520]
-        #     # hvs = list(range(740, 600, -10))
-        #     for hv in hvs:
-        #         new_subrun = {
-        #             'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-        #             'run_time': 30,  # Minutes
-        #             'hvs': {
-        #                 '2': {
-        #                     '0': hv,
-        #                 },
-        #                 '5': {
-        #                     '0': drift,
-        #                 },
-        #                 # '12': {
-        #                 #     '0': 55,
-        #                 # },
-        #             }
-        #         }
-        #         self.sub_runs.append(new_subrun)
+        drifts = [500, 1000]
+        for drift in drifts:
+            hvs = [540, 530, 520, 510]
+            # hvs = [720, 715, 710, 705, 700, 695, 690, 685, 680, 670, 660, 650, 640, 630, 620, 600, 580, 560, 540, 520]
+            # hvs = list(range(740, 600, -10))
+            for hv in hvs:
+                new_subrun = {
+                    'sub_run_name': f'resist_{hv}V_drift_{drift}V',
+                    'run_time': 60,  # Minutes
+                    'hvs': {
+                        '2': {
+                            '0': hv,
+                        },
+                        '5': {
+                            '0': drift,
+                        },
+                        # '12': {
+                        #     '0': 55,
+                        # },
+                    }
+                }
+                self.sub_runs.append(new_subrun)
 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
@@ -266,21 +266,21 @@ class Config(RunConfigBase):
         #         }
         #     })
 
-        self.sub_runs.append({
-            'sub_run_name': f'gas_change_resist_640V_drift_1000V',
-            'run_time': 60 * 24,  # Minutes
-            'hvs': {
-                '2': {
-                    '0': 640,
-                },
-                '5': {
-                    '0': 1000,
-                },
-                # '12': {
-                #     '0': 55,
-                # },
-            }
-        })
+        # self.sub_runs.append({
+        #     'sub_run_name': f'gas_change_resist_640V_drift_1000V',
+        #     'run_time': 60 * 24,  # Minutes
+        #     'hvs': {
+        #         '2': {
+        #             '0': 640,
+        #         },
+        #         '5': {
+        #             '0': 1000,
+        #         },
+        #         # '12': {
+        #         #     '0': 55,
+        #         # },
+        #     }
+        # })
 
         # for i in range(30):
         #     self.sub_runs.append(
