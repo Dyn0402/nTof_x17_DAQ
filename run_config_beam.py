@@ -33,9 +33,9 @@ class Config(RunConfigBase):
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
-        self.gas = 'Ar/CO2 70/30'  # Gas type for run
+        # self.gas = 'Ar/CO2 70/30'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
-        # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
+        self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
@@ -213,28 +213,28 @@ class Config(RunConfigBase):
         #     self.sub_runs.append(new_subrun)
 
         # drifts = [1000, 500, 2000]
-        drifts = [1000]
-        for drift in drifts:
-            hvs = [740, 730, 720, 710, 700, 690]
-            # hvs = [720, 715, 710, 705, 700, 695, 690, 685, 680, 670, 660, 650, 640, 630, 620, 600, 580, 560, 540, 520]
-            # hvs = list(range(740, 600, -10))
-            for hv in hvs:
-                new_subrun = {
-                    'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                    'run_time': 30,  # Minutes
-                    'hvs': {
-                        '2': {
-                            '0': hv,
-                        },
-                        '5': {
-                            '0': drift,
-                        },
-                        # '12': {
-                        #     '0': 55,
-                        # },
-                    }
-                }
-                self.sub_runs.append(new_subrun)
+        # drifts = [1000]
+        # for drift in drifts:
+        #     hvs = [740, 730, 720, 710, 700, 690]
+        #     # hvs = [720, 715, 710, 705, 700, 695, 690, 685, 680, 670, 660, 650, 640, 630, 620, 600, 580, 560, 540, 520]
+        #     # hvs = list(range(740, 600, -10))
+        #     for hv in hvs:
+        #         new_subrun = {
+        #             'sub_run_name': f'resist_{hv}V_drift_{drift}V',
+        #             'run_time': 30,  # Minutes
+        #             'hvs': {
+        #                 '2': {
+        #                     '0': hv,
+        #                 },
+        #                 '5': {
+        #                     '0': drift,
+        #                 },
+        #                 # '12': {
+        #                 #     '0': 55,
+        #                 # },
+        #             }
+        #         }
+        #         self.sub_runs.append(new_subrun)
 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
@@ -266,21 +266,21 @@ class Config(RunConfigBase):
         #         }
         #     })
 
-        # self.sub_runs.append({
-        #     'sub_run_name': f'gas_change_resist_610V_drift_600V',
-        #     'run_time': 60 * 24,  # Minutes
-        #     'hvs': {
-        #         '2': {
-        #             '0': 610,
-        #         },
-        #         '5': {
-        #             '0': 600,
-        #         },
-        #         '12': {
-        #             '0': 55,
-        #         },
-        #     }
-        # })
+        self.sub_runs.append({
+            'sub_run_name': f'gas_change_resist_640V_drift_1000V',
+            'run_time': 60 * 24,  # Minutes
+            'hvs': {
+                '2': {
+                    '0': 640,
+                },
+                '5': {
+                    '0': 1000,
+                },
+                # '12': {
+                #     '0': 55,
+                # },
+            }
+        })
 
         # for i in range(30):
         #     self.sub_runs.append(
