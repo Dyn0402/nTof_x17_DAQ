@@ -40,10 +40,10 @@ class Config(RunConfigBase):
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
-        self.target_type = 'carbon'
+        # self.target_type = 'carbon'
         # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
-        # self.target_type = 'Lead'
+        self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
         # self.target_type = 'none'
 
@@ -226,7 +226,7 @@ class Config(RunConfigBase):
         #     }
         #     self.sub_runs.append(new_subrun)
 
-        drifts = [1500]
+        drifts = [1000, 500, 1500]
         # drifts = [500, 1000]
         for drift in drifts:
             # hvs = [540, 530, 520, 510]
@@ -236,7 +236,7 @@ class Config(RunConfigBase):
             for hv in hvs:
                 new_subrun = {
                     'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                    'run_time': 5,  # Minutes
+                    'run_time': 8,  # Minutes
                     'hvs': {
                         '2': {
                             '0': hv,
