@@ -140,47 +140,47 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            {
-                'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 2,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 0,
-                    },
-                    # '12': {
-                    #     '0': 0,
-                    # },
-                }
-            },
-
-            {
-                'sub_run_name': f'resist_0V_drift_1000V',
-                'run_time': 2,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 1000,
-                    },
-                }
-            },
-
-            {
-                'sub_run_name': f'resist_530V_drift_0V',
-                'run_time': 8,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 530,
-                    },
-                    '5': {
-                        '0': 0,
-                    },
-                }
-            },
+            # {
+            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'run_time': 2,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #         # '12': {
+            #         #     '0': 0,
+            #         # },
+            #     }
+            # },
+            #
+            # {
+            #     'sub_run_name': f'resist_0V_drift_1000V',
+            #     'run_time': 2,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 1000,
+            #         },
+            #     }
+            # },
+            #
+            # {
+            #     'sub_run_name': f'resist_530V_drift_0V',
+            #     'run_time': 8,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 530,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #     }
+            # },
 
             # {
             #     'sub_run_name': f'resist_hv_420V_drift_600V',
@@ -226,7 +226,7 @@ class Config(RunConfigBase):
         #     }
         #     self.sub_runs.append(new_subrun)
 
-        drifts = [1000, 500, 2000]
+        drifts = [1500]
         # drifts = [500, 1000]
         for drift in drifts:
             # hvs = [540, 530, 520, 510]
@@ -236,7 +236,7 @@ class Config(RunConfigBase):
             for hv in hvs:
                 new_subrun = {
                     'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                    'run_time': 8,  # Minutes
+                    'run_time': 5,  # Minutes
                     'hvs': {
                         '2': {
                             '0': hv,
