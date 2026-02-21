@@ -226,17 +226,17 @@ class Config(RunConfigBase):
         #     }
         #     self.sub_runs.append(new_subrun)
 
-        drifts = [1000, 500, 1500]
-        # drifts = [500, 1000]
+        # drifts = [1000, 500, 1500]
+        drifts = [1000, 500]
         for drift in drifts:
-            # hvs = [540, 530, 520, 510]
+            hvs = [550, 530, 510, 540, 520, 490]
             # hvs = [550, 545]
-            hvs = list(range(555, 500, -5))
-            hvs.extend(list(range(500, 400, -10)))
+            # hvs = list(range(555, 500, -5))
+            # hvs.extend(list(range(500, 400, -10)))
             for hv in hvs:
                 new_subrun = {
                     'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                    'run_time': 8,  # Minutes
+                    'run_time': 60,  # Minutes
                     'hvs': {
                         '2': {
                             '0': hv,
