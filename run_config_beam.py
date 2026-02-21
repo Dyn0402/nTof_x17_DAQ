@@ -19,7 +19,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_58'
+        self.run_name = 'run_78'
         self.base_out_dir = '/mnt/data/x17/beam_feb/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
