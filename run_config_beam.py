@@ -41,9 +41,9 @@ class Config(RunConfigBase):
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
         # self.target_type = 'carbon'
-        # self.target_type = 'B4C - 2.5mm (thinner)'
+        self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
-        self.target_type = 'Lead'
+        # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
         # self.target_type = 'none'
 
@@ -140,47 +140,47 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            # {
-            #     'sub_run_name': f'resist_0V_drift_0V',
-            #     'run_time': 2,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 0,
-            #         },
-            #         # '12': {
-            #         #     '0': 0,
-            #         # },
-            #     }
-            # },
-            #
-            # {
-            #     'sub_run_name': f'resist_0V_drift_1000V',
-            #     'run_time': 2,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 1000,
-            #         },
-            #     }
-            # },
-            #
-            # {
-            #     'sub_run_name': f'resist_530V_drift_0V',
-            #     'run_time': 8,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 530,
-            #         },
-            #         '5': {
-            #             '0': 0,
-            #         },
-            #     }
-            # },
+            {
+                'sub_run_name': f'resist_0V_drift_0V',
+                'run_time': 2,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 0,
+                    },
+                    # '12': {
+                    #     '0': 0,
+                    # },
+                }
+            },
+
+            {
+                'sub_run_name': f'resist_0V_drift_1000V',
+                'run_time': 2,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 1000,
+                    },
+                }
+            },
+
+            {
+                'sub_run_name': f'resist_530V_drift_0V',
+                'run_time': 8,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 530,
+                    },
+                    '5': {
+                        '0': 0,
+                    },
+                }
+            },
 
             # {
             #     'sub_run_name': f'resist_hv_420V_drift_600V',
@@ -226,17 +226,17 @@ class Config(RunConfigBase):
         #     }
         #     self.sub_runs.append(new_subrun)
 
-        # drifts = [1000, 500, 1500]
-        drifts = [1000, 500]
+        drifts = [1000, 500, 1500]
+        # drifts = [1000, 500]
         for drift in drifts:
-            hvs = [550, 530, 510, 540, 520, 490]
+            # hvs = [550, 530, 510, 540, 520, 490]
             # hvs = [550, 545]
-            # hvs = list(range(555, 500, -5))
-            # hvs.extend(list(range(500, 400, -10)))
+            hvs = list(range(555, 500, -5))
+            hvs.extend(list(range(500, 400, -10)))
             for hv in hvs:
                 new_subrun = {
                     'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                    'run_time': 60,  # Minutes
+                    'run_time': 7,  # Minutes
                     'hvs': {
                         '2': {
                             '0': hv,
