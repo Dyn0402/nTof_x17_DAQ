@@ -19,7 +19,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_78'
+        self.run_name = 'run_90'
         self.base_out_dir = '/mnt/data/x17/beam_feb/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -67,12 +67,14 @@ class Config(RunConfigBase):
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_SiPMs.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
-             'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+            #  'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+             'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM_trig.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-             'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
+             'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
+             # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
@@ -81,7 +83,8 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-             'latency': 100,  # Latency setting for DAQ in clock cycles
+             'latency': 90,  # Latency setting for DAQ in clock cycles
+             # 'latency': 100,  # Latency setting for DAQ in clock cycles
             # 'latency': 1,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
@@ -124,21 +127,21 @@ class Config(RunConfigBase):
         #     self.hv_info['password'] = lines[1].strip()
 
         self.sub_runs = [
-            # {
-            #     'sub_run_name': f'initial_resist_610V_drift_600V',
-            #     'run_time': 60 * 24,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 610,
-            #         },
-            #         '5': {
-            #             '0': 600,
-            #         },
-            #         '12': {
-            #             '0': 55,
-            #         },
-            #     }
-            # },
+            {
+                'sub_run_name': f'initial_resist_500V_drift_1000V',
+                'run_time': 60 * 24,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 500,
+                    },
+                    '5': {
+                        '0': 1000,
+                    },
+                    # '12': {
+                    #     '0': 55,
+                    # },
+                }
+            },
 
             # {
             #     'sub_run_name': f'resist_0V_drift_0V',
@@ -227,29 +230,29 @@ class Config(RunConfigBase):
         #     self.sub_runs.append(new_subrun)
 
         # drifts = [1000, 500, 1500]
-        drifts = [1000, 500]
-        for drift in drifts:
-            hvs = [550, 530, 510, 540, 520, 490]
-            # hvs = [550, 545]
-            # hvs = list(range(555, 500, -5))
-            # hvs.extend(list(range(500, 400, -10)))
-            for hv in hvs:
-                new_subrun = {
-                    'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                    'run_time': 90,  # Minutes
-                    'hvs': {
-                        '2': {
-                            '0': hv,
-                        },
-                        '5': {
-                            '0': drift,
-                        },
-                        # '12': {
-                        #     '0': 55,
-                        # },
-                    }
-                }
-                self.sub_runs.append(new_subrun)
+        # drifts = [1000, 500]
+        # for drift in drifts:
+        #     hvs = [550, 530, 510, 540, 520, 490]
+        #     # hvs = [550, 545]
+        #     # hvs = list(range(555, 500, -5))
+        #     # hvs.extend(list(range(500, 400, -10)))
+        #     for hv in hvs:
+        #         new_subrun = {
+        #             'sub_run_name': f'resist_{hv}V_drift_{drift}V',
+        #             'run_time': 90,  # Minutes
+        #             'hvs': {
+        #                 '2': {
+        #                     '0': hv,
+        #                 },
+        #                 '5': {
+        #                     '0': drift,
+        #                 },
+        #                 # '12': {
+        #                 #     '0': 55,
+        #                 # },
+        #             }
+        #         }
+        #         self.sub_runs.append(new_subrun)
 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
