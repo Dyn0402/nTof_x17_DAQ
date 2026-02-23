@@ -128,11 +128,11 @@ class Config(RunConfigBase):
 
         self.sub_runs = [
             {
-                'sub_run_name': f'initial_resist_530V_drift_1000V',
+                'sub_run_name': f'initial_resist_540V_drift_1000V',
                 'run_time': 60 * 24,  # Minutes
                 'hvs': {
                     '2': {
-                        '0': 530,
+                        '0': 540,
                     },
                     '5': {
                         '0': 1000,
