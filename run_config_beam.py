@@ -36,16 +36,16 @@ class Config(RunConfigBase):
         # self.gas = 'Ar/CO2 70/30'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
-        # self.beam_type = 'neutrons'
+        self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
-        self.beam_type = 'cs-137'
+        # self.beam_type = 'cs-137'
         # self.target_type = 'carbon'
-        # self.target_type = 'B4C - 2.5mm (thinner)'
+        self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
-        self.target_type = 'none'
+        # self.target_type = 'none'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
             'ip': '192.168.10.222',
@@ -66,16 +66,16 @@ class Config(RunConfigBase):
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_SiPMs.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
-             'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
+            #  'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
             #  'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM_trig.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
              # 'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
-             'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
+             # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -84,8 +84,8 @@ class Config(RunConfigBase):
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
              # 'latency': 90,  # Latency setting for DAQ in clock cycles
-             'latency': 100,  # Latency setting for DAQ in clock cycles
-            # 'latency': 1,  # Latency setting for DAQ in clock cycles
+             # 'latency': 100,  # Latency setting for DAQ in clock cycles
+            'latency': 1,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
         }
@@ -206,7 +206,8 @@ class Config(RunConfigBase):
         # hvs.extend(list(range(500, 400, -10)))
         # # hvs = list(range(720, 600, -5))
         # # # hvs = list(range(440, 775, -10))
-        hvs = [545, 540, 535, 530, 525, 520, 515, 510, 505, 500, 495, 490, 480, 470, 460, 450]
+        # hvs = [545, 540, 535, 530, 525, 520, 515, 510, 505, 500, 495, 490, 480, 470, 460, 450]
+        hvs = [530]
         # # # hvs = [620, 610, 600, 580, 560, 540, 520, 500, 480, 450, 420]
         # # # hvs = [620, 610, 600, 590, 580, 570, 560, 550, 530, 510, 490, 470]
         # # hvs = [720, 710, 700, 690, 680, 670, 660, 650, 640, 630, 620, 610]
@@ -215,7 +216,7 @@ class Config(RunConfigBase):
         for hv in hvs:
             new_subrun = {
                 'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                'run_time': 5,  # Minutes
+                'run_time': 1,  # Minutes
                 'hvs': {
                     '2': {
                         '0': hv,
