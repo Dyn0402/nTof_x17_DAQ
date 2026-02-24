@@ -64,18 +64,18 @@ class Config(RunConfigBase):
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_SiPMs.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
-            #  'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
+             'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
             #  'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM_trig.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
              # 'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
-             # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
+             'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
+            # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -84,8 +84,8 @@ class Config(RunConfigBase):
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
              # 'latency': 90,  # Latency setting for DAQ in clock cycles
-             # 'latency': 100,  # Latency setting for DAQ in clock cycles
-            'latency': 1,  # Latency setting for DAQ in clock cycles
+             'latency': 100,  # Latency setting for DAQ in clock cycles
+            # 'latency': 1,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
         }
@@ -143,47 +143,47 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            # {
-            #     'sub_run_name': f'resist_0V_drift_0V',
-            #     'run_time': 2,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 0,
-            #         },
-            #         # '12': {
-            #         #     '0': 0,
-            #         # },
-            #     }
-            # },
-            #
-            # {
-            #     'sub_run_name': f'resist_0V_drift_1000V',
-            #     'run_time': 2,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 1000,
-            #         },
-            #     }
-            # },
-            #
-            # {
-            #     'sub_run_name': f'resist_530V_drift_0V',
-            #     'run_time': 8,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 530,
-            #         },
-            #         '5': {
-            #             '0': 0,
-            #         },
-            #     }
-            # },
+            {
+                'sub_run_name': f'resist_0V_drift_0V',
+                'run_time': 2,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 0,
+                    },
+                    # '12': {
+                    #     '0': 0,
+                    # },
+                }
+            },
+
+            {
+                'sub_run_name': f'resist_0V_drift_1000V',
+                'run_time': 2,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 1000,
+                    },
+                }
+            },
+
+            {
+                'sub_run_name': f'resist_530V_drift_0V',
+                'run_time': 8,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 530,
+                    },
+                    '5': {
+                        '0': 0,
+                    },
+                }
+            },
 
             # {
             #     'sub_run_name': f'resist_hv_420V_drift_600V',
@@ -234,11 +234,12 @@ class Config(RunConfigBase):
         # drifts = [1000, 500]
         for drift in drifts:
             # hvs = [550, 530, 510, 540, 520, 490]
+            hvs = [540, 530, 525, 520, 515, 510, 500]
             # hvs = [550, 545]
-            hvs = list(range(540, 475, -5))
+            # hvs = list(range(540, 475, -5))
             # hvs.extend(list(range(500, 400, -10)))
             for hv in hvs:
-                time = 10 if hv > 525 or hv <= 510 else 30
+                time = 30 if hv > 525 or hv <= 510 else 90
                 new_subrun = {
                     'sub_run_name': f'resist_{hv}V_drift_{drift}V',
                     'run_time': time,  # Minutes
