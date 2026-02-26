@@ -33,9 +33,9 @@ class Config(RunConfigBase):
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
-        # self.gas = 'Ar/CO2 70/30'  # Gas type for run
+        self.gas = 'Ar/CO2 70/30'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
-        self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
+        # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
@@ -275,38 +275,39 @@ class Config(RunConfigBase):
         #     }
         # })
 
-        final_v, final_d = 520, 1000
-        self.sub_runs.append({
-                'sub_run_name': f'final_resist_{final_v}V_drift_{final_d}V',
-                'run_time': 60 * 24,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': final_v,
-                    },
-                    '5': {
-                        '0': final_d,
-                    },
-                    # '12': {
-                    #     '0': 55,
-                    # },
-                }
-            })
-
+        # final_v, final_d = 520, 1000
         # self.sub_runs.append({
-        #     'sub_run_name': f'gas_change_resist_640V_drift_1000V',
-        #     'run_time': 60 * 24,  # Minutes
-        #     'hvs': {
-        #         '2': {
-        #             '0': 640,
-        #         },
-        #         '5': {
-        #             '0': 1000,
-        #         },
-        #         # '12': {
-        #         #     '0': 55,
-        #         # },
-        #     }
-        # })
+        #         'sub_run_name': f'final_resist_{final_v}V_drift_{final_d}V',
+        #         'run_time': 60 * 24,  # Minutes
+        #         'hvs': {
+        #             '2': {
+        #                 '0': final_v,
+        #             },
+        #             '5': {
+        #                 '0': final_d,
+        #             },
+        #             # '12': {
+        #             #     '0': 55,
+        #             # },
+        #         }
+        #     })
+
+        gas_change_r, gas_change_d = 720, 1000
+        self.sub_runs.append({
+            'sub_run_name': f'gas_change_resist_{gas_change_r}V_drift_{gas_change_d}V',
+            'run_time': 60 * 24,  # Minutes
+            'hvs': {
+                '2': {
+                    '0': gas_change_r,
+                },
+                '5': {
+                    '0': gas_change_d,
+                },
+                # '12': {
+                #     '0': 55,
+                # },
+            }
+        })
 
         # for i in range(30):
         #     self.sub_runs.append(
@@ -336,6 +337,7 @@ class Config(RunConfigBase):
                 'det_type': 'mx17',
                 'resist_type': 'strip_with_silver_paste',
                 'drift_gap': '6 mm',
+                'frame_type': 'carbon',  # carbon or aluminum
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
