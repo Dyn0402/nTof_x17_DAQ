@@ -148,21 +148,21 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            # {
-            #     'sub_run_name': f'resist_0V_drift_0V',
-            #     'run_time': 2 * 24,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 0,
-            #         },
-            #         # '12': {
-            #         #     '0': 0,
-            #         # },
-            #     }
-            # },
+            {
+                'sub_run_name': f'resist_0V_drift_0V',
+                'run_time': 2 * 24,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 0,
+                    },
+                    # '12': {
+                    #     '0': 0,
+                    # },
+                }
+            },
             #
             # {
             #     'sub_run_name': f'resist_0V_drift_1000V',
@@ -236,8 +236,8 @@ class Config(RunConfigBase):
         #     }
         #     self.sub_runs.append(new_subrun)
 
-        # drifts = [1000, 500, 1500]
-        drifts = [1000]
+        drifts = [1000, 500, 1500]
+        # drifts = [1000]
         for drift in drifts:
             # hvs = [550, 530, 510, 540, 520, 490]
             # hvs = [535, 530, 525, 520]
@@ -342,7 +342,7 @@ class Config(RunConfigBase):
                 'drift_gap': '6 mm',
                 'frame_type': 'carbon',  # carbon or aluminum
                 'distance_from_target': 55, # cm from target
-                'aluminum_wrap?': True,
+                'aluminum_wrap?': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
