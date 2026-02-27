@@ -41,9 +41,9 @@ class Config(RunConfigBase):
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
         # self.target_type = 'carbon'
-        self.target_type = 'B4C - 2.5mm (thinner)'
+        # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
-        # self.target_type = 'Lead'
+        self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
         # self.target_type = 'none'
 
@@ -64,22 +64,22 @@ class Config(RunConfigBase):
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_noCSA.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_G2.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_SiPMs.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_100fc.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM_trig.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM_trig.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_recovery_test.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-            'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
+            # 'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 52,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
@@ -88,9 +88,9 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-            'latency': 90,  # Latency setting for DAQ in clock cycles
+            # 'latency': 90,  # Latency setting for DAQ in clock cycles
             # 'latency': 100,  # Latency setting for DAQ in clock cycles
-            # 'latency': 1,  # Latency setting for DAQ in clock cycles
+            'latency': 1,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
         }
