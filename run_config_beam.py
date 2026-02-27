@@ -236,12 +236,12 @@ class Config(RunConfigBase):
         #     }
         #     self.sub_runs.append(new_subrun)
 
-        # drifts = [1000, 500, 1500]
-        drifts = [1000, 500]
+        drifts = [1000, 500, 1500]
+        # drifts = [1000, 500]
         for drift in drifts:
             # hvs = [550, 530, 510, 540, 520, 490]
             # hvs = [535, 530, 525, 520]
-            hvs = list(range(730, 400, -10))
+            hvs = list(range(730, 600, -5))
             # hvs = [550, 545]
             # hvs = list(range(540, 475, -5))
             # hvs.extend(list(range(500, 400, -10)))
@@ -341,6 +341,7 @@ class Config(RunConfigBase):
                 'resist_type': 'strip_with_silver_paste',
                 'drift_gap': '6 mm',
                 'frame_type': 'carbon',  # carbon or aluminum
+                'distance_from_target': 55, # cm from targer
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
