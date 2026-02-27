@@ -148,21 +148,21 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            {
-                'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 2 * 24,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 0,
-                    },
-                    # '12': {
-                    #     '0': 0,
-                    # },
-                }
-            },
+            # {
+            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'run_time': 2 * 24,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #         # '12': {
+            #         #     '0': 0,
+            #         # },
+            #     }
+            # },
             #
             # {
             #     'sub_run_name': f'resist_0V_drift_1000V',
@@ -237,33 +237,33 @@ class Config(RunConfigBase):
         #     self.sub_runs.append(new_subrun)
 
         # drifts = [1000, 500, 1500]
-        # # drifts = [1000, 500]
-        # for drift in drifts:
-        #     # hvs = [550, 530, 510, 540, 520, 490]
-        #     # hvs = [535, 530, 525, 520]
-        #     hvs = list(range(730, 600, -5))
-        #     # hvs = [550, 545]
-        #     # hvs = list(range(540, 475, -5))
-        #     # hvs.extend(list(range(500, 400, -10)))
-        #     for hv in hvs:
-        #         # time = 30 if hv > 525 or hv <= 510 else 90
-        #         time = 5
-        #         new_subrun = {
-        #             'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-        #             'run_time': time,  # Minutes
-        #             'hvs': {
-        #                 '2': {
-        #                     '0': hv,
-        #                 },
-        #                 '5': {
-        #                     '0': drift,
-        #                 },
-        #                 # '12': {
-        #                 #     '0': 55,
-        #                 # },
-        #             }
-        #         }
-        #         self.sub_runs.append(new_subrun)
+        drifts = [1000]
+        for drift in drifts:
+            # hvs = [550, 530, 510, 540, 520, 490]
+            # hvs = [535, 530, 525, 520]
+            hvs = list(range(730, 600, -5))
+            # hvs = [550, 545]
+            # hvs = list(range(540, 475, -5))
+            # hvs.extend(list(range(500, 400, -10)))
+            for hv in hvs:
+                # time = 30 if hv > 525 or hv <= 510 else 90
+                time = 5
+                new_subrun = {
+                    'sub_run_name': f'resist_{hv}V_drift_{drift}V',
+                    'run_time': time,  # Minutes
+                    'hvs': {
+                        '2': {
+                            '0': hv,
+                        },
+                        '5': {
+                            '0': drift,
+                        },
+                        # '12': {
+                        #     '0': 55,
+                        # },
+                    }
+                }
+                self.sub_runs.append(new_subrun)
         # 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
@@ -341,7 +341,8 @@ class Config(RunConfigBase):
                 'resist_type': 'strip_with_silver_paste',
                 'drift_gap': '6 mm',
                 'frame_type': 'carbon',  # carbon or aluminum
-                'distance_from_target': 55, # cm from targer
+                'distance_from_target': 55, # cm from target
+                'aluminum_wrap?': True,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
