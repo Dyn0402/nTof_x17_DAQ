@@ -131,38 +131,39 @@ class Config(RunConfigBase):
         #     self.hv_info['username'] = lines[0].strip()
         #     self.hv_info['password'] = lines[1].strip()
 
+        r_init, d_init = 550, 1000
         self.sub_runs = [
-            # {
-            #     'sub_run_name': f'initial_resist_680V_drift_1000V',
-            #     'run_time': 60 * 24,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 680,
-            #         },
-            #         '5': {
-            #             '0': 1000,
-            #         },
-            #         # '12': {
-            #         #     '0': 55,
-            #         # },
-            #     }
-            # },
-
             {
-                'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 2,  # Minutes
+                'sub_run_name': f'initial_resist_{r_init}V_drift_{d_init}V',
+                'run_time': 60 * 24,  # Minutes
                 'hvs': {
                     '2': {
-                        '0': 0,
+                        '0': r_init,
                     },
                     '5': {
-                        '0': 0,
+                        '0': d_init,
                     },
                     # '12': {
-                    #     '0': 0,
+                    #     '0': 55,
                     # },
                 }
             },
+
+            # {
+            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'run_time': 2,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #         # '12': {
+            #         #     '0': 0,
+            #         # },
+            #     }
+            # },
             #
             # {
             #     'sub_run_name': f'resist_0V_drift_1000V',
@@ -254,34 +255,34 @@ class Config(RunConfigBase):
         #     self.sub_runs.append(new_subrun)
 
         # drifts = [1500, 500, 1000]
-        drifts = [1000, 500]
-        for drift in drifts:
-            # hvs = [550, 530, 510, 540, 520, 490]
-            # hvs = [535, 530, 525, 520]
-            # hvs = list(range(730, 600, -5))
-            hvs = list(range(550, 400, -10))
-            # hvs = [550, 545]
-            # hvs = list(range(540, 475, -5))
-            # hvs.extend(list(range(500, 400, -10)))
-            for hv in hvs:
-                # time = 30 if hv > 525 or hv <= 510 else 90
-                time = 5
-                new_subrun = {
-                    'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                    'run_time': time,  # Minutes
-                    'hvs': {
-                        '2': {
-                            '0': hv,
-                        },
-                        '5': {
-                            '0': drift,
-                        },
-                        # '12': {
-                        #     '0': 55,
-                        # },
-                    }
-                }
-                self.sub_runs.append(new_subrun)
+        # drifts = [1000, 500]
+        # for drift in drifts:
+        #     # hvs = [550, 530, 510, 540, 520, 490]
+        #     # hvs = [535, 530, 525, 520]
+        #     # hvs = list(range(730, 600, -5))
+        #     hvs = list(range(550, 400, -10))
+        #     # hvs = [550, 545]
+        #     # hvs = list(range(540, 475, -5))
+        #     # hvs.extend(list(range(500, 400, -10)))
+        #     for hv in hvs:
+        #         # time = 30 if hv > 525 or hv <= 510 else 90
+        #         time = 5
+        #         new_subrun = {
+        #             'sub_run_name': f'resist_{hv}V_drift_{drift}V',
+        #             'run_time': time,  # Minutes
+        #             'hvs': {
+        #                 '2': {
+        #                     '0': hv,
+        #                 },
+        #                 '5': {
+        #                     '0': drift,
+        #                 },
+        #                 # '12': {
+        #                 #     '0': 55,
+        #                 # },
+        #             }
+        #         }
+        #         self.sub_runs.append(new_subrun)
         # 
         # self.sub_runs.append({
         #     'sub_run_name': f'resist_0V_drift_0V',
