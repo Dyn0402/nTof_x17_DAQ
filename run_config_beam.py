@@ -43,8 +43,8 @@ class Config(RunConfigBase):
         # self.target_type = 'carbon'
         # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
-        self.target_type = 'Lead'
-        # self.target_type = 'empty target holder'
+        # self.target_type = 'Lead'
+        self.target_type = 'empty target holder'
         # self.target_type = 'none'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
@@ -149,21 +149,21 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            {
-                'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 2,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 0,
-                    },
-                    # '12': {
-                    #     '0': 0,
-                    # },
-                }
-            },
+            # {
+            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'run_time': 2,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #         # '12': {
+            #         #     '0': 0,
+            #         # },
+            #     }
+            # },
             #
             # {
             #     'sub_run_name': f'resist_0V_drift_1000V',
@@ -255,7 +255,7 @@ class Config(RunConfigBase):
         #     self.sub_runs.append(new_subrun)
 
         # drifts = [1500, 500, 1000]
-        drifts = [1000, 500]
+        drifts = [1000]
         for drift in drifts:
             # hvs = [550, 530, 510, 540, 520, 490]
             # hvs = [535, 530, 525, 520]
