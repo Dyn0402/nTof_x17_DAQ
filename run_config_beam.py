@@ -255,7 +255,7 @@ class Config(RunConfigBase):
         #     self.sub_runs.append(new_subrun)
 
         # drifts = [1500, 500, 1000]
-        drifts = [1000]
+        drifts = [1000, 500, 250]
         for drift in drifts:
             # hvs = [550, 530, 510, 540, 520, 490]
             # hvs = [535, 530, 525, 520]
