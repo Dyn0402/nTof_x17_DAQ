@@ -40,11 +40,11 @@ class Config(RunConfigBase):
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
-        # self.target_type = 'carbon'
+        self.target_type = 'carbon'
         # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
         # self.target_type = 'Lead'
-        self.target_type = 'empty target holder'
+        # self.target_type = 'empty target holder'
         # self.target_type = 'none'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
@@ -164,7 +164,7 @@ class Config(RunConfigBase):
                     # },
                 }
             },
-            #
+
             # {
             #     'sub_run_name': f'resist_0V_drift_1000V',
             #     'run_time': 2,  # Minutes
@@ -260,13 +260,41 @@ class Config(RunConfigBase):
             # hvs = [550, 530, 510, 540, 520, 490]
             # hvs = [535, 530, 525, 520]
             # hvs = list(range(730, 600, -5))
-            hvs = list(range(550, 400, -10))
+            hvs = list(range(550, 490, -5))
+            hvs.extend(list(range(490, 400, -10)))
             # hvs = [550, 545]
             # hvs = list(range(540, 475, -5))
             # hvs.extend(list(range(500, 400, -10)))
             for hv in hvs:
                 # time = 30 if hv > 525 or hv <= 510 else 90
                 time = 5
+                new_subrun = {
+                    'sub_run_name': f'resist_{hv}V_drift_{drift}V',
+                    'run_time': time,  # Minutes
+                    'hvs': {
+                        '2': {
+                            '0': hv,
+                        },
+                        '5': {
+                            '0': drift,
+                        },
+                        # '12': {
+                        #     '0': 55,
+                        # },
+                    }
+                }
+                self.sub_runs.append(new_subrun)
+
+        drifts = [1000]
+        for drift in drifts:
+            # hvs = list(range(730, 600, -5))
+            hvs = [515, 510, 505, 500, 495, 490, 485, 480]
+            # hvs = [550, 545]
+            # hvs = list(range(540, 475, -5))
+            # hvs.extend(list(range(500, 400, -10)))
+            for hv in hvs:
+                # time = 30 if hv > 525 or hv <= 510 else 90
+                time = 60
                 new_subrun = {
                     'sub_run_name': f'resist_{hv}V_drift_{drift}V',
                     'run_time': time,  # Minutes
