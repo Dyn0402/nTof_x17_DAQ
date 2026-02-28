@@ -343,7 +343,7 @@ class Config(RunConfigBase):
                 'resist_type': 'strip_with_silver_paste',
                 'drift_gap': '6 mm',
                 'frame_type': 'carbon',  # carbon or aluminum
-                'distance_from_target': 55, # cm from target
+                'distance_from_target': 20, # cm from target
                 'aluminum_wrap?': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
