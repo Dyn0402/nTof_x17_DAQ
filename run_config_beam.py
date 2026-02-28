@@ -149,21 +149,21 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            # {
-            #     'sub_run_name': f'resist_0V_drift_0V',
-            #     'run_time': 2,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 0,
-            #         },
-            #         # '12': {
-            #         #     '0': 0,
-            #         # },
-            #     }
-            # },
+            {
+                'sub_run_name': f'resist_0V_drift_0V',
+                'run_time': 2,  # Minutes
+                'hvs': {
+                    '2': {
+                        '0': 0,
+                    },
+                    '5': {
+                        '0': 0,
+                    },
+                    # '12': {
+                    #     '0': 0,
+                    # },
+                }
+            },
             #
             # {
             #     'sub_run_name': f'resist_0V_drift_1000V',
