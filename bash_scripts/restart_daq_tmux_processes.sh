@@ -1,10 +1,13 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+START_SERVERS="$SCRIPT_DIR/../start_servers.sh"
+
 # Restart servers in detached screen
-screen -dmS restart_tmux bash -c '
+screen -dmS restart_tmux bash -c "
   sleep 2
-  /home/mx17/PycharmProjects/nTof_x17_DAQ/start_servers.sh
-'
+  $START_SERVERS
+"
 # Kill tmux server
 sessions=(
   daq_control
