@@ -19,8 +19,8 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_143'
-        self.base_out_dir = '/mnt/data/x17/beam_feb/'
+        self.run_name = 'run_prep_test_1'
+        self.base_out_dir = '/mnt/data/x17/beam_may/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
         self.raw_daq_inner_dir = 'raw_daq_data'
@@ -47,25 +47,13 @@ class Config(RunConfigBase):
         # self.target_type = 'empty target holder'
         # self.target_type = 'none'
 
-        self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
-            'ip': '192.168.10.222',
-            'channels': {  # Check only the channels which exist here
-                'U0': {
-                    'expected_voltage': 4.5,  # V
-                    'expected_current': 30,  # A
-                    'voltage_tolerance': 0.4,  # V
-                    'current_tolerance': 5,  # A
-                },
-            }
-        }
-
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
 
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
 
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_noCSA.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_G2.cfg',
@@ -135,6 +123,51 @@ class Config(RunConfigBase):
 
         r_init, d_init = 550, 1000
         self.sub_runs = [
+            {
+                'sub_run_name': f'daq_test_0',
+                'run_time': 2,  # Minutes
+                'hvs': {
+                    # '2': {
+                    #     '0': 0,
+                    # },
+                    # '5': {
+                    #     '0': 0,
+                    # },
+                    # '12': {
+                    #     '0': 0,
+                    # },
+                }
+            },
+            {
+                'sub_run_name': f'daq_test_1',
+                'run_time': 2,  # Minutes
+                'hvs': {
+                    # '2': {
+                    #     '0': 0,
+                    # },
+                    # '5': {
+                    #     '0': 0,
+                    # },
+                    # '12': {
+                    #     '0': 0,
+                    # },
+                }
+            },
+            {
+                'sub_run_name': f'daq_test_2',
+                'run_time': 2,  # Minutes
+                'hvs': {
+                    # '2': {
+                    #     '0': 0,
+                    # },
+                    # '5': {
+                    #     '0': 0,
+                    # },
+                    # '12': {
+                    #     '0': 0,
+                    # },
+                }
+            },
             # {
             #     'sub_run_name': f'initial_resist_{r_init}V_drift_{d_init}V',
             #     'run_time': 60 * 24,  # Minutes
@@ -151,21 +184,21 @@ class Config(RunConfigBase):
             #     }
             # },
 
-            {
-                'sub_run_name': f'resist_0V_drift_0V',
-                'run_time': 2,  # Minutes
-                'hvs': {
-                    '2': {
-                        '0': 0,
-                    },
-                    '5': {
-                        '0': 0,
-                    },
-                    # '12': {
-                    #     '0': 0,
-                    # },
-                }
-            },
+            # {
+            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'run_time': 2,  # Minutes
+            #     'hvs': {
+            #         '2': {
+            #             '0': 0,
+            #         },
+            #         '5': {
+            #             '0': 0,
+            #         },
+            #         # '12': {
+            #         #     '0': 0,
+            #         # },
+            #     }
+            # },
 
             # {
             #     'sub_run_name': f'resist_0V_drift_1000V',
@@ -257,39 +290,39 @@ class Config(RunConfigBase):
         #     self.sub_runs.append(new_subrun)
 
         # drifts = [800, 500, 250]
-        drifts = [800, 500]
-        for drift in drifts:
-            # hvs = [550, 530, 510, 540, 520, 490]
-            hvs = [515, 510, 520, 525, 530, 505]
-            # hvs = list(range(730, 600, -5))
-
-            # hvs = list(range(550, 490, -5))
-            # hvs.extend(list(range(490, 400, -10)))
-
-            # hvs = list(range(550, 465, -5))
-
-            # hvs = [550, 545]
-            # hvs = list(range(540, 475, -5))
-            # hvs.extend(list(range(500, 400, -10)))
-            for hv in hvs:
-                # time = 30 if hv > 525 or hv <= 510 else 90
-                time = 60 * 3
-                new_subrun = {
-                    'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-                    'run_time': time,  # Minutes
-                    'hvs': {
-                        '2': {
-                            '0': hv,
-                        },
-                        '5': {
-                            '0': drift,
-                        },
-                        # '12': {
-                        #     '0': 55,
-                        # },
-                    }
-                }
-                self.sub_runs.append(new_subrun)
+        # drifts = [800, 500]
+        # for drift in drifts:
+        #     # hvs = [550, 530, 510, 540, 520, 490]
+        #     hvs = [515, 510, 520, 525, 530, 505]
+        #     # hvs = list(range(730, 600, -5))
+        #
+        #     # hvs = list(range(550, 490, -5))
+        #     # hvs.extend(list(range(490, 400, -10)))
+        #
+        #     # hvs = list(range(550, 465, -5))
+        #
+        #     # hvs = [550, 545]
+        #     # hvs = list(range(540, 475, -5))
+        #     # hvs.extend(list(range(500, 400, -10)))
+        #     for hv in hvs:
+        #         # time = 30 if hv > 525 or hv <= 510 else 90
+        #         time = 60 * 3
+        #         new_subrun = {
+        #             'sub_run_name': f'resist_{hv}V_drift_{drift}V',
+        #             'run_time': time,  # Minutes
+        #             'hvs': {
+        #                 '2': {
+        #                     '0': hv,
+        #                 },
+        #                 '5': {
+        #                     '0': drift,
+        #                 },
+        #                 # '12': {
+        #                 #     '0': 55,
+        #                 # },
+        #             }
+        #         }
+        #         self.sub_runs.append(new_subrun)
         #
         # drifts = [1000]
         # for drift in drifts:
