@@ -24,7 +24,7 @@ class Config(RunConfigBase):
         date_time_str = datetime.now().strftime('%m-%d-%y_%H-%M-%S')
         self.run_name = f'pedestals_{date_time_str}'
         # self.base_out_dir = '/media/dylan/data/x17/'
-        self.base_out_dir = '/mnt/data/x17/beam_feb/'
+        self.base_out_dir = '/mnt/data/x17/beam_may/'
         self.data_out_dir = f'{self.base_out_dir}pedestals/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
         self.raw_daq_inner_dir = 'raw_daq_data'
@@ -35,9 +35,22 @@ class Config(RunConfigBase):
         self.process_on_fly = False  # True to process fdfs on the  fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
-        self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
-        self.beam_type = 'neutrons'
-        self.target_type = 'Timepix'
+        # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
+        # self.gas = 'Ar/CF4 90/10'  # Gas type for run
+        self.gas = 'Ar/CO2 70/30'  # Gas type for run
+        # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
+        # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
+        self.beam_type = 'cosmics'
+        # self.beam_type = 'neutrons'
+        # self.beam_type = 'cosmics+beam'
+        # self.beam_type = 'bi-207'
+        # self.beam_type = 'cs-137'
+        # self.target_type = 'carbon'
+        # self.target_type = 'B4C - 2.5mm (thinner)'
+        # self.target_type = 'B4C - 5mm (thicker)'
+        # self.target_type = 'Lead'
+        # self.target_type = 'empty target holder'
+        self.target_type = 'none'
 
         self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
             'ip': '192.168.10.222',
@@ -54,8 +67,6 @@ class Config(RunConfigBase):
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17_ped.cfg',
             'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test_ped.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             # 'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
@@ -124,13 +135,17 @@ class Config(RunConfigBase):
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
         }
 
-        self.included_detectors = ['mx17_1']
+        self.included_detectors = ['mx17_3', 'mx17_4']
 
         self.detectors = [
             {
-                'name': 'mx17_1',
+                'name': 'mx17_3',
                 'det_type': 'mx17',
-                'resist_type': 'strip_with_silver_paste',
+                'resist_type': 'strip',
+                'drift_gap': '30 mm',
+                'frame_type': 'aluminum',  # carbon or aluminum
+                'distance_from_target': 20,  # cm from target
+                'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
@@ -142,50 +157,54 @@ class Config(RunConfigBase):
                     'z': 0,  # deg  Rotation about z axis
                 },
                 'hv_channels': {
-                    'drift': (0, 7),
-                    'resist': (3, 0),
+                    'drift': (5, 0),
+                    'resist': (2, 0),
                 },
                 'dream_feus': {
-                    'x_1': (4, 1),  # Runs along x direction, indicates y hit location
-                    'x_2': (4, 2),
-                    'x_3': (4, 3),
-                    'x_4': (4, 4),
-                    'x_5': (4, 5),
-                    'x_6': (4, 6),
-                    'x_7': (4, 7),
-                    'x_8': (4, 8),
-                    'y_1': (6, 1),  # Runs along y direction, indicates x hit location
-                    'y_2': (6, 2),
-                    'y_3': (6, 3),
-                    'y_4': (6, 4),
-                    'y_5': (6, 5),
-                    'y_6': (6, 6),
-                    'y_7': (6, 7),
-                    'y_8': (6, 8),
+                    'x_1': (1, 1),  # Runs along x direction, indicates y hit location
+                    'x_2': (1, 2),
+                    'x_3': (1, 3),
+                    'x_4': (1, 4),
+                    'x_5': (1, 5),
+                    'x_6': (1, 6),
+                    'x_7': (1, 7),
+                    'x_8': (1, 8),
+                    'y_1': (2, 1),  # Runs along y direction, indicates x hit location
+                    'y_2': (2, 2),
+                    'y_3': (2, 3),
+                    'y_4': (2, 4),
+                    'y_5': (2, 5),
+                    'y_6': (2, 6),
+                    'y_7': (2, 7),
+                    'y_8': (2, 8),
                 },
-                'dream_feu_inversion': {  # If True, connector is inverted --> 1, 0, 3, 2 ...
-                    'x_1': True,
-                    'x_2': True,
-                    'x_3': True,
-                    'x_4': True,
-                    'x_5': True,
-                    'x_6': True,
-                    'x_7': True,
-                    'x_8': True,
-                    'y_1': True,
-                    'y_2': True,
-                    'y_3': True,
-                    'y_4': True,
-                    'y_5': True,
-                    'y_6': True,
-                    'y_7': True,
-                    'y_8': True,
-                }
+                'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
+                    'x_1': 'inverted',
+                    'x_2': 'inverted',
+                    'x_3': 'inverted',
+                    'x_4': 'inverted',
+                    'x_5': 'inverted',
+                    'x_6': 'inverted',
+                    'x_7': 'inverted',
+                    'x_8': 'inverted',
+                    'y_1': 'inverted',
+                    'y_2': 'inverted',
+                    'y_3': 'inverted',
+                    'y_4': 'inverted',
+                    'y_5': 'inverted',
+                    'y_6': 'inverted',
+                    'y_7': 'inverted',
+                    'y_8': 'inverted',
+                },
             },
             {
-                'name': 'mx17_2',
+                'name': 'mx17_4',
                 'det_type': 'mx17',
-                'resist_type': 'strip_resit_with_plein_on_top',
+                'resist_type': 'strip',
+                'drift_gap': '3.6 mm',
+                'frame_type': 'aluminum',  # carbon or aluminum
+                'distance_from_target': 20,  # cm from target
+                'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
@@ -197,45 +216,45 @@ class Config(RunConfigBase):
                     'z': 0,  # deg  Rotation about z axis
                 },
                 'hv_channels': {
-                    'drift': (0, 7),
-                    'resist': (3, 0),
+                    'drift': (5, 0),
+                    'resist': (2, 0),
                 },
                 'dream_feus': {
-                    'x_1': (4, 1),  # Runs along x direction, indicates y hit location
-                    'x_2': (4, 2),
-                    'x_3': (4, 3),
-                    'x_4': (4, 4),
-                    'x_5': (4, 5),
-                    'x_6': (4, 6),
-                    'x_7': (4, 7),
-                    'x_8': (4, 8),
-                    'y_1': (6, 1),  # Runs along y direction, indicates x hit location
-                    'y_2': (6, 2),
-                    'y_3': (6, 3),
-                    'y_4': (6, 4),
-                    'y_5': (6, 5),
-                    'y_6': (6, 6),
-                    'y_7': (6, 7),
-                    'y_8': (6, 8),
+                    'x_1': (3, 1),  # Runs along x direction, indicates y hit location
+                    'x_2': (3, 2),
+                    'x_3': (3, 3),
+                    'x_4': (3, 4),
+                    'x_5': (3, 5),
+                    'x_6': (3, 6),
+                    'x_7': (3, 7),
+                    'x_8': (3, 8),
+                    'y_1': (4, 1),  # Runs along y direction, indicates x hit location
+                    'y_2': (4, 2),
+                    'y_3': (4, 3),
+                    'y_4': (4, 4),
+                    'y_5': (4, 5),
+                    'y_6': (4, 6),
+                    'y_7': (4, 7),
+                    'y_8': (4, 8),
                 },
-                'dream_feu_inversion': {  # If True, connector is inverted --> 1, 0, 3, 2 ...
-                    'x_1': True,
-                    'x_2': True,
-                    'x_3': True,
-                    'x_4': True,
-                    'x_5': True,
-                    'x_6': True,
-                    'x_7': True,
-                    'x_8': True,
-                    'y_1': True,
-                    'y_2': True,
-                    'y_3': True,
-                    'y_4': True,
-                    'y_5': True,
-                    'y_6': True,
-                    'y_7': True,
-                    'y_8': True,
-                }
+                'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
+                    'x_1': 'inverted',
+                    'x_2': 'inverted',
+                    'x_3': 'inverted',
+                    'x_4': 'inverted',
+                    'x_5': 'inverted',
+                    'x_6': 'inverted',
+                    'x_7': 'inverted',
+                    'x_8': 'inverted',
+                    'y_1': 'inverted',
+                    'y_2': 'inverted',
+                    'y_3': 'inverted',
+                    'y_4': 'inverted',
+                    'y_5': 'inverted',
+                    'y_6': 'inverted',
+                    'y_7': 'inverted',
+                    'y_8': 'inverted',
+                },
             },
 
         ]

@@ -19,7 +19,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_prep_test_1'
+        self.run_name = 'cosmic_test_1'
         self.base_out_dir = '/mnt/data/x17/beam_may/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -33,44 +33,33 @@ class Config(RunConfigBase):
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
-        # self.gas = 'Ar/CO2 70/30'  # Gas type for run
+        self.gas = 'Ar/CO2 70/30'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
-        self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
-        self.beam_type = 'neutrons'
+        # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
+        self.beam_type = 'cosmics'
+        # self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
-        self.target_type = 'carbon'
+        # self.target_type = 'carbon'
         # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
-        # self.target_type = 'none'
+        self.target_type = 'none'
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/CosmicTb_MX17.cfg',
-
             'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
 
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_noCSA.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_G2.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_SiPMs.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_200fc.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_Feb_test_100fc.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_SiPM_trig.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_recovery_test.cfg',
-            # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
             # 'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 52,  # Number of samples per waveform to configure in DAQ
+            # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -81,7 +70,8 @@ class Config(RunConfigBase):
             # 'latency': 90,  # Latency setting for DAQ in clock cycles
             # 'latency': 100,  # Latency setting for DAQ in clock cycles
             'latency': 1,  # Latency setting for DAQ in clock cycles
-            'sample_period': 20,  # ns, sampling period
+            # 'sample_period': 20,  # ns, sampling period
+            'sample_period': 60,  # ns, sampling period
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
         }
 
@@ -104,11 +94,11 @@ class Config(RunConfigBase):
         }
 
         self.hv_info = {
-            'ip': '192.168.10.199',
-            # # 'ip': '192.168.10.81',
-            'username': 'admin',
-            'password': 'admin',
-            # 'ip': '128.141.177.244',
+            # 'ip': '192.168.10.199',
+            # # # 'ip': '192.168.10.81',
+            # 'username': 'admin',
+            # 'password': 'admin',
+            'ip': '128.141.177.244',
             'n_cards': 6,
             'n_channels_per_card': 12,
             'run_out_dir': self.run_out_dir,
@@ -116,10 +106,10 @@ class Config(RunConfigBase):
             'monitor_interval': 1,  # Seconds between HV monitoring
         }
 
-        # with open('hv_creds.txt') as f:
-        #     lines = f.readlines()
-        #     self.hv_info['username'] = lines[0].strip()
-        #     self.hv_info['password'] = lines[1].strip()
+        with open('hv_creds.txt') as f:
+            lines = f.readlines()
+            self.hv_info['username'] = lines[0].strip()
+            self.hv_info['password'] = lines[1].strip()
 
         r_init, d_init = 550, 1000
         self.sub_runs = [
@@ -402,17 +392,17 @@ class Config(RunConfigBase):
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
         }
 
-        self.included_detectors = ['mx17_1']
+        self.included_detectors = ['mx17_3', 'mx17_4']
 
         self.detectors = [
             {
-                'name': 'mx17_1',
+                'name': 'mx17_3',
                 'det_type': 'mx17',
-                'resist_type': 'strip_with_silver_paste',
-                'drift_gap': '11 mm',
-                'frame_type': 'carbon',  # carbon or aluminum
+                'resist_type': 'strip',
+                'drift_gap': '30 mm',
+                'frame_type': 'aluminum',  # carbon or aluminum
                 'distance_from_target': 20, # cm from target
-                'aluminum_wrap?': False,
+                'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
@@ -428,22 +418,22 @@ class Config(RunConfigBase):
                     'resist': (2, 0),
                 },
                 'dream_feus': {
-                    'x_1': (4, 1),  # Runs along x direction, indicates y hit location
-                    'x_2': (4, 2),
-                    'x_3': (4, 3),
-                    'x_4': (4, 4),
-                    'x_5': (4, 5),
-                    'x_6': (4, 6),
-                    'x_7': (4, 7),
-                    'x_8': (4, 8),
-                    'y_1': (5, 1),  # Runs along y direction, indicates x hit location
-                    'y_2': (5, 2),
-                    'y_3': (5, 3),
-                    'y_4': (5, 4),
-                    'y_5': (5, 5),
-                    'y_6': (5, 6),
-                    'y_7': (5, 7),
-                    'y_8': (5, 8),
+                    'x_1': (1, 1),  # Runs along x direction, indicates y hit location
+                    'x_2': (1, 2),
+                    'x_3': (1, 3),
+                    'x_4': (1, 4),
+                    'x_5': (1, 5),
+                    'x_6': (1, 6),
+                    'x_7': (1, 7),
+                    'x_8': (1, 8),
+                    'y_1': (2, 1),  # Runs along y direction, indicates x hit location
+                    'y_2': (2, 2),
+                    'y_3': (2, 3),
+                    'y_4': (2, 4),
+                    'y_5': (2, 5),
+                    'y_6': (2, 6),
+                    'y_7': (2, 7),
+                    'y_8': (2, 8),
                 },
                 'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
                     'x_1': 'inverted',
@@ -465,9 +455,13 @@ class Config(RunConfigBase):
                 },
             },
             {
-                'name': 'mx17_2',
+                'name': 'mx17_4',
                 'det_type': 'mx17',
-                'resist_type': 'strip_resit_with_plein_on_top',
+                'resist_type': 'strip',
+                'drift_gap': '3.6 mm',
+                'frame_type': 'aluminum',  # carbon or aluminum
+                'distance_from_target': 20,  # cm from target
+                'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
@@ -479,26 +473,26 @@ class Config(RunConfigBase):
                     'z': 0,  # deg  Rotation about z axis
                 },
                 'hv_channels': {
-                    'drift': (0, 7),
-                    'resist': (3, 0),
+                    'drift': (5, 0),
+                    'resist': (2, 0),
                 },
                 'dream_feus': {
-                    'x_1': (4, 1),  # Runs along x direction, indicates y hit location
-                    'x_2': (4, 2),
-                    'x_3': (4, 3),
-                    'x_4': (4, 4),
-                    'x_5': (4, 5),
-                    'x_6': (4, 6),
-                    'x_7': (4, 7),
-                    'x_8': (4, 8),
-                    'y_1': (6, 1),  # Runs along y direction, indicates x hit location
-                    'y_2': (6, 2),
-                    'y_3': (6, 3),
-                    'y_4': (6, 4),
-                    'y_5': (6, 5),
-                    'y_6': (6, 6),
-                    'y_7': (6, 7),
-                    'y_8': (6, 8),
+                    'x_1': (3, 1),  # Runs along x direction, indicates y hit location
+                    'x_2': (3, 2),
+                    'x_3': (3, 3),
+                    'x_4': (3, 4),
+                    'x_5': (3, 5),
+                    'x_6': (3, 6),
+                    'x_7': (3, 7),
+                    'x_8': (3, 8),
+                    'y_1': (4, 1),  # Runs along y direction, indicates x hit location
+                    'y_2': (4, 2),
+                    'y_3': (4, 3),
+                    'y_4': (4, 4),
+                    'y_5': (4, 5),
+                    'y_6': (4, 6),
+                    'y_7': (4, 7),
+                    'y_8': (4, 8),
                 },
                 'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
                     'x_1': 'inverted',
