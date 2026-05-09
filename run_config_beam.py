@@ -32,8 +32,8 @@ class Config(RunConfigBase):
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
         self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
-        # self.gas = 'Ar/CF4 90/10'  # Gas type for run
-        self.gas = 'Ar/CO2 70/30'  # Gas type for run
+        self.gas = 'Ar/CF4 90/10'  # Gas type for run
+        # self.gas = 'Ar/CO2 70/30'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         self.beam_type = 'cosmics'
@@ -115,7 +115,7 @@ class Config(RunConfigBase):
             self.hv_info['password'] = lines[1].strip()
 
         scint_A_HV, scint_B_HV = 1300, 1300
-        r0_init, r1_init, d0_init, d1_init = 875, 875, 1400, 500
+        r0_init, r1_init, d0_init, d1_init = 660, 660, 1000, 500
         self.sub_runs = [
             # {
             #     'sub_run_name': f'test_run',
@@ -153,35 +153,35 @@ class Config(RunConfigBase):
             #         },
             #     }
             # },
-            # {
-            #     'sub_run_name': f'gas_change',
-            #     'run_time': 3 * 60,  # Minutes
-            #     'hvs': {
-            #         '5': {  # Positive Resists
-            #             # '0': r0_init,  # mx17_3 30mm drift
-            #             '1': r1_init,  # mx17_4 3.6mm drift
-            #         },
-            #         '9': {  # Negative Drifts
-            #             # '0': d0_init,  # mx17_3 30mm drift
-            #             '1': d1_init,  # mx17_4 3.6mm drift
-            #         },
-            #         '8': {  # PMTs
-            #             '0': scint_A_HV,  # Top
-            #             '1': scint_B_HV,  # Bottom
-            #         },
-            #     }
-            # },
+            {
+                'sub_run_name': f'gas_change',
+                'run_time': 6 * 60,  # Minutes
+                'hvs': {
+                    '5': {  # Positive Resists
+                        '0': r0_init,  # mx17_3 30mm drift
+                        '1': r1_init,  # mx17_4 3.6mm drift
+                    },
+                    '9': {  # Negative Drifts
+                        '0': d0_init,  # mx17_3 30mm drift
+                        '1': d1_init,  # mx17_4 3.6mm drift
+                    },
+                    '8': {  # PMTs
+                        '0': scint_A_HV,  # Top
+                        '1': scint_B_HV,  # Bottom
+                    },
+                }
+            },
         ]
 
         drifts_0 = [d0_init]
         drifts_1 = [d1_init]
 
-        v_step, n_steps = 10, 20
+        v_step, n_steps = 10, 30
         resists_0 = [r0_init - i * v_step for i in range(n_steps)]
         resists_1 = [r1_init - i * v_step for i in range(n_steps)]
 
         hv_scan_i = 0
-        scan_step_time = 15
+        scan_step_time = 10
         for drift_0, drift_1 in zip(drifts_0, drifts_1):
             for resist_0, resist_1 in zip(resists_0, resists_1):
                 new_subrun = {
