@@ -169,21 +169,51 @@ def get_daq_control_status():
 def get_processor_watcher_status():
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-30", "-t", "processor_watcher:0.0"],
+            ["tmux", "capture-pane", "-pS", "-50", "-t", "processor_watcher:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
         return {"status": "STOPPED", "color": "secondary", "fields": []}
 
-    for line in reversed(output.splitlines()):
-        if not line.strip():
+    lines = [l for l in output.splitlines() if l.strip()]
+
+    # Find the most recent run/subrun/file_num context line
+    # Format: [watcher] run_name/subrun_name  file_num=000  (N FEU(s))
+    fields = []
+    for line in reversed(lines):
+        m = re.search(r'\[watcher\] (\S+)/(\S+)\s+file_num=(\d+)', line)
+        if m:
+            fields = [
+                {"label": "Run",    "value": m.group(1)},
+                {"label": "Subrun", "value": m.group(2)},
+                {"label": "File #", "value": str(int(m.group(3)))},
+            ]
+            break
+
+    # Lines that carry no status signal on their own — skip when determining state
+    _noise = ("[watcher] Marked stale", "[analyze] Using pedestal",
+              "[analyze] No pedestal",  "[analyze] Multiple pedestals",
+              "[analyze] Cannot extract")
+
+    for line in reversed(lines):
+        if any(n in line for n in _noise):
             continue
-        if any(tag in line for tag in ("[decode]", "[analyze]", "[combine]", "[cleanup]")):
-            return {"status": "PROCESSING", "color": "warning", "fields": []}
+        if "[watcher] Decoding pedestal:" in line:
+            return {"status": "Ped. Decoding", "color": "success",  "fields": fields}
+        if "[decode]" in line:
+            return {"status": "Decoding",      "color": "success",  "fields": fields}
+        if "[analyze]" in line:
+            return {"status": "Analyzing",     "color": "success",  "fields": fields}
+        if "[combine]" in line:
+            return {"status": "Combining",     "color": "success",  "fields": fields}
+        if "[cleanup]" in line:
+            return {"status": "Cleaning Up",   "color": "success",  "fields": fields}
         if "[watcher] Sleeping" in line:
-            return {"status": "IDLE", "color": "success", "fields": []}
+            return {"status": "IDLE",          "color": "info",     "fields": fields}
+        if "[watcher] Waiting for runs_dir" in line:
+            return {"status": "Waiting for Dir", "color": "warning", "fields": []}
         if "[watcher]" in line:
-            return {"status": "RUNNING", "color": "success", "fields": []}
+            return {"status": "RUNNING",       "color": "info",     "fields": fields}
 
     return {"status": "UNKNOWN", "color": "danger", "fields": []}
 
