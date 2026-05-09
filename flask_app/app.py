@@ -199,8 +199,14 @@ def git_reset():
 @app.route("/start_processor", methods=["POST"])
 def start_processor():
     try:
-        if not os.path.exists(PROCESSOR_CONFIG_PATH):
-            return jsonify({"success": False, "message": f"Config not found: {PROCESSOR_CONFIG_PATH}"}), 404
+        # Regenerate processor_config.json from processor_config.py
+        result = subprocess.run(
+            ["python", f"{BASE_DIR}/processor_config.py"],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            return jsonify({"success": False, "message": f"Config generation failed: {result.stderr}"}), 500
+
         # Kill any existing session first (ignore errors if not running)
         subprocess.run(["tmux", "kill-session", "-t", PROCESSOR_TMUX], capture_output=True)
         subprocess.Popen([
