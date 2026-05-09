@@ -19,7 +19,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'cosmic_test_1'
+        self.run_name = 'run_1'
         self.base_out_dir = '/mnt/data/x17/beam_may/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -30,7 +30,7 @@ class Config(RunConfigBase):
         self.start_time = None
         self.process_on_fly = False  # True to process fdfs on the fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
-        self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
+        self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
         self.gas = 'Ar/CO2 70/30'  # Gas type for run
@@ -51,7 +51,8 @@ class Config(RunConfigBase):
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Cosmics_Mx17_May.cfg',
 
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -99,7 +100,7 @@ class Config(RunConfigBase):
             # 'username': 'admin',
             # 'password': 'admin',
             'ip': '128.141.177.244',
-            'n_cards': 6,
+            'n_cards': 10,
             'n_channels_per_card': 12,
             'run_out_dir': self.run_out_dir,
             'hv_monitoring': True,  # True to monitor HV during run, False to not monitor
@@ -111,288 +112,106 @@ class Config(RunConfigBase):
             self.hv_info['username'] = lines[0].strip()
             self.hv_info['password'] = lines[1].strip()
 
-        r_init, d_init = 550, 1000
+        scint_A_HV, scint_B_HV = 1300, 1300
+        r0_init, r1_init, d0_init, d1_init = 500, 500, 1000, 1000
         self.sub_runs = [
-            {
-                'sub_run_name': f'daq_test_0',
-                'run_time': 2,  # Minutes
-                'hvs': {
-                    # '2': {
-                    #     '0': 0,
-                    # },
-                    # '5': {
-                    #     '0': 0,
-                    # },
-                    # '12': {
-                    #     '0': 0,
-                    # },
-                }
-            },
-            {
-                'sub_run_name': f'daq_test_1',
-                'run_time': 2,  # Minutes
-                'hvs': {
-                    # '2': {
-                    #     '0': 0,
-                    # },
-                    # '5': {
-                    #     '0': 0,
-                    # },
-                    # '12': {
-                    #     '0': 0,
-                    # },
-                }
-            },
-            {
-                'sub_run_name': f'daq_test_2',
-                'run_time': 2,  # Minutes
-                'hvs': {
-                    # '2': {
-                    #     '0': 0,
-                    # },
-                    # '5': {
-                    #     '0': 0,
-                    # },
-                    # '12': {
-                    #     '0': 0,
-                    # },
-                }
-            },
             # {
-            #     'sub_run_name': f'initial_resist_{r_init}V_drift_{d_init}V',
-            #     'run_time': 60 * 24,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': r_init,
-            #         },
-            #         '5': {
-            #             '0': d_init,
-            #         },
-            #         # '12': {
-            #         #     '0': 55,
-            #         # },
-            #     }
-            # },
-
-            # {
-            #     'sub_run_name': f'resist_0V_drift_0V',
+            #     'sub_run_name': f'quick_run_2min',
             #     'run_time': 2,  # Minutes
             #     'hvs': {
-            #         '2': {
-            #             '0': 0,
+            #         '5': {  # Positive Resists
+            #             # '0': r0_init,  # Det
+            #             '1': r1_init,
             #         },
-            #         '5': {
-            #             '0': 0,
+            #         '9': {  # Negative Drifts
+            #             # '0': d0_init,
+            #             '1': d1_init,
             #         },
-            #         # '12': {
-            #         #     '0': 0,
-            #         # },
-            #     }
-            # },
-
-            # {
-            #     'sub_run_name': f'resist_0V_drift_1000V',
-            #     'run_time': 2,  # Minutes
-            #     'hvs': {
-            #         '2': {
-            #             '0': 0,
-            #         },
-            #         '5': {
-            #             '0': 1000,
+            #         '8': {  # PMTs
+            #             '0': scint_A_HV,  # Top
+            #             '1': scint_B_HV,  # Bottom
             #         },
             #     }
             # },
-            #
             # {
-            #     'sub_run_name': f'resist_530V_drift_0V',
-            #     'run_time': 8,  # Minutes
+            #     'sub_run_name': f'quick_run_10min',
+            #     'run_time': 10,  # Minutes
             #     'hvs': {
-            #         '2': {
-            #             '0': 530,
+            #         '5': {  # Positive Resists
+            #             # '0': r0_init,  # mx17_3 30mm drift
+            #             '1': r1_init,  # mx17_4 3.6mm drift
             #         },
-            #         '5': {
-            #             '0': 0,
+            #         '9': {  # Negative Drifts
+            #             # '0': d0_init,  # mx17_3 30mm drift
+            #             '1': d1_init,  # mx17_4 3.6mm drift
+            #         },
+            #         '8': {  # PMTs
+            #             '0': scint_A_HV,  # Top
+            #             '1': scint_B_HV,  # Bottom
             #         },
             #     }
             # },
-
             # {
-            #     'sub_run_name': f'resist_hv_420V_drift_600V',
-            #     'run_time': 5,  # Minutes
+            #     'sub_run_name': f'gas_change',
+            #     'run_time': 3 * 60,  # Minutes
             #     'hvs': {
-            #         '2': {
-            #             '0': 420,
+            #         '5': {  # Positive Resists
+            #             # '0': r0_init,  # mx17_3 30mm drift
+            #             '1': r1_init,  # mx17_4 3.6mm drift
             #         },
-            #         '5': {
-            #             '0': 600,
+            #         '9': {  # Negative Drifts
+            #             # '0': d0_init,  # mx17_3 30mm drift
+            #             '1': d1_init,  # mx17_4 3.6mm drift
+            #         },
+            #         '8': {  # PMTs
+            #             '0': scint_A_HV,  # Top
+            #             '1': scint_B_HV,  # Bottom
             #         },
             #     }
             # },
         ]
 
-        # gas_change_r, gas_change_d = 450, 1000
-        # self.sub_runs.append({
-        #     'sub_run_name': f'gas_change_resist_{gas_change_r}V_drift_{gas_change_d}V',
-        #     'run_time': 60 * 24,  # Minutes
-        #     'hvs': {
-        #         '2': {
-        #             '0': gas_change_r,
-        #         },
-        #         '5': {
-        #             '0': gas_change_d,
-        #         },
-        #         # '12': {
-        #         #     '0': 55,
-        #         # },
-        #     }
-        # })
+        drifts_0 = [500]
+        drifts_1 = [500]
 
-        # Add more hv_subruns
-        # # # hvs = list(range(200, 300, 20))
-        # # # hvs = list(range(270, 520, 10))
-        # # hvs = list(range(550, 500, -5))
-        # # hvs.extend(list(range(500, 400, -10)))
-        # # hvs = list(range(720, 600, -5))
-        # # # hvs = list(range(440, 775, -10))
-        # hvs = [545, 540, 535, 530, 525, 520, 515, 510, 505, 500]
-        # # hvs = [540]
-        # # # # hvs = [620, 610, 600, 580, 560, 540, 520, 500, 480, 450, 420]
-        # # # # hvs = [620, 610, 600, 590, 580, 570, 560, 550, 530, 510, 490, 470]
-        # # # hvs = [720, 710, 700, 690, 680, 670, 660, 650, 640, 630, 620, 610]
-        # # # drift = 600
-        # drift = 1000
-        # for hv in hvs:
-        #     new_subrun = {
-        #         'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-        #         'run_time': 2,  # Minutes
-        #         'hvs': {
-        #             '2': {
-        #                 '0': hv,
-        #             },
-        #             '5': {
-        #                 '0': drift,
-        #             },
-        #             # '12': {
-        #             #     '0': 55,
-        #             # },
-        #         }
-        #     }
-        #     self.sub_runs.append(new_subrun)
+        resists_0 = [870, 860, 850, 840, 830, 820, 810, 800, 790, 780, 770, 760, 750, 740, 730, 720,
+                     710, 700, 690, 680, 670, 660, 650, 640, 630, 620, 610, 600]
+        resists_1 = [870, 860, 850, 840, 830, 820, 810, 800, 790, 780, 770, 760, 750, 740, 730, 720,
+                     710, 700, 690, 680, 670, 660, 650, 640, 630, 620, 610, 600]
 
-        # drifts = [800, 500, 250]
-        # drifts = [800, 500]
-        # for drift in drifts:
-        #     # hvs = [550, 530, 510, 540, 520, 490]
-        #     hvs = [515, 510, 520, 525, 530, 505]
-        #     # hvs = list(range(730, 600, -5))
-        #
-        #     # hvs = list(range(550, 490, -5))
-        #     # hvs.extend(list(range(490, 400, -10)))
-        #
-        #     # hvs = list(range(550, 465, -5))
-        #
-        #     # hvs = [550, 545]
-        #     # hvs = list(range(540, 475, -5))
-        #     # hvs.extend(list(range(500, 400, -10)))
-        #     for hv in hvs:
-        #         # time = 30 if hv > 525 or hv <= 510 else 90
-        #         time = 60 * 3
-        #         new_subrun = {
-        #             'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-        #             'run_time': time,  # Minutes
-        #             'hvs': {
-        #                 '2': {
-        #                     '0': hv,
-        #                 },
-        #                 '5': {
-        #                     '0': drift,
-        #                 },
-        #                 # '12': {
-        #                 #     '0': 55,
-        #                 # },
-        #             }
-        #         }
-        #         self.sub_runs.append(new_subrun)
-        #
-        # drifts = [1000]
-        # for drift in drifts:
-        #     # hvs = list(range(730, 600, -5))
-        #     hvs = [515, 510, 505, 500, 495, 490, 485, 480]
-        #     # hvs = [550, 545]
-        #     # hvs = list(range(540, 475, -5))
-        #     # hvs.extend(list(range(500, 400, -10)))
-        #     for hv in hvs:
-        #         # time = 30 if hv > 525 or hv <= 510 else 90
-        #         time = 60
-        #         new_subrun = {
-        #             'sub_run_name': f'resist_{hv}V_drift_{drift}V',
-        #             'run_time': time,  # Minutes
-        #             'hvs': {
-        #                 '2': {
-        #                     '0': hv,
-        #                 },
-        #                 '5': {
-        #                     '0': drift,
-        #                 },
-        #                 # '12': {
-        #                 #     '0': 55,
-        #                 # },
-        #             }
-        #         }
-        #         self.sub_runs.append(new_subrun)
-        # 
-        # self.sub_runs.append({
-        #     'sub_run_name': f'resist_0V_drift_0V',
-        #     'run_time': 2,  # Minutes
-        #     'hvs': {
-        #         '2': {
-        #             '0': 0,
-        #         },
-        #         '5': {
-        #             '0': 0,
-        #         },
-        #     }
-        # })
-        # 
-        # final_v, final_d = 700, 1000
-        # self.sub_runs.append({
-        #         'sub_run_name': f'final_resist_{final_v}V_drift_{final_d}V',
-        #         'run_time': 60 * 24,  # Minutes
-        #         'hvs': {
-        #             '2': {
-        #                 '0': final_v,
-        #             },
-        #             '5': {
-        #                 '0': final_d,
-        #             },
-        #             # '12': {
-        #             #     '0': 55,
-        #             # },
-        #         }
-        #     })
+        hv_scan_i = 0
+        scan_step_time = 20
+        for drift_0, drift_1 in zip(drifts_0, drifts_1):
+            for resist_0, resist_1 in zip(resists_0, resists_1):
+                new_subrun = {
+                    'sub_run_name': f'hv_scan_{hv_scan_i}',
+                    'run_time': scan_step_time,  # Minutes
+                    'hvs': {
+                        '5': {  # Positive Resists
+                            # '0': resist_0,  # mx17_3 30mm drift
+                            '1': resist_1,  # mx17_4 3.6mm drift
+                        },
+                        '9': {  # Negative Drifts
+                            # '0': drift_0,  # mx17_3 30mm drift
+                            '1': drift_1,  # mx17_4 3.6mm drift
+                        },
+                        '8': {  # PMTs
+                            '0': scint_A_HV,  # Top
+                            '1': scint_B_HV,  # Bottom
+                        },
+                    }
+                }
 
-
-        # for i in range(30):
-        #     self.sub_runs.append(
-        #     {
-        #         'sub_run_name': f'drift_600V_{i}',
-        #         'run_time': 60 * 2,  # Minutes
-        #         'hvs': {
-        #             '2': {
-        #                 '0': 680,
-        #             },
-        #             '5': {
-        #                 '0': 600,
-        #             },
-        #         }
-        #     })
+                self.sub_runs.append(new_subrun)
+                hv_scan_i += 1
 
 
         self.bench_geometry = {
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
         }
 
-        self.included_detectors = ['mx17_3', 'mx17_4']
+        # self.included_detectors = ['mx17_3', 'mx17_4', 'scint_A', 'scint_B']
+        self.included_detectors = ['mx17_4', 'scint_A', 'scint_B']
 
         self.detectors = [
             {
@@ -401,12 +220,12 @@ class Config(RunConfigBase):
                 'resist_type': 'strip',
                 'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
-                'distance_from_target': 20, # cm from target
+                # 'distance_from_target': 20, # cm from target
                 'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
-                    'z': 0,  # mm
+                    'z': 33.5,  # mm
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
@@ -414,9 +233,10 @@ class Config(RunConfigBase):
                     'z': 0,  # deg  Rotation about z axis
                 },
                 'hv_channels': {
-                    'drift': (5, 0),
-                    'resist': (2, 0),
+                    'drift': (9, 0),
+                    'resist': (5, 0),
                 },
+                'mx_cards': '4 M1',
                 'dream_feus': {
                     'x_1': (1, 1),  # Runs along x direction, indicates y hit location
                     'x_2': (1, 2),
@@ -460,12 +280,12 @@ class Config(RunConfigBase):
                 'resist_type': 'strip',
                 'drift_gap': '3.6 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
-                'distance_from_target': 20,  # cm from target
+                # 'distance_from_target': 20,  # cm from target
                 'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
-                    'z': 0,  # mm
+                    'z': 19.5,  # mm
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
@@ -473,50 +293,105 @@ class Config(RunConfigBase):
                     'z': 0,  # deg  Rotation about z axis
                 },
                 'hv_channels': {
-                    'drift': (5, 0),
-                    'resist': (2, 0),
+                    'drift': (9, 1),
+                    'resist': (5, 1),
                 },
+                'mx_cards': '4 M2',
                 'dream_feus': {
                     'x_1': (3, 1),  # Runs along x direction, indicates y hit location
                     'x_2': (3, 2),
                     'x_3': (3, 3),
                     'x_4': (3, 4),
-                    'x_5': (3, 5),
-                    'x_6': (3, 6),
-                    'x_7': (3, 7),
-                    'x_8': (3, 8),
-                    'y_1': (4, 1),  # Runs along y direction, indicates x hit location
-                    'y_2': (4, 2),
-                    'y_3': (4, 3),
-                    'y_4': (4, 4),
-                    'y_5': (4, 5),
-                    'y_6': (4, 6),
-                    'y_7': (4, 7),
-                    'y_8': (4, 8),
+                    'y_1': (3, 5),  # Runs along y direction, indicates x hit location
+                    'y_2': (3, 6),
+                    'y_3': (3, 7),
+                    'y_4': (3, 8),
                 },
                 'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
                     'x_1': 'inverted',
                     'x_2': 'inverted',
                     'x_3': 'inverted',
                     'x_4': 'inverted',
-                    'x_5': 'inverted',
-                    'x_6': 'inverted',
-                    'x_7': 'inverted',
-                    'x_8': 'inverted',
                     'y_1': 'inverted',
                     'y_2': 'inverted',
                     'y_3': 'inverted',
                     'y_4': 'inverted',
-                    'y_5': 'inverted',
-                    'y_6': 'inverted',
-                    'y_7': 'inverted',
-                    'y_8': 'inverted',
+                },
+                # 'dream_feus': {
+                #     'x_1': (3, 1),  # Runs along x direction, indicates y hit location
+                #     'x_2': (3, 2),
+                #     'x_3': (3, 3),
+                #     'x_4': (3, 4),
+                #     'x_5': (3, 5),
+                #     'x_6': (3, 6),
+                #     'x_7': (3, 7),
+                #     'x_8': (3, 8),
+                #     'y_1': (4, 1),  # Runs along y direction, indicates x hit location
+                #     'y_2': (4, 2),
+                #     'y_3': (4, 3),
+                #     'y_4': (4, 4),
+                #     'y_5': (4, 5),
+                #     'y_6': (4, 6),
+                #     'y_7': (4, 7),
+                #     'y_8': (4, 8),
+                # },
+                # 'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
+                #     'x_1': 'inverted',
+                #     'x_2': 'inverted',
+                #     'x_3': 'inverted',
+                #     'x_4': 'inverted',
+                #     'x_5': 'inverted',
+                #     'x_6': 'inverted',
+                #     'x_7': 'inverted',
+                #     'x_8': 'inverted',
+                #     'y_1': 'inverted',
+                #     'y_2': 'inverted',
+                #     'y_3': 'inverted',
+                #     'y_4': 'inverted',
+                #     'y_5': 'inverted',
+                #     'y_6': 'inverted',
+                #     'y_7': 'inverted',
+                #     'y_8': 'inverted',
+                # },
+            },
+            {
+                'name': 'scint_A',
+                'det_type': 'scintillator_PMT',
+                'det_center_coords': {  # Center of detector
+                    'x': 0,  # mm
+                    'y': 0,  # mm
+                    'z': 10,  # mm
+                },
+                'det_orientation': {
+                    'x': 0,  # deg  Rotation about x axis
+                    'y': 0,  # deg  Rotation about y axis
+                    'z': 0,  # deg  Rotation about z axis
+                },
+                'hv_channels': {
+                    'bias': (8, 0),
+                },
+            },
+            {
+                'name': 'scint_B',
+                'det_type': 'scintillator_PMT',
+                'det_center_coords': {  # Center of detector
+                    'x': 0,  # mm
+                    'y': 0,  # mm
+                    'z': 7,  # mm
+                },
+                'det_orientation': {
+                    'x': 0,  # deg  Rotation about x axis
+                    'y': 0,  # deg  Rotation about y axis
+                    'z': 0,  # deg  Rotation about z axis
+                },
+                'hv_channels': {
+                    'bias': (8, 1),
                 },
             },
 
         ]
 
-        if not self.write_all_dectors_to_json:
+        if not self.write_all_detectors_to_json:
             self.detectors = [det for det in self.detectors if det['name'] in self.included_detectors]
 
 if __name__ == '__main__':
