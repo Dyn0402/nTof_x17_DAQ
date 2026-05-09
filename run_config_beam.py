@@ -52,8 +52,8 @@ class Config(RunConfigBase):
             'ip': '192.168.10.8',
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Cosmics_Mx17_May.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_QA.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Cosmics_Mx17_May.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_QA.cfg',
 
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -189,11 +189,11 @@ class Config(RunConfigBase):
                     'run_time': scan_step_time,  # Minutes
                     'hvs': {
                         '5': {  # Positive Resists
-                            # '0': resist_0,  # mx17_3 30mm drift
+                            '0': resist_0,  # mx17_3 30mm drift
                             '1': resist_1,  # mx17_4 3.6mm drift
                         },
                         '9': {  # Negative Drifts
-                            # '0': drift_0,  # mx17_3 30mm drift
+                            '0': drift_0,  # mx17_3 30mm drift
                             '1': drift_1,  # mx17_4 3.6mm drift
                         },
                         '8': {  # PMTs
@@ -211,8 +211,8 @@ class Config(RunConfigBase):
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
         }
 
-        # self.included_detectors = ['mx17_3', 'mx17_4', 'scint_A', 'scint_B']
-        self.included_detectors = ['mx17_4', 'scint_A', 'scint_B']
+        self.included_detectors = ['mx17_3', 'mx17_4', 'scint_A', 'scint_B']
+        # self.included_detectors = ['mx17_4', 'scint_A', 'scint_B']
 
         self.detectors = [
             {
