@@ -115,7 +115,7 @@ class Config(RunConfigBase):
             self.hv_info['password'] = lines[1].strip()
 
         scint_A_HV, scint_B_HV = 1300, 1300
-        r0_init, r1_init, d0_init, d1_init = 840, 890, 1400, 500
+        r0_init, r1_init, d0_init, d1_init = 845, 875, 1400, 500
         self.sub_runs = [
             # {
             #     'sub_run_name': f'test_run',
@@ -176,12 +176,12 @@ class Config(RunConfigBase):
         drifts_0 = [d0_init]
         drifts_1 = [d1_init]
 
-        v_step, n_steps = 20, 20
+        v_step, n_steps = 10, 20
         resists_0 = [r0_init - i * v_step for i in range(n_steps)]
         resists_1 = [r1_init - i * v_step for i in range(n_steps)]
 
         hv_scan_i = 0
-        scan_step_time = 10
+        scan_step_time = 15
         for drift_0, drift_1 in zip(drifts_0, drifts_1):
             for resist_0, resist_1 in zip(resists_0, resists_1):
                 new_subrun = {
