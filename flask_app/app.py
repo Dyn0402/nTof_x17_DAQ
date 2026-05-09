@@ -20,7 +20,8 @@ import pandas as pd
 from flask import Flask, render_template, jsonify, request, send_from_directory, abort
 from flask_socketio import SocketIO, emit
 
-from daq_status import *
+from daq_status import (get_dream_daq_status, get_hv_control_status,
+                        get_daq_control_status, get_processor_watcher_status)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
 from run_config_beam import Config
@@ -32,6 +33,8 @@ CONFIG_TEMPLATE_DIR = f"{BASE_DIR}/config/json_templates"
 CONFIG_RUN_DIR = f"{BASE_DIR}/config/json_run_configs"
 CONFIG_PY_PATH = f"{BASE_DIR}/run_config_beam.py"
 BASH_DIR = f"{BASE_DIR}/bash_scripts"
+PROCESSOR_CONFIG_PATH = f"{BASE_DIR}/config/processor_config.json"
+PROCESSOR_TMUX = "processor_watcher"
 # ANALYSIS_DIR = "/media/dylan/data/x17"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
 BEAM_DIR = "beam_may"  # "beam_feb" or "beam_may"
@@ -43,7 +46,7 @@ HV_TAIL = 1000  # number of most recent rows to show
 app = Flask(__name__)
 socketio = SocketIO(app)
 
-TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control"]
+TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher"]
 sessions = {}
 
 @app.route("/")
@@ -65,6 +68,8 @@ def status_all():
             info = get_hv_control_status()
         elif s == "daq_control":
             info = get_daq_control_status()
+        elif s == "processor_watcher":
+            info = get_processor_watcher_status()
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 
@@ -187,6 +192,31 @@ def git_reset():
     try:
         subprocess.Popen([f"{BASH_DIR}/git_reset.sh"])
         return jsonify({"success": True, "message": "Git now up to date"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/start_processor", methods=["POST"])
+def start_processor():
+    try:
+        if not os.path.exists(PROCESSOR_CONFIG_PATH):
+            return jsonify({"success": False, "message": f"Config not found: {PROCESSOR_CONFIG_PATH}"}), 404
+        # Kill any existing session first (ignore errors if not running)
+        subprocess.run(["tmux", "kill-session", "-t", PROCESSOR_TMUX], capture_output=True)
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", PROCESSOR_TMUX,
+            "python", f"{BASE_DIR}/processor_watcher.py", PROCESSOR_CONFIG_PATH
+        ])
+        return jsonify({"success": True, "message": "Processor watcher started"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stop_processor", methods=["POST"])
+def stop_processor():
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", PROCESSOR_TMUX], capture_output=True)
+        return jsonify({"success": True, "message": "Processor watcher stopped"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

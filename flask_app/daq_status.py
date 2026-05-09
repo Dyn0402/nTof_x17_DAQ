@@ -166,6 +166,28 @@ def get_daq_control_status():
     return {"status": "UNKNOWN STATE", "color": "danger", "fields": fields}
 
 
+def get_processor_watcher_status():
+    try:
+        output = subprocess.check_output(
+            ["tmux", "capture-pane", "-pS", "-30", "-t", "processor_watcher:0.0"],
+            text=True
+        )
+    except subprocess.CalledProcessError:
+        return {"status": "STOPPED", "color": "secondary", "fields": []}
+
+    for line in reversed(output.splitlines()):
+        if not line.strip():
+            continue
+        if any(tag in line for tag in ("[decode]", "[analyze]", "[combine]", "[cleanup]")):
+            return {"status": "PROCESSING", "color": "warning", "fields": []}
+        if "[watcher] Sleeping" in line:
+            return {"status": "IDLE", "color": "success", "fields": []}
+        if "[watcher]" in line:
+            return {"status": "RUNNING", "color": "success", "fields": []}
+
+    return {"status": "UNKNOWN", "color": "danger", "fields": []}
+
+
 def get_decoder_status():
     try:
         output = subprocess.check_output(
