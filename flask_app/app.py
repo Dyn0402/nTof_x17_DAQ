@@ -17,6 +17,7 @@ import threading
 import time
 import json
 import pandas as pd
+from urllib.parse import quote
 from flask import Flask, render_template, jsonify, request, send_from_directory, abort
 from flask_socketio import SocketIO, emit
 
@@ -440,7 +441,7 @@ def browse_analysis():
 
     subdirs = sorted(d for d in os.listdir(target)
                      if os.path.isdir(os.path.join(target, d)))
-    images  = [f"/serve_png?dir={target}&file={f}"
+    images  = [f"/serve_png?dir={quote(target, safe='')}&file={quote(f, safe='')}"
                for f in sorted(os.listdir(target))
                if f.lower().endswith(".png")]
 
