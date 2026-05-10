@@ -241,17 +241,13 @@ def get_qa_watcher_status():
             ]
             break
 
-    # Extract current detector being processed from [qa] lines
-    for line in reversed(lines):
-        m = re.search(r'\[qa\] (\S+) —', line)
-        if m:
-            fields_with_det = fields + [{"label": "Detector", "value": m.group(1)}]
-            return {"status": "Running QA", "color": "success", "fields": fields_with_det}
-
     _noise = ("[qa_watcher] Marked stale",)
     for line in reversed(lines):
         if any(n in line for n in _noise):
             continue
+        m = re.search(r'\[qa\] (\S+) —', line)
+        if m:
+            return {"status": "Running QA",  "color": "success", "fields": fields + [{"label": "Detector", "value": m.group(1)}]}
         if "[qa_watcher] Sleeping" in line:
             return {"status": "IDLE",        "color": "info",    "fields": fields}
         if "[qa_watcher] Waiting for runs_dir" in line:
