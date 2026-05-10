@@ -37,6 +37,7 @@ BASH_DIR = f"{BASE_DIR}/bash_scripts"
 PROCESSOR_CONFIG_PATH = f"{BASE_DIR}/config/processor_config.json"
 PROCESSOR_TMUX = "processor_watcher"
 QA_CONFIG_PATH = f"{BASE_DIR}/config/qa_config.json"
+QA_RESET_PATH  = f"{BASE_DIR}/config/qa_reset.json"
 QA_TMUX = "qa_watcher"
 # ANALYSIS_DIR = "/media/dylan/data/x17"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
@@ -256,6 +257,22 @@ def stop_qa():
     try:
         subprocess.run(["tmux", "kill-session", "-t", QA_TMUX], capture_output=True)
         return jsonify({"success": True, "message": "QA watcher stopped"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/rerun_qa", methods=["POST"])
+def rerun_qa():
+    try:
+        data = request.get_json(silent=True) or {}
+        runs = data.get('runs') or None  # null/missing/empty → all runs
+        with open(QA_RESET_PATH, 'w') as f:
+            json.dump({"runs": runs}, f)
+        if runs:
+            msg = f"QA rerun queued for: {', '.join(runs)}"
+        else:
+            msg = "QA rerun queued for all runs"
+        return jsonify({"success": True, "message": msg})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

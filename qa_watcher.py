@@ -37,17 +37,19 @@ def main():
         print("Usage: python qa_watcher.py <qa_config_json_path>")
         sys.exit(1)
 
-    with open(sys.argv[1]) as f:
+    config_path = Path(sys.argv[1])
+    with open(config_path) as f:
         config = json.load(f)
 
-    run_watcher(config)
+    reset_signal_path = config_path.parent / 'qa_reset.json'
+    run_watcher(config, reset_signal_path)
 
 
 # ---------------------------------------------------------------------------
 # Main watcher loop
 # ---------------------------------------------------------------------------
 
-def run_watcher(config: dict):
+def run_watcher(config: dict, reset_signal_path: Path = None):
     runs_dir       = Path(config['runs_dir'])
     ntof_x17_dir   = Path(config['ntof_x17_dir'])
     combined_inner = config.get('combined_hits_inner_dir', 'combined_hits_root')
@@ -81,6 +83,24 @@ def run_watcher(config: dict):
 
     while True:
         found_new = False
+
+        if reset_signal_path:
+            reset = _pop_reset_signal(reset_signal_path)
+            if reset is not False:
+                if reset is None:
+                    seen_files.clear()
+                    done_first.clear()
+                    done_fnums.clear()
+                    checked_stale_runs.clear()
+                    print("[qa_watcher] Reset: all runs will be reprocessed")
+                else:
+                    for key in list(seen_files):
+                        if key[0] in reset: del seen_files[key]
+                    done_first -= {k for k in done_first if k[0] in reset}
+                    for key in list(done_fnums):
+                        if key[0] in reset: del done_fnums[key]
+                    checked_stale_runs -= reset
+                    print(f"[qa_watcher] Reset: {sorted(reset)} will be reprocessed")
 
         if not runs_dir.exists():
             print(f"[qa_watcher] Waiting for runs_dir: {runs_dir}")
@@ -156,6 +176,30 @@ def run_watcher(config: dict):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _pop_reset_signal(signal_path: Path):
+    """
+    Check for a reset signal file.
+    Returns False  — no file present (no reset needed).
+    Returns None   — reset all runs.
+    Returns set    — reset only the named runs.
+    """
+    if not signal_path.exists():
+        return False
+    try:
+        with open(signal_path) as f:
+            data = json.load(f)
+        signal_path.unlink()
+        runs = data.get('runs')
+        return set(runs) if runs else None
+    except Exception as e:
+        print(f"[qa_watcher] Error reading reset signal: {e}")
+        try:
+            signal_path.unlink()
+        except OSError:
+            pass
+        return False
+
 
 def _run_qa(qa_python: Path, qa_script: Path, subrun_dir: Path, run_config_path: Path,
              mode: str, file_num: int = None):

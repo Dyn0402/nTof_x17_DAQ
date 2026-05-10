@@ -27,7 +27,8 @@
     <button id="start-processor" class="btn btn-info me-2 mb-2">Start Processor</button>
     <button id="stop-processor" class="btn btn-secondary me-2 mb-2">Stop Processor</button>
     <button id="start-qa" class="btn btn-info me-2 mb-2">Start QA</button>
-    <button id="stop-qa" class="btn btn-secondary mb-2">Stop QA</button>
+    <button id="stop-qa" class="btn btn-secondary me-2 mb-2">Stop QA</button>
+    <button id="rerun-qa" class="btn btn-warning mb-2">Rerun QA</button>
   </div>
 
     <div class="row" id="status-cards">
@@ -459,6 +460,23 @@ document.getElementById("git-reset").addEventListener("click", async () => {
     popup.style.opacity = "0";
     setTimeout(() => popup.remove(), 1000);
   }, 2500);
+});
+
+document.getElementById("rerun-qa").addEventListener("click", async () => {
+  const input = prompt(
+    "Enter run names to rerun (comma-separated), or leave blank to rerun all runs:"
+  );
+  if (input === null) return;  // cancelled
+  const runs = input.trim()
+    ? input.split(",").map(s => s.trim()).filter(Boolean)
+    : null;
+  const res = await fetch("/rerun_qa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ runs })
+  });
+  const data = await res.json();
+  showPopup(data.message, data.success ? "#fd7e14" : "#dc3545");
 });
 
 document.getElementById("start-qa").addEventListener("click", async () => {
