@@ -218,6 +218,50 @@ def get_processor_watcher_status():
     return {"status": "UNKNOWN", "color": "danger", "fields": []}
 
 
+def get_qa_watcher_status():
+    try:
+        output = subprocess.check_output(
+            ["tmux", "capture-pane", "-pS", "-50", "-t", "qa_watcher:0.0"],
+            text=True
+        )
+    except subprocess.CalledProcessError:
+        return {"status": "STOPPED", "color": "secondary", "fields": []}
+
+    lines = [l for l in output.splitlines() if l.strip()]
+
+    # Extract most recent run/subrun context from a [qa_watcher] run/subrun line
+    fields = []
+    for line in reversed(lines):
+        m = re.search(r'\[qa_watcher\] (\S+)/(\S+)', line)
+        if m and 'Sleeping' not in line and 'Marked stale' not in line \
+                and 'Waiting' not in line and 'runs_dir' not in line:
+            fields = [
+                {"label": "Run",    "value": m.group(1)},
+                {"label": "Subrun", "value": m.group(2)},
+            ]
+            break
+
+    # Extract current detector being processed from [qa] lines
+    for line in reversed(lines):
+        m = re.search(r'\[qa\] (\S+) —', line)
+        if m:
+            fields_with_det = fields + [{"label": "Detector", "value": m.group(1)}]
+            return {"status": "Running QA", "color": "success", "fields": fields_with_det}
+
+    _noise = ("[qa_watcher] Marked stale",)
+    for line in reversed(lines):
+        if any(n in line for n in _noise):
+            continue
+        if "[qa_watcher] Sleeping" in line:
+            return {"status": "IDLE",        "color": "info",    "fields": fields}
+        if "[qa_watcher] Waiting for runs_dir" in line:
+            return {"status": "Waiting for Dir", "color": "warning", "fields": []}
+        if "[qa_watcher]" in line:
+            return {"status": "RUNNING",     "color": "info",    "fields": fields}
+
+    return {"status": "UNKNOWN", "color": "danger", "fields": []}
+
+
 def get_decoder_status():
     try:
         output = subprocess.check_output(

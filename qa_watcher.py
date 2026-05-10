@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Autonomous on-the-fly QA watcher for nTof DREAM DAQ data.
+
+Watches all runs under a top-level runs directory and runs the QA analysis
+script whenever new combined_hits files appear.  Runs independently of
+daq_control.py and processor_watcher.py; start/stop from the flask UI.
+
+Usage:
+    python qa_watcher.py <qa_config_json_path>
+
+Config keys (see qa_config.py to generate the JSON):
+  runs_dir                : top-level directory containing run_N/ subdirs
+  ntof_x17_dir            : path to the nTof_x17 repository
+  combined_hits_inner_dir : subdir for combined hits files  (default: 'combined_hits_root')
+  qa_file_mode            : 'all' | 'first' | 'per_file'   (default: 'all')
+                              all      — rerun QA on all accumulated files whenever a new one appears
+                              first    — run QA once per subrun using only file_num=0
+                              per_file — independent QA output per file_num
+  include_runs            : list of run directory names to process exclusively (null = all)
+  exclude_runs            : list of run directory names to skip (null = none)
+  poll_interval           : seconds between scans   (default: 60)
+  stale_run_days          : runs with no new combined_hits for this many days are skipped (default: 4)
+"""
+
+import re
+import sys
+import json
+import time
+import subprocess
+from pathlib import Path
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python qa_watcher.py <qa_config_json_path>")
+        sys.exit(1)
+
+    with open(sys.argv[1]) as f:
+        config = json.load(f)
+
+    run_watcher(config)
+
+
+# ---------------------------------------------------------------------------
+# Main watcher loop
+# ---------------------------------------------------------------------------
+
+def run_watcher(config: dict):
+    runs_dir       = Path(config['runs_dir'])
+    ntof_x17_dir   = Path(config['ntof_x17_dir'])
+    combined_inner = config.get('combined_hits_inner_dir', 'combined_hits_root')
+    mode           = config.get('qa_file_mode', 'all')
+
+    include_runs = set(config['include_runs']) if config.get('include_runs') else None
+    exclude_runs = set(config['exclude_runs']) if config.get('exclude_runs') else set()
+
+    poll_interval  = config.get('poll_interval',  60)
+    stale_run_days = config.get('stale_run_days',  4)
+
+    qa_script = ntof_x17_dir / 'ntof_daq_analysis' / 'detector_qa.py'
+
+    print(f"[qa_watcher] runs_dir     : {runs_dir}")
+    print(f"[qa_watcher] qa_script    : {qa_script}")
+    print(f"[qa_watcher] mode         : {mode}")
+    if include_runs:
+        print(f"[qa_watcher] include_runs : {sorted(include_runs)}")
+    if exclude_runs:
+        print(f"[qa_watcher] exclude_runs : {sorted(exclude_runs)}")
+    print(f"[qa_watcher] poll         : {poll_interval}s  stale_after={stale_run_days}d")
+
+    checked_stale_runs: set = set()
+
+    # Per-mode tracking state, keyed by (run_name, subrun_name)
+    seen_files:  dict = {}  # 'all'      mode: frozenset of filenames at last QA run
+    done_first:  set  = set()  # 'first' mode: subruns already processed
+    done_fnums:  dict = {}  # 'per_file' mode: set of completed file_nums
+
+    while True:
+        found_new = False
+
+        if not runs_dir.exists():
+            print(f"[qa_watcher] Waiting for runs_dir: {runs_dir}")
+        else:
+            for run_dir in sorted(runs_dir.iterdir()):
+                if not run_dir.is_dir():
+                    continue
+                if include_runs is not None and run_dir.name not in include_runs:
+                    continue
+                if run_dir.name in exclude_runs:
+                    continue
+                if run_dir.name in checked_stale_runs:
+                    continue
+
+                run_config_path = run_dir / 'run_config.json'
+                if not run_config_path.exists():
+                    continue
+
+                is_stale = _run_is_stale(run_dir, combined_inner, stale_run_days)
+
+                for subrun_dir in sorted(run_dir.iterdir()):
+                    if not subrun_dir.is_dir():
+                        continue
+
+                    combined_dir = subrun_dir / combined_inner
+                    if not combined_dir.exists():
+                        continue
+
+                    stable = _stable_combined_files(combined_dir)
+                    if not stable:
+                        continue
+
+                    key = (run_dir.name, subrun_dir.name)
+
+                    if mode == 'all':
+                        current = frozenset(stable)
+                        if current != seen_files.get(key):
+                            print(f"\n[qa_watcher] {run_dir.name}/{subrun_dir.name}"
+                                  f"  n_files={len(stable)}")
+                            _run_qa(qa_script, subrun_dir, run_config_path, 'all')
+                            seen_files[key] = current
+                            found_new = True
+
+                    elif mode == 'first':
+                        if key not in done_first:
+                            if any(_file_num(f) == 0 for f in stable):
+                                print(f"\n[qa_watcher] {run_dir.name}/{subrun_dir.name}"
+                                      f"  file_num=0")
+                                _run_qa(qa_script, subrun_dir, run_config_path, 'first')
+                                done_first.add(key)
+                                found_new = True
+
+                    elif mode == 'per_file':
+                        completed = done_fnums.get(key, set())
+                        new_fnums = {_file_num(f) for f in stable} - {None} - completed
+                        for fnum in sorted(new_fnums):
+                            print(f"\n[qa_watcher] {run_dir.name}/{subrun_dir.name}"
+                                  f"  file_num={fnum:03d}")
+                            _run_qa(qa_script, subrun_dir, run_config_path, 'per_file', fnum)
+                            completed.add(fnum)
+                            found_new = True
+                        done_fnums[key] = completed
+
+                if is_stale:
+                    checked_stale_runs.add(run_dir.name)
+                    print(f"[qa_watcher] Marked stale (will skip): {run_dir.name}")
+
+        if not found_new:
+            print(f"[qa_watcher] Sleeping {poll_interval}s...")
+        time.sleep(poll_interval)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _run_qa(qa_script: Path, subrun_dir: Path, run_config_path: Path,
+             mode: str, file_num: int = None):
+    cmd = [sys.executable, str(qa_script),
+           '--subrun_dir', str(subrun_dir),
+           '--run_config', str(run_config_path),
+           '--mode', mode]
+    if file_num is not None:
+        cmd += ['--file_num', str(file_num)]
+    subprocess.run(cmd)
+
+
+def _stable_combined_files(combined_dir: Path) -> list:
+    """Return sorted filenames of feu-combined ROOT files with size > 0."""
+    result = []
+    for f in combined_dir.iterdir():
+        if f.suffix != '.root' or '_datrun_' not in f.name or 'feu-combined' not in f.name:
+            continue
+        try:
+            if f.stat().st_size > 0:
+                result.append(f.name)
+        except OSError:
+            continue
+    return sorted(result)
+
+
+def _file_num(filename: str):
+    m = re.match(r'.*_(\d{3})_feu-combined', filename)
+    return int(m.group(1)) if m else None
+
+
+def _run_is_stale(run_dir: Path, combined_inner: str, stale_days: float) -> bool:
+    cutoff = time.time() - stale_days * 86400
+    newest = 0.0
+    for subrun in run_dir.iterdir():
+        if not subrun.is_dir():
+            continue
+        d = subrun / combined_inner
+        if d.exists():
+            mtime = d.stat().st_mtime
+            if mtime > newest:
+                newest = mtime
+    return newest < cutoff
+
+
+if __name__ == '__main__':
+    main()

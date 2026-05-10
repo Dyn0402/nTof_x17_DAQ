@@ -25,7 +25,9 @@
     <button id="take-pedestals" class="btn btn-secondary mb-2">Take Pedestals</button>
     <button id="git-reset" class="btn btn-secondary mb-2">Git Reset</button>
     <button id="start-processor" class="btn btn-info me-2 mb-2">Start Processor</button>
-    <button id="stop-processor" class="btn btn-secondary mb-2">Stop Processor</button>
+    <button id="stop-processor" class="btn btn-secondary me-2 mb-2">Stop Processor</button>
+    <button id="start-qa" class="btn btn-info me-2 mb-2">Start QA</button>
+    <button id="stop-qa" class="btn btn-secondary mb-2">Stop QA</button>
   </div>
 
     <div class="row" id="status-cards">
@@ -73,7 +75,12 @@
     </div>
   </div>
 
-  <button id="load-pngs" class="btn btn-primary mt-3" disabled>Load Images</button>
+  <div class="mt-3 d-flex gap-2">
+    <button id="load-pngs" class="btn btn-primary" disabled>Load Images</button>
+    <button id="refresh-qa-runs" class="btn btn-secondary">Refresh Runs</button>
+    <button id="reload-pngs" class="btn btn-outline-info" disabled>Reload Plots</button>
+  </div>
+  <p id="qa-last-update" class="text-muted mt-1" style="font-size:0.85em;"></p>
 
   <div id="png-gallery" class="row mt-4"></div>
 </div>
@@ -454,6 +461,19 @@ document.getElementById("git-reset").addEventListener("click", async () => {
   }, 2500);
 });
 
+document.getElementById("start-qa").addEventListener("click", async () => {
+  const res = await fetch("/start_qa", { method: "POST" });
+  const data = await res.json();
+  showPopup(data.message, data.success ? "#17a2b8" : "#dc3545");
+});
+
+document.getElementById("stop-qa").addEventListener("click", async () => {
+  if (!confirm("Stop the QA watcher?")) return;
+  const res = await fetch("/stop_qa", { method: "POST" });
+  const data = await res.json();
+  showPopup(data.message, "#6c757d");
+});
+
 document.getElementById("start-processor").addEventListener("click", async () => {
   const res = await fetch("/start_processor", { method: "POST" });
   const data = await res.json();
@@ -590,19 +610,29 @@ async function fetchDirs(subdir = "") {
     return await res.json();
 }
 
-// Populate first-level runs on load
-document.addEventListener("DOMContentLoaded", async () => {
+// Populate first-level runs
+async function loadQARuns() {
     const runSelect = document.getElementById("run-select-qa");
+    const prev = runSelect.value;
     const res = await fetchDirs();
-    if (res.success) {
-        res.subdirs.forEach(d => {
-            const opt = document.createElement("option");
-            opt.value = d;
-            opt.textContent = d;
-            runSelect.appendChild(opt);
-        });
+    if (!res.success) return;
+    runSelect.innerHTML = '<option value="">Select run...</option>';
+    res.subdirs.forEach(d => {
+        const opt = document.createElement("option");
+        opt.value = d;
+        opt.textContent = d;
+        runSelect.appendChild(opt);
+    });
+    if (prev && Array.from(runSelect.options).some(o => o.value === prev)) {
+        runSelect.value = prev;
     }
-});
+}
+
+document.addEventListener("DOMContentLoaded", loadQARuns);
+document.getElementById("refresh-qa-runs").addEventListener("click", loadQARuns);
+
+// Auto-refresh run list every 30s
+setInterval(loadQARuns, 30000);
 
 // Handle Run selection → populate Subruns
 document.getElementById("run-select-qa").addEventListener("change", async (e) => {
@@ -655,9 +685,11 @@ document.getElementById("subrun-select").addEventListener("change", async (e) =>
     }
 });
 
-// Handle Detector selection → enable Load button
+// Handle Detector selection → enable Load and Reload buttons
 document.getElementById("detector-select").addEventListener("change", (e) => {
-    document.getElementById("load-pngs").disabled = !e.target.value;
+    const enabled = !!e.target.value;
+    document.getElementById("load-pngs").disabled = !enabled;
+    document.getElementById("reload-pngs").disabled = !enabled;
 });
 
 // Load PNGs
@@ -678,6 +710,9 @@ async function loadPNGs() {
     const data = await res.json();
     const gallery = document.getElementById("png-gallery");
     gallery.innerHTML = "";
+
+    document.getElementById("qa-last-update").textContent =
+        `Last loaded: ${new Date().toLocaleTimeString()}`;
 
     if (!data.success) {
         gallery.innerHTML = `<p class="text-danger">Error: ${data.message}</p>`;
@@ -734,10 +769,8 @@ function openFullscreenImage(imgUrl) {
     overlay.addEventListener("click", () => overlay.remove());
 }
 
-// Option 1: Keep button (optional, for manual refresh)
 document.getElementById("load-pngs").addEventListener("click", loadPNGs);
-
-// ✅ Option 2: Auto-load when detector changes
+document.getElementById("reload-pngs").addEventListener("click", loadPNGs);
 document.getElementById("detector-select").addEventListener("change", loadPNGs);
 
 
