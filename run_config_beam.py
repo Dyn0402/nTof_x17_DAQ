@@ -115,7 +115,7 @@ class Config(RunConfigBase):
             self.hv_info['password'] = lines[1].strip()
 
         scint_A_HV, scint_B_HV = 1300, 1300
-        r0_init, r1_init, d0_init, d1_init = 660, 660, 1000, 500
+        r0_init, r1_init, d0_init, d1_init = 730, 730, 1000, 500
         self.sub_runs = [
             # {
             #     'sub_run_name': f'test_run',
@@ -153,24 +153,24 @@ class Config(RunConfigBase):
             #         },
             #     }
             # },
-            {
-                'sub_run_name': f'gas_change',
-                'run_time': 6 * 60,  # Minutes
-                'hvs': {
-                    '5': {  # Positive Resists
-                        '0': r0_init,  # mx17_3 30mm drift
-                        '1': r1_init,  # mx17_4 3.6mm drift
-                    },
-                    '9': {  # Negative Drifts
-                        '0': d0_init,  # mx17_3 30mm drift
-                        '1': d1_init,  # mx17_4 3.6mm drift
-                    },
-                    '8': {  # PMTs
-                        '0': scint_A_HV,  # Top
-                        '1': scint_B_HV,  # Bottom
-                    },
-                }
-            },
+            # {
+            #     'sub_run_name': f'gas_change',
+            #     'run_time': 6 * 60,  # Minutes
+            #     'hvs': {
+            #         '5': {  # Positive Resists
+            #             '0': r0_init,  # mx17_3 30mm drift
+            #             '1': r1_init,  # mx17_4 3.6mm drift
+            #         },
+            #         '9': {  # Negative Drifts
+            #             '0': d0_init,  # mx17_3 30mm drift
+            #             '1': d1_init,  # mx17_4 3.6mm drift
+            #         },
+            #         '8': {  # PMTs
+            #             '0': scint_A_HV,  # Top
+            #             '1': scint_B_HV,  # Bottom
+            #         },
+            #     }
+            # },
         ]
 
         drifts_0 = [d0_init]
