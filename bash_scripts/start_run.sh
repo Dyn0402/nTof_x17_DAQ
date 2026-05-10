@@ -14,6 +14,3 @@ COMMAND="python daq_control.py \"$CONFIG_PATH\""
 
 # Send command to the tmux session
 tmux send-keys -t "$SESSION" "$COMMAND" C-m
-
-# Send config to processor
-python send_run_config_to_processor.py "$CONFIG_PATH"
