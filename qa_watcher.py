@@ -25,7 +25,7 @@ Config keys (see qa_config.py to generate the JSON):
 """
 
 import re
-import sys
+import sys  # used for argv in main()
 import json
 import time
 import subprocess
@@ -59,10 +59,12 @@ def run_watcher(config: dict):
     poll_interval  = config.get('poll_interval',  60)
     stale_run_days = config.get('stale_run_days',  4)
 
-    qa_script = ntof_x17_dir / 'ntof_daq_analysis' / 'detector_qa.py'
+    qa_script  = ntof_x17_dir / 'ntof_daq_analysis' / 'detector_qa.py'
+    qa_python  = ntof_x17_dir / '.venv' / 'bin' / 'python'
 
     print(f"[qa_watcher] runs_dir     : {runs_dir}")
     print(f"[qa_watcher] qa_script    : {qa_script}")
+    print(f"[qa_watcher] python       : {qa_python}")
     print(f"[qa_watcher] mode         : {mode}")
     if include_runs:
         print(f"[qa_watcher] include_runs : {sorted(include_runs)}")
@@ -118,7 +120,7 @@ def run_watcher(config: dict):
                         if current != seen_files.get(key):
                             print(f"\n[qa_watcher] {run_dir.name}/{subrun_dir.name}"
                                   f"  n_files={len(stable)}")
-                            _run_qa(qa_script, subrun_dir, run_config_path, 'all')
+                            _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'all')
                             seen_files[key] = current
                             found_new = True
 
@@ -127,7 +129,7 @@ def run_watcher(config: dict):
                             if any(_file_num(f) == 0 for f in stable):
                                 print(f"\n[qa_watcher] {run_dir.name}/{subrun_dir.name}"
                                       f"  file_num=0")
-                                _run_qa(qa_script, subrun_dir, run_config_path, 'first')
+                                _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'first')
                                 done_first.add(key)
                                 found_new = True
 
@@ -137,7 +139,7 @@ def run_watcher(config: dict):
                         for fnum in sorted(new_fnums):
                             print(f"\n[qa_watcher] {run_dir.name}/{subrun_dir.name}"
                                   f"  file_num={fnum:03d}")
-                            _run_qa(qa_script, subrun_dir, run_config_path, 'per_file', fnum)
+                            _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'per_file', fnum)
                             completed.add(fnum)
                             found_new = True
                         done_fnums[key] = completed
@@ -155,9 +157,9 @@ def run_watcher(config: dict):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _run_qa(qa_script: Path, subrun_dir: Path, run_config_path: Path,
+def _run_qa(qa_python: Path, qa_script: Path, subrun_dir: Path, run_config_path: Path,
              mode: str, file_num: int = None):
-    cmd = [sys.executable, str(qa_script),
+    cmd = [str(qa_python), str(qa_script),
            '--subrun_dir', str(subrun_dir),
            '--run_config', str(run_config_path),
            '--mode', mode]
