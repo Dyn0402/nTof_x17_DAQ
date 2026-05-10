@@ -115,7 +115,7 @@ class Config(RunConfigBase):
             self.hv_info['password'] = lines[1].strip()
 
         scint_A_HV, scint_B_HV = 1300, 1300
-        r0_init, r1_init, d0_init, d1_init = 730, 730, 1000, 500
+        r0_init, r1_init, d0_init, d1_init = 735, 765, 1000, 500
         self.sub_runs = [
             # {
             #     'sub_run_name': f'test_run',
