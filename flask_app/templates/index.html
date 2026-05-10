@@ -101,6 +101,8 @@
   <!-- Subdirectory buttons -->
   <div id="ab-subdirs" class="mb-3 d-flex flex-wrap gap-2"></div>
 
+  <button id="ab-reload" class="btn btn-outline-info btn-sm mb-3">Reload Plots</button>
+
   <!-- Image gallery -->
   <p id="ab-no-images" class="text-muted d-none">No images in this directory.</p>
   <div id="ab-gallery" class="row mt-2"></div>
@@ -831,7 +833,7 @@ setInterval(updateHVPlots, 5000);  // update every 5s
 
 let abCurrentPath = "";
 
-async function abBrowse(relPath) {
+async function abBrowse(relPath, bustCache = false) {
     const res = await fetch(`/browse_analysis?path=${encodeURIComponent(relPath)}`);
     const data = await res.json();
     if (!data.success) {
@@ -843,7 +845,7 @@ async function abBrowse(relPath) {
     abCurrentPath = data.path;
     abRenderBreadcrumb(abCurrentPath);
     abRenderSubdirs(data.subdirs, abCurrentPath);
-    abRenderGallery(data.images);
+    abRenderGallery(data.images, bustCache);
 }
 
 function abRenderBreadcrumb(path) {
@@ -907,7 +909,7 @@ function abRenderSubdirs(subdirs, currentPath) {
     });
 }
 
-function abRenderGallery(images) {
+function abRenderGallery(images, bustCache = false) {
     const gallery = document.getElementById("ab-gallery");
     const noImages = document.getElementById("ab-no-images");
     gallery.innerHTML = "";
@@ -918,17 +920,19 @@ function abRenderGallery(images) {
     }
     noImages.classList.add("d-none");
 
+    const suffix = bustCache ? `&t=${Date.now()}` : "";
     images.forEach(imgUrl => {
+        const src = imgUrl + suffix;
         const col = document.createElement("div");
         col.className = "col-md-3 mb-3";
         col.innerHTML = `
             <div class="card bg-dark text-white border-0">
-                <img src="${imgUrl}" class="card-img-top"
+                <img src="${src}" class="card-img-top"
                      style="object-fit:contain;max-height:200px;cursor:pointer;"
                      alt="plot">
             </div>`;
         gallery.appendChild(col);
-        col.querySelector("img").addEventListener("click", () => openFullscreenImage(imgUrl));
+        col.querySelector("img").addEventListener("click", () => openFullscreenImage(src));
     });
 }
 
@@ -938,5 +942,7 @@ document.querySelector('a[href="#analysis-browser"]').addEventListener("click", 
         abBrowse("");
     }
 });
+
+document.getElementById("ab-reload").addEventListener("click", () => abBrowse(abCurrentPath, true));
 </script>
 {% endblock %}
