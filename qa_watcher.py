@@ -234,14 +234,18 @@ def _file_num(filename: str):
 def _run_is_stale(run_dir: Path, combined_inner: str, stale_days: float) -> bool:
     cutoff = time.time() - stale_days * 86400
     newest = 0.0
+    found_any = False
     for subrun in run_dir.iterdir():
         if not subrun.is_dir():
             continue
         d = subrun / combined_inner
         if d.exists():
+            found_any = True
             mtime = d.stat().st_mtime
             if mtime > newest:
                 newest = mtime
+    if not found_any:
+        return False  # No combined_hits yet — run is new, not stale
     return newest < cutoff
 
 
