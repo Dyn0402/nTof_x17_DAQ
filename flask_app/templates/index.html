@@ -478,18 +478,7 @@ document.getElementById("rerun-qa").addEventListener("click", async () => {
     body: JSON.stringify({ runs })
   });
   const rerunData = await rerunRes.json();
-  if (!rerunData.success) {
-    showPopup(rerunData.message, "#dc3545");
-    return;
-  }
-
-  await fetch("/stop_qa", { method: "POST" });
-  const startRes = await fetch("/start_qa", { method: "POST" });
-  const startData = await startRes.json();
-  showPopup(
-    rerunData.message + " — watcher restarted",
-    startData.success ? "#fd7e14" : "#dc3545"
-  );
+  showPopup(rerunData.message, rerunData.success ? "#fd7e14" : "#dc3545");
 });
 
 document.getElementById("start-qa").addEventListener("click", async () => {
