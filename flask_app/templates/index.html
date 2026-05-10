@@ -88,6 +88,24 @@
 </div>
 
 
+<!-- Analysis Browser Tab -->
+<div class="tab-pane fade" id="analysis-browser">
+  <h2>Analysis</h2>
+
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="mt-3">
+    <ol class="breadcrumb" id="ab-breadcrumb" style="background:transparent;padding:0;">
+    </ol>
+  </nav>
+
+  <!-- Subdirectory buttons -->
+  <div id="ab-subdirs" class="mb-3 d-flex flex-wrap gap-2"></div>
+
+  <!-- Image gallery -->
+  <p id="ab-no-images" class="text-muted d-none">No images in this directory.</p>
+  <div id="ab-gallery" class="row mt-2"></div>
+</div>
+
 
 {% endblock %}
 
@@ -805,5 +823,120 @@ updateStatus();
 
 updateHVPlots();
 setInterval(updateHVPlots, 5000);  // update every 5s
+
+
+// ---------------------------------------------------------------------------
+// Analysis Browser
+// ---------------------------------------------------------------------------
+
+let abCurrentPath = "";
+
+async function abBrowse(relPath) {
+    const res = await fetch(`/browse_analysis?path=${encodeURIComponent(relPath)}`);
+    const data = await res.json();
+    if (!data.success) {
+        document.getElementById("ab-subdirs").innerHTML =
+            `<p class="text-danger">Error: ${data.message}</p>`;
+        return;
+    }
+
+    abCurrentPath = data.path;
+    abRenderBreadcrumb(abCurrentPath);
+    abRenderSubdirs(data.subdirs, abCurrentPath);
+    abRenderGallery(data.images);
+}
+
+function abRenderBreadcrumb(path) {
+    const ol = document.getElementById("ab-breadcrumb");
+    ol.innerHTML = "";
+
+    const rootLi = document.createElement("li");
+    rootLi.className = "breadcrumb-item";
+    const rootA = document.createElement("a");
+    rootA.href = "#";
+    rootA.textContent = "Analysis";
+    rootA.style.color = "#adb5bd";
+    rootA.addEventListener("click", e => { e.preventDefault(); abBrowse(""); });
+    rootLi.appendChild(rootA);
+    ol.appendChild(rootLi);
+
+    if (path) {
+        const parts = path.split("/");
+        parts.forEach((part, i) => {
+            const li = document.createElement("li");
+            const partPath = parts.slice(0, i + 1).join("/");
+            if (i === parts.length - 1) {
+                li.className = "breadcrumb-item active text-white";
+                li.textContent = part;
+            } else {
+                li.className = "breadcrumb-item";
+                const a = document.createElement("a");
+                a.href = "#";
+                a.textContent = part;
+                a.style.color = "#adb5bd";
+                a.addEventListener("click", e => { e.preventDefault(); abBrowse(partPath); });
+                li.appendChild(a);
+            }
+            ol.appendChild(li);
+        });
+    }
+}
+
+function abRenderSubdirs(subdirs, currentPath) {
+    const div = document.getElementById("ab-subdirs");
+    div.innerHTML = "";
+
+    if (currentPath) {
+        const upBtn = document.createElement("button");
+        upBtn.className = "btn btn-outline-secondary btn-sm me-1 mb-1";
+        upBtn.textContent = "⬆ ..";
+        const parentPath = currentPath.includes("/")
+            ? currentPath.substring(0, currentPath.lastIndexOf("/"))
+            : "";
+        upBtn.addEventListener("click", () => abBrowse(parentPath));
+        div.appendChild(upBtn);
+    }
+
+    subdirs.forEach(d => {
+        const btn = document.createElement("button");
+        btn.className = "btn btn-outline-light btn-sm me-1 mb-1";
+        btn.textContent = "📁 " + d;
+        const childPath = currentPath ? `${currentPath}/${d}` : d;
+        btn.addEventListener("click", () => abBrowse(childPath));
+        div.appendChild(btn);
+    });
+}
+
+function abRenderGallery(images) {
+    const gallery = document.getElementById("ab-gallery");
+    const noImages = document.getElementById("ab-no-images");
+    gallery.innerHTML = "";
+
+    if (images.length === 0) {
+        noImages.classList.remove("d-none");
+        return;
+    }
+    noImages.classList.add("d-none");
+
+    images.forEach(imgUrl => {
+        const col = document.createElement("div");
+        col.className = "col-md-3 mb-3";
+        col.innerHTML = `
+            <div class="card bg-dark text-white border-0">
+                <img src="${imgUrl}" class="card-img-top"
+                     style="object-fit:contain;max-height:200px;cursor:pointer;"
+                     alt="plot">
+            </div>`;
+        gallery.appendChild(col);
+        col.querySelector("img").addEventListener("click", () => openFullscreenImage(imgUrl));
+    });
+}
+
+// Load when tab is activated
+document.querySelector('a[href="#analysis-browser"]').addEventListener("click", () => {
+    if (abCurrentPath === "" && document.getElementById("ab-breadcrumb").children.length === 0) {
+        abBrowse("");
+    }
+});
 </script>
 {% endblock %}

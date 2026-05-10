@@ -44,6 +44,7 @@ QA_TMUX = "qa_watcher"
 BEAM_DIR = "beam_may"  # "beam_feb" or "beam_may"
 ANALYSIS_DIR = f"/mnt/data/x17/{BEAM_DIR}/analysis"
 RUN_DIR = f"/mnt/data/x17/{BEAM_DIR}/runs"
+GENERAL_ANALYSIS_DIR = f"/mnt/data/x17/{BEAM_DIR}/runs/Analysis"
 HV_TAIL = 1000  # number of most recent rows to show
 
 
@@ -423,6 +424,27 @@ def serve_png():
     if not os.path.isfile(os.path.join(directory, filename)):
         abort(404, "File not found")
     return send_from_directory(directory, filename)
+
+
+@app.route("/browse_analysis")
+def browse_analysis():
+    rel_path = request.args.get("path", "").strip("/")
+    target = os.path.normpath(os.path.join(GENERAL_ANALYSIS_DIR, rel_path)) if rel_path \
+             else os.path.normpath(GENERAL_ANALYSIS_DIR)
+
+    # Prevent path traversal outside the analysis directory
+    if not target.startswith(os.path.abspath(GENERAL_ANALYSIS_DIR)):
+        return jsonify(success=False, message="Invalid path"), 403
+    if not os.path.isdir(target):
+        return jsonify(success=False, message=f"Directory not found: {target}")
+
+    subdirs = sorted(d for d in os.listdir(target)
+                     if os.path.isdir(os.path.join(target, d)))
+    images  = [f"/serve_png?dir={target}&file={f}"
+               for f in sorted(os.listdir(target))
+               if f.lower().endswith(".png")]
+
+    return jsonify(success=True, subdirs=subdirs, images=images, path=rel_path)
 
 
 @app.route("/get_config_py", methods=['GET'])
