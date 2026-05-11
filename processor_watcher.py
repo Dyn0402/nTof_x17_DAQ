@@ -129,6 +129,8 @@ def run_watcher(config: dict):
 
                 is_stale = _run_is_stale(run_dir, raw_inner, stale_run_days)
 
+                sample_period = _read_sample_period(run_dir)
+
                 for subrun_dir in sorted(run_dir.iterdir()):
                     if not subrun_dir.is_dir():
                         continue
@@ -171,7 +173,8 @@ def run_watcher(config: dict):
                                 decoded_inner, hits_inner, combined_inner,
                                 decode_exe, analyze_exe, combine_exe,
                                 do_decode, do_analyze, do_combine,
-                                save_fdfs, save_decoded, n_threads
+                                save_fdfs, save_decoded, n_threads,
+                                sample_period
                             )
                             del prev_sizes[key]
                             found_new = True
@@ -195,7 +198,8 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                        decoded_inner, hits_inner, combined_inner,
                        decode_exe, analyze_exe, combine_exe,
                        do_decode, do_analyze, do_combine,
-                       save_fdfs, save_decoded, n_threads):
+                       save_fdfs, save_decoded, n_threads,
+                       sample_period=None):
 
     decoded_dir  = subrun_dir / decoded_inner
     hits_dir     = subrun_dir / hits_inner
@@ -229,7 +233,7 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                 if hits_path.exists():
                     continue
                 tasks.append(pool.submit(
-                    _analyze_file, str(root_path), ped_dir, str(hits_path), analyze_exe
+                    _analyze_file, str(root_path), ped_dir, str(hits_path), analyze_exe, sample_period
                 ))
             for t in as_completed(tasks):
                 t.result()
@@ -370,6 +374,24 @@ def _make_combined_name(a_hits_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Run-config helpers
+# ---------------------------------------------------------------------------
+
+def _read_sample_period(run_dir: Path):
+    """Return dream_daq_info.sample_period from run_config.json, or None if absent."""
+    cfg_path = run_dir / 'run_config.json'
+    if not cfg_path.exists():
+        return None
+    try:
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+        return cfg.get('dream_daq_info', {}).get('sample_period')
+    except Exception as e:
+        print(f"[watcher] Could not read sample_period from {cfg_path}: {e}")
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Worker functions (invoke C++ executables)
 # ---------------------------------------------------------------------------
 
@@ -378,7 +400,8 @@ def _decode_file(fdf_path: str, root_path: str, decode_exe: str):
     subprocess.run([decode_exe, fdf_path, root_path])
 
 
-def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe: str):
+def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe: str,
+                  sample_period=None):
     m = re.search(r'_(\d{3})_(\d{2})', os.path.basename(root_path))
     if not m:
         print(f"[analyze] Cannot extract FEU number from {root_path}, skipping")
@@ -403,7 +426,10 @@ def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe:
             print(f"[analyze] No pedestal for FEU {feu_num}, continuing without")
 
     print(f"[analyze] {os.path.basename(root_path)}")
-    subprocess.run([analyze_exe, root_path, hits_out_path, ped_path])
+    cmd = [analyze_exe, root_path, hits_out_path, ped_path]
+    if sample_period is not None:
+        cmd += ['--tps', str(sample_period)]
+    subprocess.run(cmd)
 
 
 def _combine_hits(feu_hits_map: dict, combined_path: str, combine_exe: str):

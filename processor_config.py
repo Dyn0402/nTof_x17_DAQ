@@ -42,8 +42,8 @@ CONFIG = {
     #   'abs'   - fixed absolute path given by pedestal_dir
     #   'find'  - read pedestal_run.txt from raw_daq_data/ and look up
     #             pedestal_dir/<name>/pedestals/
-    # 'pedestal_loc': 'find',
-    'pedestal_loc': 'same',
+    'pedestal_loc': 'find',
+    # 'pedestal_loc': 'same',
     'pedestal_dir': f'{BASE_DATA}pedestals/',
 
     # Run filtering: process only specific runs or exclude certain runs by directory name.
