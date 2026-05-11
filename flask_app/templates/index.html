@@ -57,22 +57,28 @@
   <h2>Online QA</h2>
 
   <div class="row g-3">
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label for="run-select-qa" class="form-label">Run:</label>
       <select id="run-select-qa" class="form-select">
         <option value="">Select run...</option>
       </select>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label for="subrun-select" class="form-label">Subrun:</label>
       <select id="subrun-select" class="form-select" disabled>
         <option value="">Select subrun...</option>
       </select>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label for="detector-select" class="form-label">Detector:</label>
       <select id="detector-select" class="form-select" disabled>
         <option value="">Select detector...</option>
+      </select>
+    </div>
+    <div class="col-md-3" id="qa-subdir-col" style="display:none;">
+      <label for="subdir-select-qa" class="form-label">Subdirectory:</label>
+      <select id="subdir-select-qa" class="form-select">
+        <option value="">(top level)</option>
       </select>
     </div>
   </div>
@@ -683,6 +689,8 @@ document.getElementById("run-select-qa").addEventListener("change", async (e) =>
 
     subrunSelect.innerHTML = '<option value="">Select subrun...</option>';
     detectorSelect.innerHTML = '<option value="">Select detector...</option>';
+    document.getElementById("subdir-select-qa").innerHTML = '<option value="">(top level)</option>';
+    document.getElementById("qa-subdir-col").style.display = "none";
     subrunSelect.disabled = true;
     detectorSelect.disabled = true;
     loadBtn.disabled = true;
@@ -708,6 +716,8 @@ document.getElementById("subrun-select").addEventListener("change", async (e) =>
     const loadBtn = document.getElementById("load-pngs");
 
     detectorSelect.innerHTML = '<option value="">Select detector...</option>';
+    document.getElementById("subdir-select-qa").innerHTML = '<option value="">(top level)</option>';
+    document.getElementById("qa-subdir-col").style.display = "none";
     detectorSelect.disabled = true;
     loadBtn.disabled = true;
 
@@ -725,11 +735,31 @@ document.getElementById("subrun-select").addEventListener("change", async (e) =>
     }
 });
 
-// Handle Detector selection → enable Load and Reload buttons
-document.getElementById("detector-select").addEventListener("change", (e) => {
-    const enabled = !!e.target.value;
+// Handle Detector selection → populate subdirectory dropdown and enable buttons
+document.getElementById("detector-select").addEventListener("change", async (e) => {
+    const det = e.target.value;
+    const subdirCol = document.getElementById("qa-subdir-col");
+    const subdirSelect = document.getElementById("subdir-select-qa");
+
+    subdirCol.style.display = "none";
+    subdirSelect.innerHTML = '<option value="">(top level)</option>';
+
+    const enabled = !!det;
     document.getElementById("load-pngs").disabled = !enabled;
     document.getElementById("reload-pngs").disabled = !enabled;
+
+    if (!det) return;
+
+    const res = await fetchDirs(det);
+    if (res.success && res.subdirs.length > 0) {
+        res.subdirs.forEach(d => {
+            const opt = document.createElement("option");
+            opt.value = d;
+            opt.textContent = d;
+            subdirSelect.appendChild(opt);
+        });
+        subdirCol.style.display = "";
+    }
 });
 
 // Load PNGs
@@ -744,7 +774,11 @@ async function loadPNGs() {
     const det_dir = document.getElementById("detector-select").value;
     if (!det_dir) return;
 
-    const dir = osJoin(run_dir, subrun_dir.split('/').pop(), det_dir.split('/').pop());
+    const subdir = document.getElementById("subdir-select-qa").value;
+    const detLeaf = det_dir.split('/').pop();
+    const dir = subdir
+        ? osJoin(run_dir, subrun_dir.split('/').pop(), detLeaf, subdir)
+        : osJoin(run_dir, subrun_dir.split('/').pop(), detLeaf);
 
     const res = await fetch(`/list_pngs?dir=${encodeURIComponent(dir)}`);
     const data = await res.json();
@@ -812,6 +846,7 @@ function openFullscreenImage(imgUrl) {
 document.getElementById("load-pngs").addEventListener("click", loadPNGs);
 document.getElementById("reload-pngs").addEventListener("click", loadPNGs);
 document.getElementById("detector-select").addEventListener("change", loadPNGs);
+document.getElementById("subdir-select-qa").addEventListener("change", loadPNGs);
 
 
 // Helper for joining paths safely
