@@ -74,10 +74,12 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
         print(f"[qa_watcher] exclude_runs : {sorted(exclude_runs)}")
     print(f"[qa_watcher] poll         : {poll_interval}s  stale_after={stale_run_days}d")
 
+    state_path = reset_signal_path.parent / 'qa_state.json' if reset_signal_path else None
+
     checked_stale_runs: set = set()
 
     # Per-mode tracking state, keyed by (run_name, subrun_name)
-    seen_files:  dict = {}  # 'all'      mode: frozenset of filenames at last QA run
+    seen_files:  dict = _load_state(state_path)  # 'all' mode: frozenset of filenames at last QA run
     done_first:  set  = set()  # 'first' mode: subruns already processed
     done_fnums:  dict = {}  # 'per_file' mode: set of completed file_nums
 
@@ -92,6 +94,7 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                     done_first.clear()
                     done_fnums.clear()
                     checked_stale_runs.clear()
+                    _save_state(state_path, seen_files)
                     print("[qa_watcher] Reset: all runs will be reprocessed")
                 else:
                     for key in list(seen_files):
@@ -100,6 +103,7 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                     for key in list(done_fnums):
                         if key[0] in reset: del done_fnums[key]
                     checked_stale_runs -= reset
+                    _save_state(state_path, seen_files)
                     print(f"[qa_watcher] Reset: {sorted(reset)} will be reprocessed")
 
         if not runs_dir.exists():
@@ -142,6 +146,7 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                                   f"  n_files={len(stable)}")
                             _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'all')
                             seen_files[key] = current
+                            _save_state(state_path, seen_files)
                             found_new = True
 
                     elif mode == 'first':
@@ -176,6 +181,29 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _load_state(state_path: Path) -> dict:
+    if state_path is None or not state_path.exists():
+        return {}
+    try:
+        with open(state_path) as f:
+            raw = json.load(f)
+        return {tuple(k.split('/', 1)): frozenset(v) for k, v in raw.items()}
+    except Exception as e:
+        print(f"[qa_watcher] Could not load state from {state_path}: {e}")
+        return {}
+
+
+def _save_state(state_path: Path, seen_files: dict):
+    if state_path is None:
+        return
+    try:
+        raw = {f"{k[0]}/{k[1]}": sorted(v) for k, v in seen_files.items()}
+        with open(state_path, 'w') as f:
+            json.dump(raw, f, indent=2)
+    except Exception as e:
+        print(f"[qa_watcher] Could not save state to {state_path}: {e}")
+
 
 def _pop_reset_signal(signal_path: Path):
     """
