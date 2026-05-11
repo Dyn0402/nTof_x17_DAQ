@@ -36,23 +36,23 @@ class Config(RunConfigBase):
         # self.gas = 'Ar/CO2 70/30'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
-        self.beam_type = 'cosmics'
-        # self.beam_type = 'neutrons'
+        # self.beam_type = 'cosmics'
+        self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
-        # self.target_type = 'carbon'
+        self.target_type = 'carbon'
         # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
-        self.target_type = 'none'
+        # self.target_type = 'none'
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Cosmics_Mx17_May.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Cosmics_Mx17_May.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_QA.cfg',
 
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
@@ -60,8 +60,8 @@ class Config(RunConfigBase):
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
             # 'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
+            # 'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -71,10 +71,10 @@ class Config(RunConfigBase):
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
             # 'latency': 90,  # Latency setting for DAQ in clock cycles
             # 'latency': 100,  # Latency setting for DAQ in clock cycles
-            # 'latency': 1,  # Latency setting for DAQ in clock cycles
-            'latency': 24,  # Latency setting for DAQ in clock cycles
-            # 'sample_period': 20,  # ns, sampling period
-            'sample_period': 60,  # ns, sampling period
+            'latency': 1,  # Latency setting for DAQ in clock cycles
+            # 'latency': 24,  # Latency setting for DAQ in clock cycles
+            'sample_period': 20,  # ns, sampling period
+            # 'sample_period': 60,  # ns, sampling period
             'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
         }
 
@@ -173,111 +173,128 @@ class Config(RunConfigBase):
             # },
         ]
 
-        drifts_0 = [d0_init]
-        drifts_1 = [d1_init]
+        # drifts_0 = [d0_init]
+        # drifts_1 = [d1_init]
+        #
+        # v_step, n_steps = 5, 20
+        # resists_0 = [r0_init - i * v_step for i in range(n_steps)]
+        # resists_1 = [r1_init - i * v_step for i in range(n_steps)]
+        #
+        # scan_step_time = 15
+        # hv_scan_i = 0
+        # for drift_0, drift_1 in zip(drifts_0, drifts_1):
+        #     for resist_0, resist_1 in zip(resists_0, resists_1):
+        #         new_subrun = {
+        #             'sub_run_name': f'hv_scan_a_{hv_scan_i}',
+        #             'run_time': scan_step_time,  # Minutes
+        #             'hvs': {
+        #                 '5': {  # Positive Resists
+        #                     '0': resist_0,  # mx17_3 30mm drift
+        #                     '1': resist_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 '9': {  # Negative Drifts
+        #                     '0': drift_0,  # mx17_3 30mm drift
+        #                     '1': drift_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 '8': {  # PMTs
+        #                     '0': scint_A_HV,  # Top
+        #                     '1': scint_B_HV,  # Bottom
+        #                 },
+        #             }
+        #         }
+        #
+        #         self.sub_runs.append(new_subrun)
+        #         hv_scan_i += 1
+        #
+        # new_subrun = {
+        #     'sub_run_name': f'long_run',
+        #     'run_time': 60 * 3,  # Minutes
+        #     'hvs': {
+        #         '5': {  # Positive Resists
+        #             '0': 640,  # mx17_3 30mm drift
+        #             '1': 640,  # mx17_4 3.6mm drift
+        #         },
+        #         '9': {  # Negative Drifts
+        #             '0': drift_0,  # mx17_3 30mm drift
+        #             '1': drift_1,  # mx17_4 3.6mm drift
+        #         },
+        #         '8': {  # PMTs
+        #             '0': scint_A_HV,  # Top
+        #             '1': scint_B_HV,  # Bottom
+        #         },
+        #     }
+        # }
+        #
+        # self.sub_runs.append(new_subrun)
+        #
+        # v_step, n_steps = 10, 10
+        # resists_0 = [r0_init - i * v_step for i in range(n_steps)]
+        # resists_1 = [r1_init - i * v_step for i in range(n_steps)]
+        #
+        # scan_step_time = 10
+        # hv_scan_i = 0
+        # for drift_0, drift_1 in zip(drifts_0, drifts_1):
+        #     for resist_0, resist_1 in zip(resists_0, resists_1):
+        #         new_subrun = {
+        #             'sub_run_name': f'hv_scan_b_{hv_scan_i}',
+        #             'run_time': scan_step_time,  # Minutes
+        #             'hvs': {
+        #                 '5': {  # Positive Resists
+        #                     '0': resist_0,  # mx17_3 30mm drift
+        #                     '1': resist_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 '9': {  # Negative Drifts
+        #                     '0': drift_0,  # mx17_3 30mm drift
+        #                     '1': drift_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 '8': {  # PMTs
+        #                     '0': scint_A_HV,  # Top
+        #                     '1': scint_B_HV,  # Bottom
+        #                 },
+        #             }
+        #         }
+        #
+        #         self.sub_runs.append(new_subrun)
+        #         hv_scan_i += 1
 
-        v_step, n_steps = 5, 20
-        resists_0 = [r0_init - i * v_step for i in range(n_steps)]
-        resists_1 = [r1_init - i * v_step for i in range(n_steps)]
-
-        scan_step_time = 15
-        hv_scan_i = 0
-        for drift_0, drift_1 in zip(drifts_0, drifts_1):
-            for resist_0, resist_1 in zip(resists_0, resists_1):
-                new_subrun = {
-                    'sub_run_name': f'hv_scan_a_{hv_scan_i}',
-                    'run_time': scan_step_time,  # Minutes
-                    'hvs': {
-                        '5': {  # Positive Resists
-                            '0': resist_0,  # mx17_3 30mm drift
-                            '1': resist_1,  # mx17_4 3.6mm drift
-                        },
-                        '9': {  # Negative Drifts
-                            '0': drift_0,  # mx17_3 30mm drift
-                            '1': drift_1,  # mx17_4 3.6mm drift
-                        },
-                        '8': {  # PMTs
-                            '0': scint_A_HV,  # Top
-                            '1': scint_B_HV,  # Bottom
-                        },
-                    }
+        for i in range(20):
+            new_subrun = {
+                'sub_run_name': f'run_{i}',
+                'run_time': 60 * 3,  # Minutes
+                'hvs': {
+                    '5': {  # Positive Resists
+                        '0': 635,  # mx17_3 30mm drift
+                        '1': 635,  # mx17_4 3.6mm drift
+                    },
+                    '9': {  # Negative Drifts
+                        '0': 800,  # mx17_3 30mm drift
+                        '1': 800,  # mx17_4 3.6mm drift
+                    },
                 }
-
-                self.sub_runs.append(new_subrun)
-                hv_scan_i += 1
-
-        new_subrun = {
-            'sub_run_name': f'long_run',
-            'run_time': 60 * 3,  # Minutes
-            'hvs': {
-                '5': {  # Positive Resists
-                    '0': 640,  # mx17_3 30mm drift
-                    '1': 640,  # mx17_4 3.6mm drift
-                },
-                '9': {  # Negative Drifts
-                    '0': drift_0,  # mx17_3 30mm drift
-                    '1': drift_1,  # mx17_4 3.6mm drift
-                },
-                '8': {  # PMTs
-                    '0': scint_A_HV,  # Top
-                    '1': scint_B_HV,  # Bottom
-                },
             }
-        }
-
-        self.sub_runs.append(new_subrun)
-
-        v_step, n_steps = 10, 10
-        resists_0 = [r0_init - i * v_step for i in range(n_steps)]
-        resists_1 = [r1_init - i * v_step for i in range(n_steps)]
-
-        scan_step_time = 10
-        hv_scan_i = 0
-        for drift_0, drift_1 in zip(drifts_0, drifts_1):
-            for resist_0, resist_1 in zip(resists_0, resists_1):
-                new_subrun = {
-                    'sub_run_name': f'hv_scan_b_{hv_scan_i}',
-                    'run_time': scan_step_time,  # Minutes
-                    'hvs': {
-                        '5': {  # Positive Resists
-                            '0': resist_0,  # mx17_3 30mm drift
-                            '1': resist_1,  # mx17_4 3.6mm drift
-                        },
-                        '9': {  # Negative Drifts
-                            '0': drift_0,  # mx17_3 30mm drift
-                            '1': drift_1,  # mx17_4 3.6mm drift
-                        },
-                        '8': {  # PMTs
-                            '0': scint_A_HV,  # Top
-                            '1': scint_B_HV,  # Bottom
-                        },
-                    }
-                }
-
-                self.sub_runs.append(new_subrun)
-                hv_scan_i += 1
+            self.sub_runs.append(new_subrun)
 
 
         self.bench_geometry = {
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
         }
 
-        self.included_detectors = ['mx17_3', 'mx17_4', 'scint_A', 'scint_B']
-        # self.included_detectors = ['mx17_4', 'scint_A', 'scint_B']
+        # self.included_detectors = ['mx17_3', 'mx17_4', 'scint_A', 'scint_B']
+        self.included_detectors = ['mx17_3', 'mx17_4']
 
         self.detectors = [
             {
                 'name': 'mx17_3',
                 'det_type': 'mx17',
                 'resist_type': 'strip',
-                'drift_gap': '30 mm',
+                'drift_gap': '16 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
                 # 'distance_from_target': 20, # cm from target
                 'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
-                    'z': 33.5,  # mm
+                    'z': 0,  # mm
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
@@ -330,14 +347,14 @@ class Config(RunConfigBase):
                 'name': 'mx17_4',
                 'det_type': 'mx17',
                 'resist_type': 'strip',
-                'drift_gap': '3.6 mm',
+                'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
                 # 'distance_from_target': 20,  # cm from target
                 'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
-                    'z': 19.5,  # mm
+                    'z': 0,  # mm
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
