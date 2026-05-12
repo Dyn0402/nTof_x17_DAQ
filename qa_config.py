@@ -33,7 +33,7 @@ CONFIG = {
     'exclude_runs': None,  # e.g. ['run_0']          — skip these
 
     # Watcher behavior
-    'poll_interval':  60,  # seconds between scans
+    'poll_interval':  10,  # seconds between scans
     'stale_run_days':  1,  # runs with no new combined_hits for this many days are skipped
 }
 

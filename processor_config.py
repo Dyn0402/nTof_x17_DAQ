@@ -54,7 +54,7 @@ CONFIG = {
     'exclude_runs': None,  # e.g. ['run_3']          — skip these runs
 
     # Watcher behavior
-    'poll_interval':  30,  # seconds between full directory scans
+    'poll_interval':  10,  # seconds between full directory scans
     'stale_run_days':  1,  # runs with no new FDFs for this many days are checked once then skipped
     'free_threads':    2,  # CPU threads to leave free during parallel processing
 }
