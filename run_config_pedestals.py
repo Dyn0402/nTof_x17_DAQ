@@ -36,38 +36,38 @@ class Config(RunConfigBase):
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
         self.write_all_dectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
-        # self.gas = 'Ar/CF4 90/10'  # Gas type for run
-        self.gas = 'Ar/CO2 70/30'  # Gas type for run
+        self.gas = 'Ar/CF4 90/10'  # Gas type for run
+        # self.gas = 'Ar/CO2 70/30'  # Gas type for run
         # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
-        self.beam_type = 'cosmics'
-        # self.beam_type = 'neutrons'
+        # self.beam_type = 'cosmics'
+        self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
-        # self.target_type = 'carbon'
+        self.target_type = 'carbon'
         # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
-        self.target_type = 'none'
+        # self.target_type = 'none'
 
-        self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
-            'ip': '192.168.10.222',
-            'channels': {  # Check only the channels which exist here
-                'U0': {
-                    'expected_voltage': 4.5,  # V
-                    'expected_current': 30,  # A
-                    'voltage_tolerance': 0.4,  # V
-                    'current_tolerance': 5,  # A
-                },
-            }
-        }
+        # self.weiner_ps_info = {  # If this exists, check for Weiner LV before applying any HV
+        #     'ip': '192.168.10.222',
+        #     'channels': {  # Check only the channels which exist here
+        #         'U0': {
+        #             'expected_voltage': 4.5,  # V
+        #             'expected_current': 30,  # A
+        #             'voltage_tolerance': 0.4,  # V
+        #             'current_tolerance': 5,  # A
+        #         },
+        #     }
+        # }
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Tcm_MM_Mx17_Feb_test_ped.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May_ped.cfg',
             # 'run_directory': f'/mnt/data/beam_sps_25/dream_run/{self.run_name}/',
             # 'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'run_directory': f'{self.run_out_dir}',
@@ -105,27 +105,35 @@ class Config(RunConfigBase):
         }
 
         self.hv_info = {
-            'ip': '192.168.10.199',
-            # 'ip': '192.168.10.81',
-            'username': 'admin',
-            'password': 'admin',
-            'n_cards': 6,
+            # 'ip': '192.168.10.199',
+            # # # 'ip': '192.168.10.81',
+            # 'username': 'admin',
+            # 'password': 'admin',
+            'ip': '128.141.177.244',
+            'n_cards': 10,
             'n_channels_per_card': 12,
             'run_out_dir': self.run_out_dir,
             'hv_monitoring': True,  # True to monitor HV during run, False to not monitor
             'monitor_interval': 1,  # Seconds between HV monitoring
         }
 
+        with open('hv_creds.txt') as f:
+            lines = f.readlines()
+            self.hv_info['username'] = lines[0].strip()
+            self.hv_info['password'] = lines[1].strip()
+
         self.sub_runs = [
             {
                 'sub_run_name': f'pedestals',
                 'run_time': 10.0 / 60,  # Minutes
                 'hvs': {
-                    '2': {
-                        '0': 300,
-                    },
                     '5': {
                         '0': 300,
+                        '1': 300,
+                    },
+                    '9': {
+                        '0': 300,
+                        '1': 300,
                     },
                 }
             },
@@ -142,9 +150,9 @@ class Config(RunConfigBase):
                 'name': 'mx17_3',
                 'det_type': 'mx17',
                 'resist_type': 'strip',
-                'drift_gap': '30 mm',
+                'drift_gap': '16 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
-                'distance_from_target': 20,  # cm from target
+                # 'distance_from_target': 20, # cm from target
                 'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
@@ -157,9 +165,10 @@ class Config(RunConfigBase):
                     'z': 0,  # deg  Rotation about z axis
                 },
                 'hv_channels': {
-                    'drift': (5, 0),
-                    'resist': (2, 0),
+                    'drift': (9, 0),
+                    'resist': (5, 0),
                 },
+                'mx_cards': '4 M1',
                 'dream_feus': {
                     'x_1': (1, 1),  # Runs along x direction, indicates y hit location
                     'x_2': (1, 2),
@@ -201,9 +210,9 @@ class Config(RunConfigBase):
                 'name': 'mx17_4',
                 'det_type': 'mx17',
                 'resist_type': 'strip',
-                'drift_gap': '3.6 mm',
+                'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
-                'distance_from_target': 20,  # cm from target
+                # 'distance_from_target': 20,  # cm from target
                 'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
@@ -216,44 +225,99 @@ class Config(RunConfigBase):
                     'z': 0,  # deg  Rotation about z axis
                 },
                 'hv_channels': {
-                    'drift': (5, 0),
-                    'resist': (2, 0),
+                    'drift': (9, 1),
+                    'resist': (5, 1),
                 },
+                'mx_cards': '4 M2',
                 'dream_feus': {
                     'x_1': (3, 1),  # Runs along x direction, indicates y hit location
                     'x_2': (3, 2),
                     'x_3': (3, 3),
                     'x_4': (3, 4),
-                    'x_5': (3, 5),
-                    'x_6': (3, 6),
-                    'x_7': (3, 7),
-                    'x_8': (3, 8),
-                    'y_1': (4, 1),  # Runs along y direction, indicates x hit location
-                    'y_2': (4, 2),
-                    'y_3': (4, 3),
-                    'y_4': (4, 4),
-                    'y_5': (4, 5),
-                    'y_6': (4, 6),
-                    'y_7': (4, 7),
-                    'y_8': (4, 8),
+                    'y_1': (3, 5),  # Runs along y direction, indicates x hit location
+                    'y_2': (3, 6),
+                    'y_3': (3, 7),
+                    'y_4': (3, 8),
                 },
                 'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
                     'x_1': 'inverted',
                     'x_2': 'inverted',
                     'x_3': 'inverted',
                     'x_4': 'inverted',
-                    'x_5': 'inverted',
-                    'x_6': 'inverted',
-                    'x_7': 'inverted',
-                    'x_8': 'inverted',
                     'y_1': 'inverted',
                     'y_2': 'inverted',
                     'y_3': 'inverted',
                     'y_4': 'inverted',
-                    'y_5': 'inverted',
-                    'y_6': 'inverted',
-                    'y_7': 'inverted',
-                    'y_8': 'inverted',
+                },
+                # 'dream_feus': {
+                #     'x_1': (3, 1),  # Runs along x direction, indicates y hit location
+                #     'x_2': (3, 2),
+                #     'x_3': (3, 3),
+                #     'x_4': (3, 4),
+                #     'x_5': (3, 5),
+                #     'x_6': (3, 6),
+                #     'x_7': (3, 7),
+                #     'x_8': (3, 8),
+                #     'y_1': (4, 1),  # Runs along y direction, indicates x hit location
+                #     'y_2': (4, 2),
+                #     'y_3': (4, 3),
+                #     'y_4': (4, 4),
+                #     'y_5': (4, 5),
+                #     'y_6': (4, 6),
+                #     'y_7': (4, 7),
+                #     'y_8': (4, 8),
+                # },
+                # 'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
+                #     'x_1': 'inverted',
+                #     'x_2': 'inverted',
+                #     'x_3': 'inverted',
+                #     'x_4': 'inverted',
+                #     'x_5': 'inverted',
+                #     'x_6': 'inverted',
+                #     'x_7': 'inverted',
+                #     'x_8': 'inverted',
+                #     'y_1': 'inverted',
+                #     'y_2': 'inverted',
+                #     'y_3': 'inverted',
+                #     'y_4': 'inverted',
+                #     'y_5': 'inverted',
+                #     'y_6': 'inverted',
+                #     'y_7': 'inverted',
+                #     'y_8': 'inverted',
+                # },
+            },
+            {
+                'name': 'scint_A',
+                'det_type': 'scintillator_PMT',
+                'det_center_coords': {  # Center of detector
+                    'x': 0,  # mm
+                    'y': 0,  # mm
+                    'z': 10,  # mm
+                },
+                'det_orientation': {
+                    'x': 0,  # deg  Rotation about x axis
+                    'y': 0,  # deg  Rotation about y axis
+                    'z': 0,  # deg  Rotation about z axis
+                },
+                'hv_channels': {
+                    'bias': (8, 0),
+                },
+            },
+            {
+                'name': 'scint_B',
+                'det_type': 'scintillator_PMT',
+                'det_center_coords': {  # Center of detector
+                    'x': 0,  # mm
+                    'y': 0,  # mm
+                    'z': 7,  # mm
+                },
+                'det_orientation': {
+                    'x': 0,  # deg  Rotation about x axis
+                    'y': 0,  # deg  Rotation about y axis
+                    'z': 0,  # deg  Rotation about z axis
+                },
+                'hv_channels': {
+                    'bias': (8, 1),
                 },
             },
 
