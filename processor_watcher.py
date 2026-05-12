@@ -36,7 +36,7 @@ Config keys (see processor_config.py to generate the JSON):
 
   include_runs            : list of run directory names to process exclusively (null = all)
   exclude_runs            : list of run directory names to skip (null = none skipped)
-  poll_interval           : seconds between full directory scans    (default: 30)
+  poll_interval           : seconds between full directory scans    (default: 10)
   stale_run_days          : runs with no new FDFs for this many days are skipped  (default: 4)
   free_threads            : CPU threads to leave free during processing (default: 2)
 """
@@ -94,7 +94,7 @@ def run_watcher(config: dict):
     include_runs = set(config['include_runs']) if config.get('include_runs') else None
     exclude_runs = set(config['exclude_runs']) if config.get('exclude_runs') else set()
 
-    poll_interval  = config.get('poll_interval',  30)
+    poll_interval  = config.get('poll_interval',  10)
     stale_run_days = config.get('stale_run_days',  4)
     free_threads   = config.get('free_threads',    2)
     n_threads      = max(1, (os.cpu_count() or 1) - free_threads)

@@ -50,12 +50,12 @@ CONFIG = {
     # If include_runs is a non-empty list, only those run directories are processed.
     # If exclude_runs is a non-empty list, those run directories are skipped.
     # Both null/empty means process all runs as normal.
-    'include_runs': ['run_11', 'run_12'],  # None,  # e.g. ['run_1', 'run_2'] — only process these runs, None for all
+    'include_runs': None,  # None,  # e.g. ['run_1', 'run_2'] — only process these runs, None for all
     'exclude_runs': None,  # e.g. ['run_3']          — skip these runs
 
     # Watcher behavior
     'poll_interval':  30,  # seconds between full directory scans
-    'stale_run_days':  4,  # runs with no new FDFs for this many days are checked once then skipped
+    'stale_run_days':  1,  # runs with no new FDFs for this many days are checked once then skipped
     'free_threads':    2,  # CPU threads to leave free during parallel processing
 }
 

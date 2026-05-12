@@ -19,7 +19,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_4'
+        self.run_name = 'run_14'
         self.base_out_dir = '/mnt/data/x17/beam_may/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -173,10 +173,10 @@ class Config(RunConfigBase):
             # },
         ]
 
-        drifts_0 = [800, 400]
-        drifts_1 = [800, 400]
+        drifts_0 = [800]
+        drifts_1 = [800]
 
-        v_step, n_steps = 5, 48
+        v_step, n_steps = 10, 48
         resists_0 = [r0_init - i * v_step for i in range(n_steps)]
         resists_1 = [r1_init - i * v_step for i in range(n_steps)]
 
@@ -262,14 +262,14 @@ class Config(RunConfigBase):
         #         'sub_run_name': f'run_{i}',
         #         'run_time': 60 * 3,  # Minutes
         #         'hvs': {
-        #             '5': {  # Positive Resists
-        #                 '0': 635,  # mx17_3 30mm drift
-        #                 '1': 635,  # mx17_4 3.6mm drift
-        #             },
-        #             '9': {  # Negative Drifts
-        #                 '0': 800,  # mx17_3 30mm drift
-        #                 '1': 800,  # mx17_4 3.6mm drift
-        #             },
+        #             # '5': {  # Positive Resists
+        #             #     '0': 635,  # mx17_3 30mm drift
+        #             #     '1': 635,  # mx17_4 3.6mm drift
+        #             # },
+        #             # '9': {  # Negative Drifts
+        #             #     '0': 800,  # mx17_3 30mm drift
+        #             #     '1': 800,  # mx17_4 3.6mm drift
+        #             # },
         #         }
         #     }
         #     self.sub_runs.append(new_subrun)

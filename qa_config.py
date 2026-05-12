@@ -34,7 +34,7 @@ CONFIG = {
 
     # Watcher behavior
     'poll_interval':  60,  # seconds between scans
-    'stale_run_days':  4,  # runs with no new combined_hits for this many days are skipped
+    'stale_run_days':  1,  # runs with no new combined_hits for this many days are skipped
 }
 
 if __name__ == '__main__':

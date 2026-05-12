@@ -20,7 +20,7 @@ Config keys (see qa_config.py to generate the JSON):
                               per_file — independent QA output per file_num
   include_runs            : list of run directory names to process exclusively (null = all)
   exclude_runs            : list of run directory names to skip (null = none)
-  poll_interval           : seconds between scans   (default: 60)
+  poll_interval           : seconds between scans   (default: 10)
   stale_run_days          : runs with no new combined_hits for this many days are skipped (default: 4)
 """
 
@@ -58,7 +58,7 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
     include_runs = set(config['include_runs']) if config.get('include_runs') else None
     exclude_runs = set(config['exclude_runs']) if config.get('exclude_runs') else set()
 
-    poll_interval  = config.get('poll_interval',  60)
+    poll_interval  = config.get('poll_interval',  10)
     stale_run_days = config.get('stale_run_days',  4)
 
     qa_script  = ntof_x17_dir / 'ntof_daq_analysis' / 'detector_qa.py'
