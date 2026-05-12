@@ -70,7 +70,10 @@ def main():
 
 def set_hvs(hv_info, hvs):
     ip_address, username, password = hv_info['ip'], hv_info['username'], hv_info['password']
+    print('Setting HV...')
+    print(f'HV IP: {ip_address}, Username: {username}, Password: {password}')
     with CAENHVController(ip_address, username, password) as caen_hv:
+        print(f'HV Connected')
         for slot, channel_v0s in hvs.items():
             for channel, v0 in channel_v0s.items():
                 power = caen_hv.get_ch_power(int(slot), int(channel))
