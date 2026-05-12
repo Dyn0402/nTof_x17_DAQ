@@ -208,9 +208,9 @@ def get_processor_watcher_status():
             return {"status": "Combining",     "color": "success",  "fields": fields}
         if "[cleanup]" in line:
             return {"status": "Cleaning Up",   "color": "success",  "fields": fields}
-        if "[watcher] Sleeping" in line:
+        if "[watcher]" in line and " idle " in line:
             return {"status": "IDLE",          "color": "info",     "fields": fields}
-        if "[watcher] Waiting for runs_dir" in line:
+        if "[watcher]" in line and "waiting for runs_dir" in line:
             return {"status": "Waiting for Dir", "color": "warning", "fields": []}
         if "[watcher]" in line:
             return {"status": "RUNNING",       "color": "info",     "fields": fields}
@@ -233,8 +233,8 @@ def get_qa_watcher_status():
     fields = []
     for line in reversed(lines):
         m = re.search(r'\[qa_watcher\] (\S+)/(\S+)', line)
-        if m and 'Sleeping' not in line and 'Marked stale' not in line \
-                and 'Waiting' not in line and 'runs_dir' not in line:
+        if m and 'idle' not in line and 'Marked stale' not in line \
+                and 'waiting' not in line and 'runs_dir' not in line:
             fields = [
                 {"label": "Run",    "value": m.group(1)},
                 {"label": "Subrun", "value": m.group(2)},
@@ -248,9 +248,9 @@ def get_qa_watcher_status():
         m = re.search(r'\[qa\] (\S+) —', line)
         if m:
             return {"status": "Running QA",  "color": "success", "fields": fields + [{"label": "Detector", "value": m.group(1)}]}
-        if "[qa_watcher] Sleeping" in line:
+        if "[qa_watcher]" in line and " idle " in line:
             return {"status": "IDLE",        "color": "info",    "fields": fields}
-        if "[qa_watcher] Waiting for runs_dir" in line:
+        if "[qa_watcher]" in line and "waiting for runs_dir" in line:
             return {"status": "Waiting for Dir", "color": "warning", "fields": []}
         if "[qa_watcher]" in line:
             return {"status": "RUNNING",     "color": "info",    "fields": fields}

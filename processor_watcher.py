@@ -46,6 +46,7 @@ import sys
 import json
 import re
 import time
+import datetime
 import tempfile
 import subprocess
 from pathlib import Path
@@ -110,12 +111,22 @@ def run_watcher(config: dict):
 
     checked_stale_runs: set = set()
     prev_sizes: dict = {}
+    idle_ticks = 0
+    idle_line = False
+    _SPINNER = ['-', '\\', '|', '/']
+
+    def _end_idle():
+        nonlocal idle_line
+        if idle_line:
+            sys.stdout.write('\n')
+            sys.stdout.flush()
+            idle_line = False
 
     while True:
         found_new = False
 
         if not runs_dir.exists():
-            print(f"[watcher] Waiting for runs_dir: {runs_dir}")
+            pass
         else:
             for run_dir in sorted(runs_dir.iterdir()):
                 if not run_dir.is_dir():
@@ -166,7 +177,8 @@ def run_watcher(config: dict):
                             continue
 
                         if prev_sizes.get(key) == current:
-                            print(f"\n[watcher] {run_dir.name}/{subrun_dir.name}  "
+                            _end_idle()
+                            print(f"[watcher] {run_dir.name}/{subrun_dir.name}  "
                                   f"file_num={fnum:03d}  ({len(all_fdf_group)} FEU(s))")
                             _process_file_num(
                                 fnum, all_fdf_group, subrun_dir, ped_dir,
@@ -183,10 +195,23 @@ def run_watcher(config: dict):
 
                 if is_stale:
                     checked_stale_runs.add(run_dir.name)
+                    _end_idle()
                     print(f"[watcher] Marked stale (will skip): {run_dir.name}")
 
-        if not found_new:
-            print(f"[watcher] Sleeping {poll_interval}s...")
+        if found_new:
+            idle_ticks = 0
+        else:
+            idle_ticks += 1
+            elapsed = idle_ticks * poll_interval
+            ts = datetime.datetime.now().strftime('%H:%M:%S')
+            sp = _SPINNER[idle_ticks % 4]
+            if not runs_dir.exists():
+                msg = f'[watcher] {sp} waiting for runs_dir  #{idle_ticks}  {ts}'
+            else:
+                msg = f'[watcher] {sp} idle  #{idle_ticks}  {elapsed}s  {ts}'
+            sys.stdout.write(f'\r{msg}          ')
+            sys.stdout.flush()
+            idle_line = True
         time.sleep(poll_interval)
 
 

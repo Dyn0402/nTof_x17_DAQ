@@ -25,9 +25,10 @@ Config keys (see qa_config.py to generate the JSON):
 """
 
 import re
-import sys  # used for argv in main()
+import sys
 import json
 import time
+import datetime
 import subprocess
 from pathlib import Path
 
@@ -77,6 +78,16 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
     state_path = reset_signal_path.parent / 'qa_state.json' if reset_signal_path else None
 
     checked_stale_runs: set = set()
+    idle_ticks = 0
+    idle_line = False
+    _SPINNER = ['-', '\\', '|', '/']
+
+    def _end_idle():
+        nonlocal idle_line
+        if idle_line:
+            sys.stdout.write('\n')
+            sys.stdout.flush()
+            idle_line = False
 
     # Per-mode tracking state, keyed by (run_name, subrun_name)
     seen_files:  dict = _load_state(state_path)  # 'all' mode: frozenset of filenames at last QA run
@@ -95,6 +106,7 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                     done_fnums.clear()
                     checked_stale_runs.clear()
                     _save_state(state_path, seen_files)
+                    _end_idle()
                     print("[qa_watcher] Reset: all runs will be reprocessed")
                 else:
                     for key in list(seen_files):
@@ -104,10 +116,11 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                         if key[0] in reset: del done_fnums[key]
                     checked_stale_runs -= reset
                     _save_state(state_path, seen_files)
+                    _end_idle()
                     print(f"[qa_watcher] Reset: {sorted(reset)} will be reprocessed")
 
         if not runs_dir.exists():
-            print(f"[qa_watcher] Waiting for runs_dir: {runs_dir}")
+            pass
         else:
             for run_dir in sorted(runs_dir.iterdir()):
                 if not run_dir.is_dir():
@@ -142,7 +155,8 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                     if mode == 'all':
                         current = frozenset(stable)
                         if current != seen_files.get(key):
-                            print(f"\n[qa_watcher] {run_dir.name}/{subrun_dir.name}"
+                            _end_idle()
+                            print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
                                   f"  n_files={len(stable)}")
                             _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'all')
                             seen_files[key] = current
@@ -152,7 +166,8 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                     elif mode == 'first':
                         if key not in done_first:
                             if any(_file_num(f) == 0 for f in stable):
-                                print(f"\n[qa_watcher] {run_dir.name}/{subrun_dir.name}"
+                                _end_idle()
+                                print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
                                       f"  file_num=0")
                                 _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'first')
                                 done_first.add(key)
@@ -162,7 +177,8 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                         completed = done_fnums.get(key, set())
                         new_fnums = {_file_num(f) for f in stable} - {None} - completed
                         for fnum in sorted(new_fnums):
-                            print(f"\n[qa_watcher] {run_dir.name}/{subrun_dir.name}"
+                            _end_idle()
+                            print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
                                   f"  file_num={fnum:03d}")
                             _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'per_file', fnum)
                             completed.add(fnum)
@@ -171,10 +187,23 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
 
                 if is_stale:
                     checked_stale_runs.add(run_dir.name)
+                    _end_idle()
                     print(f"[qa_watcher] Marked stale (will skip): {run_dir.name}")
 
-        if not found_new:
-            print(f"[qa_watcher] Sleeping {poll_interval}s...")
+        if found_new:
+            idle_ticks = 0
+        else:
+            idle_ticks += 1
+            elapsed = idle_ticks * poll_interval
+            ts = datetime.datetime.now().strftime('%H:%M:%S')
+            sp = _SPINNER[idle_ticks % 4]
+            if not runs_dir.exists():
+                msg = f'[qa_watcher] {sp} waiting for runs_dir  #{idle_ticks}  {ts}'
+            else:
+                msg = f'[qa_watcher] {sp} idle  #{idle_ticks}  {elapsed}s  {ts}'
+            sys.stdout.write(f'\r{msg}          ')
+            sys.stdout.flush()
+            idle_line = True
         time.sleep(poll_interval)
 
 
