@@ -117,24 +117,24 @@ class Config(RunConfigBase):
         scint_A_HV, scint_B_HV = 1300, 1300
         r0_init, r1_init, d0_init, d1_init = 635, 635, 800, 800
         self.sub_runs = [
-            # {
-            #     'sub_run_name': f'test_run',
-            #     'run_time': 60 * 24,  # Minutes
-            #     'hvs': {
-            #         '5': {  # Positive Resists
-            #             '0': 0,  # Det
-            #             # '1': r1_init,
-            #         },
-            #         '9': {  # Negative Drifts
-            #             '0': 500,
-            #             # '1': d1_init,
-            #         },
-            #         # '8': {  # PMTs
-            #         #     '0': scint_A_HV,  # Top
-            #         #     '1': scint_B_HV,  # Bottom
-            #         # },
-            #     }
-            # },
+            {
+                'sub_run_name': f'long_run',
+                'run_time': 60 * 24,  # Minutes
+                'hvs': {
+                    '5': {  # Positive Resists
+                        '0': 635,  # Det
+                        '1': 635,
+                    },
+                    '9': {  # Negative Drifts
+                        '0': 800,
+                        '1': 800,
+                    },
+                    # '8': {  # PMTs
+                    #     '0': scint_A_HV,  # Top
+                    #     '1': scint_B_HV,  # Bottom
+                    # },
+                }
+            },
             # {
             #     'sub_run_name': f'quick_run_10min',
             #     'run_time': 10,  # Minutes
@@ -173,38 +173,38 @@ class Config(RunConfigBase):
             # },
         ]
 
-        drifts_0 = [800, 400]
-        drifts_1 = [800, 400]
-
-        v_step, n_steps = 10, 48
-        resists_0 = [r0_init - i * v_step for i in range(n_steps)]
-        resists_1 = [r1_init - i * v_step for i in range(n_steps)]
-
-        scan_step_time = 5
-        hv_scan_i = 0
-        for drift_0, drift_1 in zip(drifts_0, drifts_1):
-            for resist_0, resist_1 in zip(resists_0, resists_1):
-                new_subrun = {
-                    'sub_run_name': f'hv_scan_drift_{drift_0}_resist_{resist_0}',
-                    'run_time': scan_step_time,  # Minutes
-                    'hvs': {
-                        '5': {  # Positive Resists
-                            '0': resist_0,  # mx17_3 30mm drift
-                            '1': resist_1,  # mx17_4 3.6mm drift
-                        },
-                        '9': {  # Negative Drifts
-                            '0': drift_0,  # mx17_3 30mm drift
-                            '1': drift_1,  # mx17_4 3.6mm drift
-                        },
-                        # '8': {  # PMTs
-                        #     '0': scint_A_HV,  # Top
-                        #     '1': scint_B_HV,  # Bottom
-                        # },
-                    }
-                }
-
-                self.sub_runs.append(new_subrun)
-                hv_scan_i += 1
+        # drifts_0 = [800, 400]
+        # drifts_1 = [800, 400]
+        #
+        # v_step, n_steps = 10, 48
+        # resists_0 = [r0_init - i * v_step for i in range(n_steps)]
+        # resists_1 = [r1_init - i * v_step for i in range(n_steps)]
+        #
+        # scan_step_time = 5
+        # hv_scan_i = 0
+        # for drift_0, drift_1 in zip(drifts_0, drifts_1):
+        #     for resist_0, resist_1 in zip(resists_0, resists_1):
+        #         new_subrun = {
+        #             'sub_run_name': f'hv_scan_drift_{drift_0}_resist_{resist_0}',
+        #             'run_time': scan_step_time,  # Minutes
+        #             'hvs': {
+        #                 '5': {  # Positive Resists
+        #                     '0': resist_0,  # mx17_3 30mm drift
+        #                     '1': resist_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 '9': {  # Negative Drifts
+        #                     '0': drift_0,  # mx17_3 30mm drift
+        #                     '1': drift_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 # '8': {  # PMTs
+        #                 #     '0': scint_A_HV,  # Top
+        #                 #     '1': scint_B_HV,  # Bottom
+        #                 # },
+        #             }
+        #         }
+        #
+        #         self.sub_runs.append(new_subrun)
+        #         hv_scan_i += 1
         #
         # new_subrun = {
         #     'sub_run_name': f'long_run',
