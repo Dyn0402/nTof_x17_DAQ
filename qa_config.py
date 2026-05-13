@@ -29,7 +29,7 @@ CONFIG = {
     'qa_file_mode': 'all',
 
     # Run filtering
-    'include_runs': ['run_19', 'run_20'],  # None,  # e.g. ['run_1', 'run_2'] — only process these; None = all
+    'include_runs': None,  # None,  # e.g. ['run_1', 'run_2'] — only process these; None = all
     'exclude_runs': None,  # e.g. ['run_0']          — skip these
 
     # Watcher behavior
