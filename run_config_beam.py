@@ -51,7 +51,8 @@ class Config(RunConfigBase):
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May_Coinc.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Cosmics_Mx17_May.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_QA.cfg',
 
@@ -61,7 +62,8 @@ class Config(RunConfigBase):
             # 'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 450,  # Number of samples per waveform to configure in DAQ
+            # 'n_samples_per_waveform': 450,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
@@ -70,9 +72,9 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-            # 'latency': 90,  # Latency setting for DAQ in clock cycles
+            'latency': 90,  # Latency setting for DAQ in clock cycles
             # 'latency': 100,  # Latency setting for DAQ in clock cycles
-            'latency': 1,  # Latency setting for DAQ in clock cycles
+            # 'latency': 1,  # Latency setting for DAQ in clock cycles
             # 'latency': 24,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             # 'sample_period': 60,  # ns, sampling period
@@ -174,38 +176,38 @@ class Config(RunConfigBase):
             # },
         ]
 
-        drifts_0 = [800, 400]
-        drifts_1 = [800, 400]
-
-        v_step, n_steps = 15, 20
-        resists_0 = [r0_init - i * v_step for i in range(n_steps)]
-        resists_1 = [r1_init - i * v_step for i in range(n_steps)]
-
-        scan_step_time = 5
-        hv_scan_i = 0
-        for drift_0, drift_1 in zip(drifts_0, drifts_1):
-            for resist_0, resist_1 in zip(resists_0, resists_1):
-                new_subrun = {
-                    'sub_run_name': f'hv_scan_drift_{drift_0}_resist_{resist_0}',
-                    'run_time': scan_step_time,  # Minutes
-                    'hvs': {
-                        '5': {  # Positive Resists
-                            '0': resist_0,  # mx17_3 30mm drift
-                            '1': resist_1,  # mx17_4 3.6mm drift
-                        },
-                        '9': {  # Negative Drifts
-                            '0': drift_0,  # mx17_3 30mm drift
-                            '1': drift_1,  # mx17_4 3.6mm drift
-                        },
-                        # '8': {  # PMTs
-                        #     '0': scint_A_HV,  # Top
-                        #     '1': scint_B_HV,  # Bottom
-                        # },
-                    }
-                }
-
-                self.sub_runs.append(new_subrun)
-                hv_scan_i += 1
+        # drifts_0 = [800, 400]
+        # drifts_1 = [800, 400]
+        #
+        # v_step, n_steps = 15, 20
+        # resists_0 = [r0_init - i * v_step for i in range(n_steps)]
+        # resists_1 = [r1_init - i * v_step for i in range(n_steps)]
+        #
+        # scan_step_time = 5
+        # hv_scan_i = 0
+        # for drift_0, drift_1 in zip(drifts_0, drifts_1):
+        #     for resist_0, resist_1 in zip(resists_0, resists_1):
+        #         new_subrun = {
+        #             'sub_run_name': f'hv_scan_drift_{drift_0}_resist_{resist_0}',
+        #             'run_time': scan_step_time,  # Minutes
+        #             'hvs': {
+        #                 '5': {  # Positive Resists
+        #                     '0': resist_0,  # mx17_3 30mm drift
+        #                     '1': resist_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 '9': {  # Negative Drifts
+        #                     '0': drift_0,  # mx17_3 30mm drift
+        #                     '1': drift_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 # '8': {  # PMTs
+        #                 #     '0': scint_A_HV,  # Top
+        #                 #     '1': scint_B_HV,  # Bottom
+        #                 # },
+        #             }
+        #         }
+        #
+        #         self.sub_runs.append(new_subrun)
+        #         hv_scan_i += 1
         #
         # new_subrun = {
         #     'sub_run_name': f'long_run',
@@ -258,22 +260,22 @@ class Config(RunConfigBase):
         #         self.sub_runs.append(new_subrun)
         #         hv_scan_i += 1
 
-        # for i in range(20):
-        #     new_subrun = {
-        #         'sub_run_name': f'run_{i}',
-        #         'run_time': 60 * 3,  # Minutes
-        #         'hvs': {
-        #             # '5': {  # Positive Resists
-        #             #     '0': 635,  # mx17_3 30mm drift
-        #             #     '1': 635,  # mx17_4 3.6mm drift
-        #             # },
-        #             # '9': {  # Negative Drifts
-        #             #     '0': 800,  # mx17_3 30mm drift
-        #             #     '1': 800,  # mx17_4 3.6mm drift
-        #             # },
-        #         }
-        #     }
-        #     self.sub_runs.append(new_subrun)
+        for i in range(20):
+            new_subrun = {
+                'sub_run_name': f'run_{i}',
+                'run_time': 60 * 3,  # Minutes
+                'hvs': {
+                    '5': {  # Positive Resists
+                        '0': 635,  # mx17_3 30mm drift
+                        '1': 635,  # mx17_4 3.6mm drift
+                    },
+                    '9': {  # Negative Drifts
+                        '0': 800,  # mx17_3 30mm drift
+                        '1': 800,  # mx17_4 3.6mm drift
+                    },
+                }
+            }
+            self.sub_runs.append(new_subrun)
 
 
         self.bench_geometry = {
