@@ -67,7 +67,7 @@ class Config(RunConfigBase):
             # 'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 300,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 200,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -78,7 +78,8 @@ class Config(RunConfigBase):
             # 'latency': 90,  # Latency setting for DAQ in clock cycles
             # 'latency': 100,  # Latency setting for DAQ in clock cycles
             # 'latency': 2,  # Latency setting for DAQ in clock cycles
-            'latency': 190,  # Latency setting for DAQ in clock cycles
+            # 'latency': 190,  # Latency setting for DAQ in clock cycles
+            'latency': 280,  # Latency setting for DAQ in clock cycles
             # 'latency': 24,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             # 'sample_period': 60,  # ns, sampling period
@@ -270,8 +271,8 @@ class Config(RunConfigBase):
                 'run_time': 60 * 3,  # Minutes
                 'hvs': {
                     '5': {  # Positive Resists
-                        '0': 645,  # mx17_3 30mm drift
-                        '1': 645,  # mx17_4 3.6mm drift
+                        '0': 650,  # mx17_3 30mm drift
+                        '1': 650,  # mx17_4 3.6mm drift
                     },
                     '9': {  # Negative Drifts
                         '0': 800,  # mx17_3 30mm drift
