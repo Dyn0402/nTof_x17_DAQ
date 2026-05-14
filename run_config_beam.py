@@ -41,8 +41,8 @@ class Config(RunConfigBase):
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
-        self.target_type = 'carbon'
-        # self.target_type = 'B4C - 2.5mm (thinner)'
+        # self.target_type = 'carbon'
+        self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
@@ -52,9 +52,10 @@ class Config(RunConfigBase):
             'ip': '192.168.10.8',
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May_Coinc.cfg',
+            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May_Coinc.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Cosmics_Mx17_May.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_QA.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_det3_QA.cfg',
 
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
@@ -72,9 +73,9 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-            'latency': 90,  # Latency setting for DAQ in clock cycles
+            # 'latency': 90,  # Latency setting for DAQ in clock cycles
             # 'latency': 100,  # Latency setting for DAQ in clock cycles
-            # 'latency': 1,  # Latency setting for DAQ in clock cycles
+            # 'latency': 2,  # Latency setting for DAQ in clock cycles
             # 'latency': 24,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             # 'sample_period': 60,  # ns, sampling period
