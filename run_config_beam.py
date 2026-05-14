@@ -47,7 +47,7 @@ class Config(RunConfigBase):
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
         # self.target_type = 'none'
-        self.trigger = "Det 3 SiPM Wall + Det 3 Scint"
+        self.trigger = "Det 3 SiPM Wall + Det 3 Scint + Det 4 Scint"
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
@@ -189,7 +189,7 @@ class Config(RunConfigBase):
         resists_0 = [r0_init - i * v_step for i in range(n_steps)]
         resists_1 = [r1_init - i * v_step for i in range(n_steps)]
 
-        scan_step_time = 20
+        scan_step_time = 40
         hv_scan_i = 0
         for drift_0, drift_1 in zip(drifts_0, drifts_1):
             for resist_0, resist_1 in zip(resists_0, resists_1):
