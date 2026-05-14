@@ -265,16 +265,16 @@ def copy_files_on_the_fly(sub_run_dir, sub_out_dir, daq_finished_event, check_in
 
     # Phase 1: DAQ running
     while not daq_finished_event.is_set():
-        if not file_num_still_running(sub_run_dir, file_num, silent=True):
-            for file_name in os.listdir(sub_run_dir):
-                if (
-                    file_name.endswith('.fdf') and
-                    get_file_num_from_fdf_file_name(file_name, -2) == file_num
-                ):
-                    shutil.copy(
-                        os.path.join(sub_run_dir, file_name),
-                        os.path.join(sub_out_dir, file_name),
-                    )
+        files_for_num = [
+            f for f in os.listdir(sub_run_dir)
+            if f.endswith('.fdf') and get_file_num_from_fdf_file_name(f, -2) == file_num
+        ]
+        if files_for_num and not file_num_still_running(sub_run_dir, file_num, silent=True):
+            for file_name in files_for_num:
+                shutil.copy(
+                    os.path.join(sub_run_dir, file_name),
+                    os.path.join(sub_out_dir, file_name),
+                )
             file_num += 1
         sleep(check_interval)
 
