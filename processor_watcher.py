@@ -307,15 +307,17 @@ def _decode_pedestals(ped_dir: str, decode_exe: str):
 
 def _run_is_stale(run_dir: Path, raw_inner: str, stale_days: float) -> bool:
     cutoff = time.time() - stale_days * 86400
-    newest_mtime = 0.0
+    newest_mtime = None
     for subrun_dir in run_dir.iterdir():
         if not subrun_dir.is_dir():
             continue
         raw_dir = subrun_dir / raw_inner
         if raw_dir.exists():
             mtime = raw_dir.stat().st_mtime
-            if mtime > newest_mtime:
+            if newest_mtime is None or mtime > newest_mtime:
                 newest_mtime = mtime
+    if newest_mtime is None:
+        return False  # no raw_daq_data dirs yet — run just started, not stale
     return newest_mtime < cutoff
 
 
