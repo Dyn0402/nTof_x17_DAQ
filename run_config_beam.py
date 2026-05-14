@@ -270,8 +270,8 @@ class Config(RunConfigBase):
                 'run_time': 60 * 3,  # Minutes
                 'hvs': {
                     '5': {  # Positive Resists
-                        '0': 635,  # mx17_3 30mm drift
-                        '1': 635,  # mx17_4 3.6mm drift
+                        '0': 650,  # mx17_3 30mm drift
+                        '1': 650,  # mx17_4 3.6mm drift
                     },
                     '9': {  # Negative Drifts
                         '0': 800,  # mx17_3 30mm drift
