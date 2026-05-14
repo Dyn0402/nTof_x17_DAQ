@@ -78,7 +78,7 @@ class Config(RunConfigBase):
             # 'latency': 90,  # Latency setting for DAQ in clock cycles
             # 'latency': 100,  # Latency setting for DAQ in clock cycles
             # 'latency': 2,  # Latency setting for DAQ in clock cycles
-            'latency': 150,  # Latency setting for DAQ in clock cycles
+            'latency': 190,  # Latency setting for DAQ in clock cycles
             # 'latency': 24,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             # 'sample_period': 60,  # ns, sampling period
