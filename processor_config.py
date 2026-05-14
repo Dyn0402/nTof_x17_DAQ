@@ -51,7 +51,7 @@ CONFIG = {
     # If exclude_runs is a non-empty list, those run directories are skipped.
     # Both null/empty means process all runs as normal.
     'include_runs': None,  # None,  # e.g. ['run_1', 'run_2'] — only process these runs, None for all
-    'exclude_runs': None,  # e.g. ['run_3']          — skip these runs
+    'exclude_runs': ['run_35', 'run_36'],  # e.g. ['run_3']          — skip these runs
 
     # Watcher behavior
     'poll_interval':  10,  # seconds between full directory scans
