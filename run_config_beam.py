@@ -64,8 +64,9 @@ class Config(RunConfigBase):
             # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 450,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
+            # 'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
             # 'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 150,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
