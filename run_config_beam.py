@@ -124,7 +124,7 @@ class Config(RunConfigBase):
 
         scint_A_HV, scint_B_HV = 1300, 1300
         # r0_init, r1_init, d0_init, d1_init = 635, 635, 800, 800
-        r0_init, r1_init, d0_init, d1_init = 650, 650, 800, 800
+        r0_init, r1_init, d0_init, d1_init = 660, 660, 800, 800
         self.sub_runs = [
             # {
             #     'sub_run_name': f'long_run',
