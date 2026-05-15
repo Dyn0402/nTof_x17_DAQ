@@ -407,7 +407,7 @@ def list_pngs():
     if not os.path.isdir(directory):
         return jsonify(success=False, message=f"Invalid directory: {directory}")
 
-    pngs = [f for f in os.listdir(directory) if f.lower().endswith(".png")]
+    pngs = sorted(f for f in os.listdir(directory) if f.lower().endswith(".png"))
     if not pngs:
         return jsonify(success=True, images=[])
 
