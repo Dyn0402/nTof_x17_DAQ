@@ -221,9 +221,8 @@ class Config(RunConfigBase):
         drifts_1 = [600]
 
         v_step, n_steps = 10, 40
-        above_r_init = 50
-        resists_0 = [r0_init + above_r_init - i * v_step for i in range(n_steps)]
-        resists_1 = [r1_init + above_r_init - i * v_step for i in range(n_steps)]
+        resists_0 = [r0_init - i * v_step for i in range(n_steps)]
+        resists_1 = [r1_init - i * v_step for i in range(n_steps)]
 
         hv_scan_i = 0
         for drift_0, drift_1 in zip(drifts_0, drifts_1):
