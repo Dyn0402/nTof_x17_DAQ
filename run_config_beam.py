@@ -187,8 +187,9 @@ class Config(RunConfigBase):
         drifts_1 = [600, 300, 100, 0]
 
         v_step, n_steps = 10, 20
-        resists_0 = [r0_init - i * v_step for i in range(n_steps)]
-        resists_1 = [r1_init - i * v_step for i in range(n_steps)]
+        above_r_init = 50
+        resists_0 = [r0_init + above_r_init - i * v_step for i in range(n_steps)]
+        resists_1 = [r1_init + above_r_init - i * v_step for i in range(n_steps)]
 
         scan_step_time = 1
         hv_scan_i = 0
