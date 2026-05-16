@@ -164,8 +164,7 @@ class Config(RunConfigBase):
             #     }
             # },
             {
-                # 'sub_run_name': f'gas_change',
-                'sub_run_name': f'no_beam',
+                'sub_run_name': f'gas_change',
                 'run_time': 6 * 60,  # Minutes
                 'hvs': {
                     '5': {  # Positive Resists
