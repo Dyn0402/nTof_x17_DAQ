@@ -671,29 +671,22 @@ async function loadQARuns() {
     });
     if (prev && Array.from(runSelect.options).some(o => o.value === prev)) {
         runSelect.value = prev;
+        await loadQASubruns(prev);  // also refresh subruns for the selected run
     }
 }
 
-document.addEventListener("DOMContentLoaded", loadQARuns);
-document.getElementById("refresh-qa-runs").addEventListener("click", loadQARuns);
-
-// Auto-refresh run list every 30s
-setInterval(loadQARuns, 30000);
-
-// Handle Run selection → populate Subruns
-document.getElementById("run-select-qa").addEventListener("change", async (e) => {
-    const run = e.target.value;
+// Populate subruns for a given run, preserving the current subrun selection
+async function loadQASubruns(run) {
     const subrunSelect = document.getElementById("subrun-select");
-    const detectorSelect = document.getElementById("detector-select");
-    const loadBtn = document.getElementById("load-pngs");
+    const prevSubrun = subrunSelect.value;
 
     subrunSelect.innerHTML = '<option value="">Select subrun...</option>';
-    detectorSelect.innerHTML = '<option value="">Select detector...</option>';
+    subrunSelect.disabled = true;
+    document.getElementById("detector-select").innerHTML = '<option value="">Select detector...</option>';
+    document.getElementById("detector-select").disabled = true;
     document.getElementById("subdir-select-qa").innerHTML = '<option value="">(top level)</option>';
     document.getElementById("qa-subdir-col").style.display = "none";
-    subrunSelect.disabled = true;
-    detectorSelect.disabled = true;
-    loadBtn.disabled = true;
+    document.getElementById("load-pngs").disabled = true;
 
     if (!run) return;
 
@@ -706,7 +699,21 @@ document.getElementById("run-select-qa").addEventListener("change", async (e) =>
             subrunSelect.appendChild(opt);
         });
         subrunSelect.disabled = false;
+        if (prevSubrun && Array.from(subrunSelect.options).some(o => o.value === prevSubrun)) {
+            subrunSelect.value = prevSubrun;
+        }
     }
+}
+
+document.addEventListener("DOMContentLoaded", loadQARuns);
+document.getElementById("refresh-qa-runs").addEventListener("click", loadQARuns);
+
+// Auto-refresh run list every 30s
+setInterval(loadQARuns, 30000);
+
+// Handle Run selection → populate Subruns
+document.getElementById("run-select-qa").addEventListener("change", async (e) => {
+    await loadQASubruns(e.target.value);
 });
 
 // Handle Subrun selection → populate Detectors
