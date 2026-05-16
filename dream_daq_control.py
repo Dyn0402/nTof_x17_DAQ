@@ -14,6 +14,7 @@ import re
 import subprocess
 from subprocess import Popen, PIPE, STDOUT
 import pty
+import termios
 from time import sleep
 from datetime import datetime
 import traceback
@@ -108,7 +109,16 @@ def main():
                             copy_files_on_the_fly_thread.start()
                         server.send('Dream DAQ starting')
                         print(f'Starting Dream DAQ with command: {run_command}')
-                        ret = subprocess.call(run_command, stdin=subprocess.DEVNULL)
+                        prepare_terminal()
+                        tmux_pane = get_tmux_pane()
+                        process = subprocess.Popen(run_command)
+                        watchdog = threading.Thread(
+                            target=runctrl_batch_watchdog,
+                            args=(process, go_timeout, tmux_pane),
+                            daemon=True,
+                        )
+                        watchdog.start()
+                        ret = process.wait()
 
                         # while True:
                         #     output = process.stdout.readline()
@@ -343,6 +353,59 @@ def file_num_still_running(fdf_dir, file_num, wait_time=30, silent=False):
         if new_sizes[i] > old_sizes[i]:
             return True
     return False
+
+
+def get_tmux_pane():
+    """Return the current tmux pane address (session:window.pane) for use with send-keys."""
+    try:
+        result = subprocess.run(
+            ['tmux', 'display-message', '-p', '#{session_name}:#{window_index}.#{pane_index}'],
+            capture_output=True, text=True, timeout=5,
+        )
+        addr = result.stdout.strip()
+        return addr if addr else None
+    except Exception:
+        return None
+
+
+def runctrl_batch_watchdog(process, go_timeout, tmux_pane):
+    """Recover from a batch-mode failure where RunCtrl is stuck waiting for 'G'.
+
+    Sleeps for go_timeout seconds.  If RunCtrl is still running at that point it
+    has not started on its own (pedestals + startup normally complete well within
+    go_timeout).  Sends 'G' to the tmux pane so the run can proceed.  Only fires
+    once; if RunCtrl already exited the thread does nothing.
+    """
+    sleep(go_timeout)
+    if process.poll() is not None:
+        return  # Already finished normally — batch mode worked, nothing to do
+    print(f'\nWARNING: RunCtrl still running after {go_timeout:.0f}s — batch mode may be '
+          f'stuck waiting for "G".  Sending G to recover.')
+    if tmux_pane:
+        subprocess.run(['tmux', 'send-keys', '-t', tmux_pane, 'G'],
+                       stderr=subprocess.DEVNULL)
+    else:
+        print('WARNING: Could not determine tmux pane address — G not sent automatically.')
+
+
+def prepare_terminal():
+    """Reset terminal state before each RunCtrl launch.
+
+    Two things can cause batch mode to intermittently fail between sequential sub-runs:
+    1. Stray bytes in the stdin buffer (e.g. a leftover 'g' from an early stop arriving
+       after RunCtrl has already exited but before the next one starts).
+    2. Terminal left in raw mode if a previous RunCtrl was killed before its cleanup
+       trap could run 'stty sane'.
+    Both are fixed here without removing stdin access (needed so 'g' can stop the run).
+    """
+    try:
+        termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+    except Exception:
+        pass
+    try:
+        subprocess.run(['stty', 'sane'], stdin=sys.stdin, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 
 def clear_terminal():
