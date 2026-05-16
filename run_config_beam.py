@@ -227,7 +227,8 @@ class Config(RunConfigBase):
         hv_scan_i = 0
         for drift_0, drift_1 in zip(drifts_0, drifts_1):
             for resist_0, resist_1 in zip(resists_0, resists_1):
-                scan_step_time = 30 if resist_0 >= 430 else 5
+                # scan_step_time = 30 if resist_0 >= 430 else 5
+                scan_step_time = 5
                 new_subrun = {
                     'sub_run_name': f'hv_scan_drift_{drift_0}_resist_{resist_0}',
                     'run_time': scan_step_time,  # Minutes
