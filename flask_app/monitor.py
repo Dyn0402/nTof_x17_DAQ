@@ -92,6 +92,7 @@ class DaqMonitor:
         # Per-rule state
         self._alert_active = {}   # rule_name → bool
         self._alert_sent_at = {}  # rule_name → datetime
+        self._pending_since = {}  # rule_name → datetime | None (condition first went True)
 
         self.last_check_time = None
         self.last_alert_time = None
@@ -139,6 +140,17 @@ class DaqMonitor:
 
     def rule_enabled(self, name):
         return self.config.get("rules", {}).get(name, True)
+
+    def _rule_min_duration(self, name):
+        """Seconds the condition must be True before an alert is sent (default 0)."""
+        return self.config.get("rule_options", {}).get(name, {}).get("min_duration_seconds", 0)
+
+    def _rule_resend_interval_secs(self, name):
+        """Seconds between repeated alerts for this rule (default: global resend_interval)."""
+        minutes = self.config.get("rule_options", {}).get(name, {}).get("resend_minutes", None)
+        if minutes is not None:
+            return minutes * 60
+        return self.resend_interval
 
     # ---------------------------------------------------------------
     # Thread control
@@ -207,17 +219,27 @@ class DaqMonitor:
             now = datetime.now()
 
             if is_alert:
-                resend_due = (
-                    last_sent is None
-                    or (now - last_sent).total_seconds() > self.resend_interval
-                )
-                if not was_alert or resend_due:
-                    self._send_alert(name, detail)
-                self._alert_active[name] = True
+                # Record when the condition first became True
+                if self._pending_since.get(name) is None:
+                    self._pending_since[name] = now
+
+                elapsed = (now - self._pending_since[name]).total_seconds()
+                min_dur = self._rule_min_duration(name)
+
+                if elapsed >= min_dur:
+                    resend_secs = self._rule_resend_interval_secs(name)
+                    resend_due = last_sent is None or (now - last_sent).total_seconds() > resend_secs
+                    if not was_alert or resend_due:
+                        self._send_alert(name, detail)
+                    self._alert_active[name] = True
+                else:
+                    pending_remaining = int(min_dur - elapsed)
+                    print(f"[monitor] {name} in alert state — waiting {pending_remaining}s more before alerting.")
             else:
                 if was_alert:
                     self._send_recovery(name)
                 self._alert_active[name] = False
+                self._pending_since[name] = None  # reset pending timer
 
     # ---------------------------------------------------------------
     # Sending
@@ -293,12 +315,12 @@ class DaqMonitor:
             return True, "daq_control tmux session is not running."
         return False, f"daq_control: {info['status']}"
 
-    def rule_hv_control_session_dead(self):
-        """Alert if the hv_control tmux session is not running at all."""
+    def rule_hv_control_monitoring(self):
+        """Alert if hv_control is not actively monitoring HV (dead, off, or unknown)."""
         info = get_hv_control_status()
-        fields_str = str(info.get("fields", ""))
-        if info["color"] == "danger" and "tmux not running" in fields_str:
-            return True, "hv_control tmux session is not running."
+        ok_statuses = {"Monitoring HV", "HV Ramped", "Ramping HV"}
+        if info["status"] not in ok_statuses:
+            return True, f"hv_control is not monitoring HV — status: {info['status']}"
         return False, f"hv_control: {info['status']}"
 
     def rule_dream_daq_unknown_state(self):
