@@ -32,6 +32,37 @@
     <button id="rerun-qa" class="btn btn-warning me-2 mb-2">Rerun QA</button>
   </div>
 
+    <!-- Monitoring panel -->
+    <div class="card bg-dark border-secondary mb-4 mt-2" id="monitor-panel">
+      <div class="card-body py-2">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+          <span class="fw-bold text-white">Monitoring:</span>
+          <button id="monitor-toggle" class="btn btn-sm btn-secondary">Off</button>
+          <span id="monitor-last-check" class="text-muted small"></span>
+          <span id="monitor-active-alerts" class="text-danger small fw-bold"></span>
+          <div class="ms-auto d-flex gap-2">
+            <button id="monitor-test" class="btn btn-sm btn-outline-info">Test Alert</button>
+            <button id="monitor-setup" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#monitor-setup-collapse">Setup</button>
+          </div>
+        </div>
+        <div class="collapse mt-2" id="monitor-setup-collapse">
+          <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+            <span class="text-muted small">Chat ID:</span>
+            <span id="monitor-chat-id" class="text-white small font-monospace"></span>
+            <button id="monitor-fetch-chat-id" class="btn btn-sm btn-outline-secondary">Auto-fetch</button>
+            <span class="text-muted small ms-2">or enter manually:</span>
+            <input id="monitor-chat-id-input" type="text" class="form-control form-control-sm"
+                   style="width:160px;" placeholder="chat ID">
+            <button id="monitor-set-chat-id" class="btn btn-sm btn-outline-secondary">Set</button>
+            <span id="monitor-bot-name" class="text-muted small ms-3"></span>
+          </div>
+          <p class="text-muted small mt-2 mb-0">
+            To auto-fetch: open Telegram, find the bot, send it any message, then click Auto-fetch.
+          </p>
+        </div>
+      </div>
+    </div>
+
     <div class="row" id="status-cards">
         <!-- Status cards populated dynamically -->
     </div>
@@ -656,7 +687,7 @@ async function fetchDirs(subdir = "") {
     return await res.json();
 }
 
-// Populate first-level runs
+// Populate first-level runs (preserves current selection, no cascade)
 async function loadQARuns() {
     const runSelect = document.getElementById("run-select-qa");
     const prev = runSelect.value;
@@ -671,15 +702,32 @@ async function loadQARuns() {
     });
     if (prev && Array.from(runSelect.options).some(o => o.value === prev)) {
         runSelect.value = prev;
-        await loadQASubruns(prev);  // also refresh subruns for the selected run
     }
 }
 
-// Populate subruns for a given run, preserving the current subrun selection
+// Refresh subrun list without touching detector/subdir selections
+async function refreshSubrunOptions(run) {
+    if (!run) return;
+    const subrunSelect = document.getElementById("subrun-select");
+    const prev = subrunSelect.value;
+    const res = await fetchDirs(run);
+    if (!res.success) return;
+    subrunSelect.innerHTML = '<option value="">Select subrun...</option>';
+    res.subdirs.forEach(d => {
+        const opt = document.createElement("option");
+        opt.value = `${run}/${d}`;
+        opt.textContent = d;
+        subrunSelect.appendChild(opt);
+    });
+    subrunSelect.disabled = false;
+    if (prev && Array.from(subrunSelect.options).some(o => o.value === prev)) {
+        subrunSelect.value = prev;
+    }
+}
+
+// Populate subruns for a given run, resetting the detector cascade (called on run change)
 async function loadQASubruns(run) {
     const subrunSelect = document.getElementById("subrun-select");
-    const prevSubrun = subrunSelect.value;
-
     subrunSelect.innerHTML = '<option value="">Select subrun...</option>';
     subrunSelect.disabled = true;
     document.getElementById("detector-select").innerHTML = '<option value="">Select detector...</option>';
@@ -687,6 +735,7 @@ async function loadQASubruns(run) {
     document.getElementById("subdir-select-qa").innerHTML = '<option value="">(top level)</option>';
     document.getElementById("qa-subdir-col").style.display = "none";
     document.getElementById("load-pngs").disabled = true;
+    document.getElementById("reload-pngs").disabled = true;
 
     if (!run) return;
 
@@ -699,19 +748,19 @@ async function loadQASubruns(run) {
             subrunSelect.appendChild(opt);
         });
         subrunSelect.disabled = false;
-        if (prevSubrun && Array.from(subrunSelect.options).some(o => o.value === prevSubrun)) {
-            subrunSelect.value = prevSubrun;
-        }
     }
 }
 
 document.addEventListener("DOMContentLoaded", loadQARuns);
 document.getElementById("refresh-qa-runs").addEventListener("click", loadQARuns);
 
-// Auto-refresh run list every 30s
-setInterval(loadQARuns, 30000);
+// Refresh lists lazily when user opens the dropdowns
+document.getElementById("run-select-qa").addEventListener("focus", loadQARuns);
+document.getElementById("subrun-select").addEventListener("focus", () => {
+    refreshSubrunOptions(document.getElementById("run-select-qa").value);
+});
 
-// Handle Run selection → populate Subruns
+// Handle Run selection → populate Subruns (full cascade reset)
 document.getElementById("run-select-qa").addEventListener("change", async (e) => {
     await loadQASubruns(e.target.value);
 });
@@ -864,6 +913,89 @@ function osJoin(...parts) {
 
 setInterval(updateStatus, 1000);  // update every 1s
 updateStatus();
+
+// ---------------------------------------------------------------------------
+// Monitor panel
+// ---------------------------------------------------------------------------
+
+async function updateMonitorStatus() {
+  const res = await fetch("/monitor/status");
+  const d = await res.json();
+
+  const btn = document.getElementById("monitor-toggle");
+  if (d.running) {
+    btn.textContent = "On";
+    btn.className = "btn btn-sm btn-success";
+  } else {
+    btn.textContent = "Off";
+    btn.className = "btn btn-sm btn-secondary";
+  }
+
+  const lastCheck = document.getElementById("monitor-last-check");
+  lastCheck.textContent = d.last_check ? `Last check: ${d.last_check}` : "";
+
+  const alertsEl = document.getElementById("monitor-active-alerts");
+  if (d.active_alerts && d.active_alerts.length > 0) {
+    alertsEl.textContent = "⚠ Active alerts: " + d.active_alerts.join(", ");
+  } else {
+    alertsEl.textContent = "";
+  }
+
+  const chatIdEl = document.getElementById("monitor-chat-id");
+  chatIdEl.textContent = d.chat_id ? `${d.chat_id}` : "(not set)";
+}
+
+document.getElementById("monitor-toggle").addEventListener("click", async () => {
+  await fetch("/monitor/toggle", { method: "POST" });
+  await updateMonitorStatus();
+});
+
+document.getElementById("monitor-test").addEventListener("click", async () => {
+  const res = await fetch("/monitor/test", { method: "POST" });
+  const d = await res.json();
+  showPopup(d.message, d.success ? "#17a2b8" : "#dc3545");
+});
+
+document.getElementById("monitor-fetch-chat-id").addEventListener("click", async () => {
+  const res = await fetch("/monitor/fetch_chat_id", { method: "POST" });
+  const d = await res.json();
+  if (d.success) {
+    showPopup(`Chat ID set: ${d.chat_id}`, "#28a745");
+  } else {
+    showPopup(d.message, "#dc3545");
+  }
+  await updateMonitorStatus();
+});
+
+document.getElementById("monitor-set-chat-id").addEventListener("click", async () => {
+  const val = document.getElementById("monitor-chat-id-input").value.trim();
+  if (!val) return;
+  const res = await fetch("/monitor/set_chat_id", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: parseInt(val) }),
+  });
+  const d = await res.json();
+  if (d.success) {
+    showPopup(`Chat ID set: ${d.chat_id}`, "#28a745");
+    document.getElementById("monitor-chat-id-input").value = "";
+  } else {
+    showPopup(d.message, "#dc3545");
+  }
+  await updateMonitorStatus();
+});
+
+// Fetch bot username for display
+(async () => {
+  const res = await fetch("/monitor/bot_info");
+  const d = await res.json();
+  if (d.success) {
+    document.getElementById("monitor-bot-name").textContent = `Bot: @${d.username}`;
+  }
+})();
+
+updateMonitorStatus();
+setInterval(updateMonitorStatus, 10000);
 
 updateHVPlots();
 setInterval(updateHVPlots, 5000);  // update every 5s

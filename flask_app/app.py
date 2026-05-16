@@ -16,6 +16,7 @@ import select
 import threading
 import time
 import json
+from datetime import datetime
 import pandas as pd
 from urllib.parse import quote
 from flask import Flask, render_template, jsonify, request, send_from_directory, abort
@@ -28,6 +29,7 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
 from run_config_beam import Config
 from get_run_events import get_total_events_for_run
+from monitor import DaqMonitor, fetch_chat_id, get_bot_username
 
 # BASE_DIR = "/home/dylan/PycharmProjects/nTof_x17_DAQ"
 BASE_DIR = "/home/mx17/PycharmProjects/nTof_x17_DAQ"
@@ -47,6 +49,25 @@ ANALYSIS_DIR = f"/mnt/data/x17/{BEAM_DIR}/analysis"
 RUN_DIR = f"/mnt/data/x17/{BEAM_DIR}/runs"
 GENERAL_ANALYSIS_DIR = f"/mnt/data/x17/{BEAM_DIR}/runs/Analysis"
 HV_TAIL = 1000  # number of most recent rows to show
+
+LOG_DIR = f"{BASE_DIR}/logs"
+LOG_FILE = f"{LOG_DIR}/daq_events.log"
+
+MONITOR_CONFIG_PATH = f"{BASE_DIR}/config/monitor_config.json"
+monitor = DaqMonitor(MONITOR_CONFIG_PATH)
+
+
+def log_event(event, source, **details):
+    """Append one line to the DAQ event log."""
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        detail_str = ' | '.join(f'{k}={v}' for k, v in details.items())
+        line = f"{ts} | {event:<14} | {source:<12} | {detail_str}\n"
+        with open(LOG_FILE, 'a') as f:
+            f.write(line)
+    except Exception as e:
+        print(f"Warning: could not write to event log: {e}")
 
 
 app = Flask(__name__)
@@ -114,6 +135,7 @@ def start_run():
 def stop_sub_run():
     try:
         if is_dream_daq_running():
+            log_event('STOP_SUB_RUN', 'flask_button', remote_addr=request.remote_addr)
             subprocess.Popen([f"{BASH_DIR}/stop_sub_run.sh"])
             return jsonify({"success": True, "message": "Stopping Sub-Run"})
         else:
@@ -124,10 +146,13 @@ def stop_sub_run():
 @app.route("/stop_run", methods=["POST"])
 def stop_run():
     try:
-        if is_dream_daq_running():
+        dream_running = is_dream_daq_running()
+        if dream_running:
+            log_event('STOP_RUN', 'flask_button', remote_addr=request.remote_addr, dream_running=True)
             subprocess.Popen([f"{BASH_DIR}/stop_run.sh"])
             return jsonify({"success": True, "message": "DAQ Running, Stopping Run"})
         else:
+            log_event('STOP_RUN', 'flask_button', remote_addr=request.remote_addr, dream_running=False)
             subprocess.Popen([f"{BASH_DIR}/stop_sub_run.sh"])  # Only 1 ctrl-c needed if not running
             return jsonify({"success": True, "message": "No DAQ Running, Stopping Run"})
     except Exception as e:
@@ -496,6 +521,56 @@ def get_run_events():
         })
     except Exception as e:
         return jsonify({"success": False, "message": f"Error getting run name: {str(e)}"}), 500
+
+
+@app.route("/monitor/toggle", methods=["POST"])
+def monitor_toggle():
+    monitor.toggle()
+    return jsonify({"running": monitor.is_running})
+
+
+@app.route("/monitor/status")
+def monitor_status():
+    return jsonify(monitor.status_dict())
+
+
+@app.route("/monitor/fetch_chat_id", methods=["POST"])
+def monitor_fetch_chat_id():
+    if not monitor.token:
+        return jsonify({"success": False, "message": "No Telegram token configured."})
+    chat_id, err = fetch_chat_id(monitor.token)
+    if err:
+        return jsonify({"success": False, "message": err})
+    monitor.set_chat_id(chat_id)
+    return jsonify({"success": True, "chat_id": chat_id})
+
+
+@app.route("/monitor/set_chat_id", methods=["POST"])
+def monitor_set_chat_id():
+    data = request.get_json(silent=True) or {}
+    chat_id = data.get("chat_id")
+    if chat_id is None:
+        return jsonify({"success": False, "message": "No chat_id provided."})
+    monitor.set_chat_id(int(chat_id))
+    return jsonify({"success": True, "chat_id": monitor.chat_id})
+
+
+@app.route("/monitor/test", methods=["POST"])
+def monitor_test():
+    ok, err = monitor.send_test_alert()
+    if ok:
+        return jsonify({"success": True, "message": "Test alert sent."})
+    return jsonify({"success": False, "message": err or "Unknown error"})
+
+
+@app.route("/monitor/bot_info")
+def monitor_bot_info():
+    if not monitor.token:
+        return jsonify({"success": False})
+    username, err = get_bot_username(monitor.token)
+    if err:
+        return jsonify({"success": False, "message": err})
+    return jsonify({"success": True, "username": username})
 
 
 def is_dream_daq_running():
