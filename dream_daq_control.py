@@ -110,15 +110,7 @@ def main():
                         server.send('Dream DAQ starting')
                         print(f'Starting Dream DAQ with command: {run_command}')
                         prepare_terminal()
-                        tmux_pane = get_tmux_pane()
-                        process = subprocess.Popen(run_command)
-                        watchdog = threading.Thread(
-                            target=runctrl_batch_watchdog,
-                            args=(process, go_timeout, tmux_pane),
-                            daemon=True,
-                        )
-                        watchdog.start()
-                        ret = process.wait()
+                        ret = subprocess.call(run_command)
 
                         # while True:
                         #     output = process.stdout.readline()
