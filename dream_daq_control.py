@@ -108,7 +108,7 @@ def main():
                             copy_files_on_the_fly_thread.start()
                         server.send('Dream DAQ starting')
                         print(f'Starting Dream DAQ with command: {run_command}')
-                        ret = subprocess.call(run_command)
+                        ret = subprocess.call(run_command, stdin=subprocess.DEVNULL)
 
                         # while True:
                         #     output = process.stdout.readline()
