@@ -48,7 +48,7 @@ class Config(RunConfigBase):
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
         # self.target_type = 'none'
-        self.trigger = "Det 3 SiPM Wall + Det 3 Scint + Det 4 Scint"
+        self.trigger = "Det 3 SiPM Wall + Det 3 Scint"
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
@@ -127,24 +127,24 @@ class Config(RunConfigBase):
         # r0_init, r1_init, d0_init, d1_init = 635, 635, 800, 800
         r0_init, r1_init, d0_init, d1_init = 550, 550, 600, 600
         self.sub_runs = [
-            # {
-            #     'sub_run_name': f'long_run',
-            #     'run_time': 60 * 24,  # Minutes
-            #     'hvs': {
-            #         '5': {  # Positive Resists
-            #             '0': 635,  # Det
-            #             '1': 635,
-            #         },
-            #         '9': {  # Negative Drifts
-            #             '0': 800,
-            #             '1': 800,
-            #         },
-            #         # '8': {  # PMTs
-            #         #     '0': scint_A_HV,  # Top
-            #         #     '1': scint_B_HV,  # Bottom
-            #         # },
-            #     }
-            # },
+            {
+                'sub_run_name': f'long_run',
+                'run_time': 60 * 24,  # Minutes
+                'hvs': {
+                    '5': {  # Positive Resists
+                        '0': 530,  # Det
+                        '1': 530,
+                    },
+                    '9': {  # Negative Drifts
+                        '0': 600,
+                        '1': 600,
+                    },
+                    # '8': {  # PMTs
+                    #     '0': scint_A_HV,  # Top
+                    #     '1': scint_B_HV,  # Bottom
+                    # },
+                }
+            },
             # {
             #     'sub_run_name': f'quick_run_10min',
             #     'run_time': 10,  # Minutes
@@ -217,39 +217,39 @@ class Config(RunConfigBase):
         #         self.sub_runs.append(new_subrun)
         #         hv_scan_i += 1
 
-        drifts_0 = [600]
-        drifts_1 = [600]
-
-        v_step, n_steps = 10, 40
-        resists_0 = [r0_init - i * v_step for i in range(n_steps)]
-        resists_1 = [r1_init - i * v_step for i in range(n_steps)]
-
-        hv_scan_i = 0
-        for drift_0, drift_1 in zip(drifts_0, drifts_1):
-            for resist_0, resist_1 in zip(resists_0, resists_1):
-                # scan_step_time = 30 if resist_0 >= 430 else 5
-                scan_step_time = 5
-                new_subrun = {
-                    'sub_run_name': f'hv_scan_drift_{drift_0}_resist_{resist_0}',
-                    'run_time': scan_step_time,  # Minutes
-                    'hvs': {
-                        '5': {  # Positive Resists
-                            '0': resist_0,  # mx17_3 30mm drift
-                            '1': resist_1,  # mx17_4 3.6mm drift
-                        },
-                        '9': {  # Negative Drifts
-                            '0': drift_0,  # mx17_3 30mm drift
-                            '1': drift_1,  # mx17_4 3.6mm drift
-                        },
-                        # '8': {  # PMTs
-                        #     '0': scint_A_HV,  # Top
-                        #     '1': scint_B_HV,  # Bottom
-                        # },
-                    }
-                }
-
-                self.sub_runs.append(new_subrun)
-                hv_scan_i += 1
+        # drifts_0 = [600]
+        # drifts_1 = [600]
+        #
+        # v_step, n_steps = 10, 40
+        # resists_0 = [r0_init - i * v_step for i in range(n_steps)]
+        # resists_1 = [r1_init - i * v_step for i in range(n_steps)]
+        #
+        # hv_scan_i = 0
+        # for drift_0, drift_1 in zip(drifts_0, drifts_1):
+        #     for resist_0, resist_1 in zip(resists_0, resists_1):
+        #         # scan_step_time = 30 if resist_0 >= 430 else 5
+        #         scan_step_time = 5
+        #         new_subrun = {
+        #             'sub_run_name': f'hv_scan_drift_{drift_0}_resist_{resist_0}',
+        #             'run_time': scan_step_time,  # Minutes
+        #             'hvs': {
+        #                 '5': {  # Positive Resists
+        #                     '0': resist_0,  # mx17_3 30mm drift
+        #                     '1': resist_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 '9': {  # Negative Drifts
+        #                     '0': drift_0,  # mx17_3 30mm drift
+        #                     '1': drift_1,  # mx17_4 3.6mm drift
+        #                 },
+        #                 # '8': {  # PMTs
+        #                 #     '0': scint_A_HV,  # Top
+        #                 #     '1': scint_B_HV,  # Bottom
+        #                 # },
+        #             }
+        #         }
+        #
+        #         self.sub_runs.append(new_subrun)
+        #         hv_scan_i += 1
         #
         # new_subrun = {
         #     'sub_run_name': f'long_run',
