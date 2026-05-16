@@ -26,11 +26,11 @@ CONFIG = {
     #   'all'      — rerun QA with all accumulated files whenever a new one appears (default)
     #   'first'    — run QA once per subrun using only file_num=0 (fast for long runs)
     #   'per_file' — independent QA plot set for each file_num
-    'qa_file_mode': 'all',
+    'qa_file_mode': 'first',
 
     # Run filtering
     'include_runs': None,  # None,  # e.g. ['run_1', 'run_2'] — only process these; None = all
-    'exclude_runs': ['run_35', 'run_36', 'run_52'],  # e.g. ['run_0']          — skip these
+    'exclude_runs': None,  # e.g. ['run_0']          — skip these
 
     # Watcher behavior
     'poll_interval':  10,  # seconds between scans
