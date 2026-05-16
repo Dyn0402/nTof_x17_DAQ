@@ -80,6 +80,21 @@
 
     <script src="{{ url_for('static', filename='plotly.min.js') }}"></script>
 
+    <!-- System Resource Monitor -->
+    <hr class="my-4">
+    <div id="sys-monitor" style="font-family:'Courier New',monospace;background:#0d0d0d;border:1px solid #2e2e2e;border-radius:6px;padding:14px 18px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;border-bottom:1px solid #1e1e1e;padding-bottom:7px;">
+        <span style="color:#4ec9b0;font-weight:bold;font-size:0.9em;letter-spacing:0.08em;">SYSTEM RESOURCES</span>
+        <span id="sys-load-avg" style="color:#555;font-size:0.78em;"></span>
+      </div>
+      <div id="sys-cpu-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:3px 24px;margin-bottom:10px;"></div>
+      <div style="border-top:1px solid #1e1e1e;padding-top:8px;display:flex;flex-direction:column;gap:3px;">
+        <div id="sys-mem-row"></div>
+        <div id="sys-swp-row"></div>
+        <div id="sys-dsk-row"></div>
+      </div>
+    </div>
+
 </div>
 
 
@@ -1118,5 +1133,70 @@ document.querySelector('a[href="#analysis-browser"]').addEventListener("click", 
 });
 
 document.getElementById("ab-reload").addEventListener("click", () => abBrowse(abCurrentPath, true));
+
+
+// ---------------------------------------------------------------------------
+// System Resource Monitor
+// ---------------------------------------------------------------------------
+
+function sysBarColor(pct) {
+    if (pct < 60) return '#3ddc84';
+    if (pct < 80) return '#f0c040';
+    return '#e05050';
+}
+
+function sysFormatBytes(b) {
+    if (b >= 1e12) return (b / 1e12).toFixed(2) + 'T';
+    if (b >= 1e9)  return (b / 1e9).toFixed(2)  + 'G';
+    if (b >= 1e6)  return (b / 1e6).toFixed(0)   + 'M';
+    return (b / 1e3).toFixed(0) + 'K';
+}
+
+function sysMakeBar(label, pct, rightLabel) {
+    const color = sysBarColor(pct);
+    const w = Math.max(0, Math.min(100, pct));
+    const extra = rightLabel ? `<span style="color:#555;margin-left:6px;">${rightLabel}</span>` : '';
+    return `<div style="display:flex;align-items:center;gap:0;font-size:0.78em;line-height:18px;">
+      <span style="color:#555;width:52px;text-align:right;padding-right:5px;flex-shrink:0;">${label}</span>
+      <span style="color:#333;flex-shrink:0;">[</span>
+      <div style="flex:1;background:#1a1a1a;height:12px;position:relative;min-width:60px;">
+        <div style="position:absolute;inset:0;width:${w}%;background:${color};transition:width 0.6s ease;"></div>
+        <div style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent,transparent 9px,rgba(0,0,0,0.15) 9px,rgba(0,0,0,0.15) 10px);pointer-events:none;"></div>
+      </div>
+      <span style="color:#333;flex-shrink:0;">]</span>
+      <span style="color:#888;margin-left:6px;min-width:42px;flex-shrink:0;">${pct.toFixed(1)}%</span>
+      ${extra}
+    </div>`;
+}
+
+async function updateSysStats() {
+    try {
+        const res = await fetch('/system_stats');
+        const d = await res.json();
+        if (!d.success) return;
+
+        const loadEl = document.getElementById('sys-load-avg');
+        loadEl.textContent = 'load avg: ' + d.load_avg.map(x => x.toFixed(2)).join('  ');
+
+        const grid = document.getElementById('sys-cpu-grid');
+        grid.innerHTML = d.cpu_cores.map((pct, i) =>
+            sysMakeBar('CPU' + (i + 1), pct, null)
+        ).join('');
+
+        const m = d.memory, s = d.swap, k = d.disk;
+        document.getElementById('sys-mem-row').innerHTML = sysMakeBar(
+            'Mem', m.percent,
+            sysFormatBytes(m.used) + '/' + sysFormatBytes(m.total));
+        document.getElementById('sys-swp-row').innerHTML = sysMakeBar(
+            'Swp', s.percent,
+            sysFormatBytes(s.used) + '/' + sysFormatBytes(s.total));
+        document.getElementById('sys-dsk-row').innerHTML = sysMakeBar(
+            'Dsk', k.percent,
+            sysFormatBytes(k.used) + '/' + sysFormatBytes(k.total));
+    } catch (e) { /* silent */ }
+}
+
+updateSysStats();
+setInterval(updateSysStats, 2000);
 </script>
 {% endblock %}
