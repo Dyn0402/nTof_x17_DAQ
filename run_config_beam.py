@@ -312,14 +312,14 @@ class Config(RunConfigBase):
                 'sub_run_name': f'gas_change_{i}',
                 'run_time': 60 * 3,  # Minutes
                 'hvs': {
-                    # '5': {  # Positive Resists
-                    #     '0': 550,  # mx17_3 30mm drift
-                    #     '1': 550,  # mx17_4 3.6mm drift
-                    # },
-                    # '9': {  # Negative Drifts
-                    #     '0': 600,  # mx17_3 30mm drift
-                    #     '1': 600,  # mx17_4 3.6mm drift
-                    # },
+                    '5': {  # Positive Resists
+                        '0': None,  # mx17_3 30mm drift
+                        '1': None,  # mx17_4 3.6mm drift
+                    },
+                    '9': {  # Negative Drifts
+                        '0': None,  # mx17_3 30mm drift
+                        '1': None,  # mx17_4 3.6mm drift
+                    },
                 }
             }
             self.sub_runs.append(new_subrun)

@@ -80,6 +80,8 @@ def set_hvs(hv_info, hvs, caen_hv, caen_lock):
     with caen_lock:
         for slot, channel_v0s in hvs.items():
             for channel, v0 in channel_v0s.items():
+                if v0 is None:  # Monitor only, skip setting
+                    continue
                 power = caen_hv.get_ch_power(int(slot), int(channel))
                 if v0 == 0:  # If 0 V, turn off channel without setting voltage
                     if power:
@@ -96,6 +98,8 @@ def set_hvs(hv_info, hvs, caen_hv, caen_lock):
         with caen_lock:
             for slot, channel_v0s in hvs.items():
                 for channel, v0 in channel_v0s.items():
+                    if v0 is None:
+                        continue
                     vmon = caen_hv.get_ch_vmon(int(slot), int(channel))
                     if abs(vmon - v0) > 1.5:  # Make sure within 1.5 V of set value
                         all_ramped = False
@@ -154,10 +158,11 @@ def monitor_hvs(hv_info, hvs, sub_run_name, stop_event, print_event, caen_hv, ca
                         row.extend([power, v0, vmon, imon])  # Append to row
 
                         if print_event.is_set():
+                            v0_str = 'manual' if v0 is None else f'{v0:.2f}'
                             print(  # Human-readable output
                                 f"Slot {slot} Channel {channel}: "
                                 f"power={'on' if power else 'off'}, "
-                                f"v set={v0:.2f}, v mon={vmon:.2f}, i mon={imon:.3f}"
+                                f"v set={v0_str}, v mon={vmon:.2f}, i mon={imon:.3f}"
                             )
 
             writer.writerow(row)
