@@ -125,7 +125,7 @@ class Config(RunConfigBase):
 
         scint_A_HV, scint_B_HV = 1300, 1300
         # r0_init, r1_init, d0_init, d1_init = 635, 635, 800, 800
-        r0_init, r1_init, d0_init, d1_init = 550, 550, 600, 600
+        r0_init, r1_init, d0_init, d1_init = 515, 515, 600, 600
         self.sub_runs = [
             # {
             #     'sub_run_name': f'long_run',
@@ -163,24 +163,25 @@ class Config(RunConfigBase):
             #         },
             #     }
             # },
-            # {
-            #     'sub_run_name': f'gas_change',
-            #     'run_time': 6 * 60,  # Minutes
-            #     'hvs': {
-            #         '5': {  # Positive Resists
-            #             '0': r0_init,  # mx17_3 30mm drift
-            #             '1': r1_init,  # mx17_4 3.6mm drift
-            #         },
-            #         '9': {  # Negative Drifts
-            #             '0': d0_init,  # mx17_3 30mm drift
-            #             '1': d1_init,  # mx17_4 3.6mm drift
-            #         },
-            #         # '8': {  # PMTs
-            #         #     '0': scint_A_HV,  # Top
-            #         #     '1': scint_B_HV,  # Bottom
-            #         # },
-            #     }
-            # },
+            {
+                # 'sub_run_name': f'gas_change',
+                'sub_run_name': f'no_beam',
+                'run_time': 6 * 60,  # Minutes
+                'hvs': {
+                    '5': {  # Positive Resists
+                        '0': r0_init,  # mx17_3 30mm drift
+                        '1': r1_init,  # mx17_4 3.6mm drift
+                    },
+                    '9': {  # Negative Drifts
+                        '0': d0_init,  # mx17_3 30mm drift
+                        '1': d1_init,  # mx17_4 3.6mm drift
+                    },
+                    # '8': {  # PMTs
+                    #     '0': scint_A_HV,  # Top
+                    #     '1': scint_B_HV,  # Bottom
+                    # },
+                }
+            },
         ]
 
         # drifts_0 = [600, 300, 100, 0]
@@ -253,26 +254,26 @@ class Config(RunConfigBase):
         #         self.sub_runs.append(new_subrun)
         #         hv_scan_i += 1
         #
-        new_subrun = {
-            'sub_run_name': f'long_run',
-            'run_time': 60 * 3,  # Minutes
-            'hvs': {
-                '5': {  # Positive Resists
-                    '0': 515,  # mx17_3 30mm drift
-                    '1': 515,  # mx17_4 3.6mm drift
-                },
-                '9': {  # Negative Drifts
-                    '0': 600,  # mx17_3 30mm drift
-                    '1': 600,  # mx17_4 3.6mm drift
-                },
-                # '8': {  # PMTs
-                #     '0': scint_A_HV,  # Top
-                #     '1': scint_B_HV,  # Bottom
-                # },
-            }
-        }
+        # new_subrun = {
+        #     'sub_run_name': f'long_run',
+        #     'run_time': 60 * 3,  # Minutes
+        #     'hvs': {
+        #         '5': {  # Positive Resists
+        #             '0': 515,  # mx17_3 30mm drift
+        #             '1': 515,  # mx17_4 3.6mm drift
+        #         },
+        #         '9': {  # Negative Drifts
+        #             '0': 600,  # mx17_3 30mm drift
+        #             '1': 600,  # mx17_4 3.6mm drift
+        #         },
+        #         # '8': {  # PMTs
+        #         #     '0': scint_A_HV,  # Top
+        #         #     '1': scint_B_HV,  # Bottom
+        #         # },
+        #     }
+        # }
 
-        self.sub_runs.append(new_subrun)
+        # self.sub_runs.append(new_subrun)
         #
         # v_step, n_steps = 10, 10
         # resists_0 = [r0_init - i * v_step for i in range(n_steps)]
