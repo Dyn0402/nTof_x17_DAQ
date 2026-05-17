@@ -307,22 +307,27 @@ class Config(RunConfigBase):
         #         self.sub_runs.append(new_subrun)
         #         hv_scan_i += 1
 
-        for i in range(20):
-            new_subrun = {
-                'sub_run_name': f'gas_change_{i}',
-                'run_time': 60 * 3,  # Minutes
+        # Resist HV scan: 800V (1hr) → step down 10V/30min (790→720V, 8 steps, 4hr) → 790V long run (4hr) = 9hr total
+        resist_scan_steps = (
+            [(800, 60 * 2, 'resist_initial_800V')] +
+            [(800 - 10 * i, 30, f'resist_scan_{800 - 10 * i}V') for i in range(1, 9)] +
+            [(790, 60 * 10, 'resist_final_790V')]
+        )
+        for resist_v, run_time, sub_run_name in resist_scan_steps:
+            self.sub_runs.append({
+                'sub_run_name': sub_run_name,
+                'run_time': run_time,
                 'hvs': {
                     '5': {  # Positive Resists
-                        '0': None,  # mx17_3 30mm drift
-                        '1': None,  # mx17_4 3.6mm drift
+                        '0': resist_v,
+                        '1': resist_v,
                     },
-                    '9': {  # Negative Drifts
-                        '0': None,  # mx17_3 30mm drift
-                        '1': None,  # mx17_4 3.6mm drift
+                    '9': {  # Negative Drifts (monitor only, set manually)
+                        '0': 600,
+                        '1': 600,
                     },
                 }
-            }
-            self.sub_runs.append(new_subrun)
+            })
 
 
         self.bench_geometry = {
