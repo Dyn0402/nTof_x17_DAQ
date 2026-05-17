@@ -573,6 +573,29 @@ def monitor_bot_info():
     return jsonify({"success": True, "username": username})
 
 
+@app.route("/system_stats")
+def system_stats():
+    try:
+        import psutil
+        cpu_pcts = psutil.cpu_percent(percpu=True)
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        disk = psutil.disk_usage('/')
+        load = os.getloadavg()
+        return jsonify({
+            "success": True,
+            "cpu_cores": cpu_pcts,
+            "memory": {"total": mem.total, "used": mem.used, "percent": mem.percent},
+            "swap":   {"total": swap.total, "used": swap.used, "percent": swap.percent},
+            "disk":   {"total": disk.total, "used": disk.used, "percent": disk.percent},
+            "load_avg": list(load),
+        })
+    except ImportError:
+        return jsonify({"success": False, "message": "psutil not installed"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+
+
 def is_dream_daq_running():
     """
     Checks tmux session 'daq_control' and returns True if Dream DAQ is running.
