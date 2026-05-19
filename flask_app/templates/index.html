@@ -30,6 +30,8 @@
     <button id="start-qa" class="btn btn-info me-2 mb-2">Start QA</button>
     <button id="stop-qa" class="btn btn-secondary me-2 mb-2">Stop QA</button>
     <button id="rerun-qa" class="btn btn-warning me-2 mb-2">Rerun QA</button>
+    <button id="start-backup" class="btn btn-info me-2 mb-2">Start Backup</button>
+    <button id="stop-backup" class="btn btn-secondary me-2 mb-2">Stop Backup</button>
   </div>
 
     <!-- Monitoring panel -->
@@ -562,6 +564,19 @@ document.getElementById("start-qa").addEventListener("click", async () => {
 document.getElementById("stop-qa").addEventListener("click", async () => {
   if (!confirm("Stop the QA watcher?")) return;
   const res = await fetch("/stop_qa", { method: "POST" });
+  const data = await res.json();
+  showPopup(data.message, "#6c757d");
+});
+
+document.getElementById("start-backup").addEventListener("click", async () => {
+  const res = await fetch("/start_backup", { method: "POST" });
+  const data = await res.json();
+  showPopup(data.message, data.success ? "#17a2b8" : "#dc3545");
+});
+
+document.getElementById("stop-backup").addEventListener("click", async () => {
+  if (!confirm("Stop the backup watcher?")) return;
+  const res = await fetch("/stop_backup", { method: "POST" });
   const data = await res.json();
   showPopup(data.message, "#6c757d");
 });

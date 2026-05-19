@@ -19,7 +19,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_38'
+        self.run_name = 'run_74'
         self.base_out_dir = '/mnt/data/x17/beam_may/'
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -38,17 +38,17 @@ class Config(RunConfigBase):
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         # self.gas = 'Ne/Iso 95/5'  # Gas type for run
         # self.beam_type = 'cosmics'
-        self.beam_type = 'neutrons'
+        # self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
-        # self.beam_type = 'sr-90'
-        self.target_type = 'carbon'
+        self.beam_type = 'sr-90'
+        # self.target_type = 'carbon'
         # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
-        # self.target_type = 'none'
+        self.target_type = 'none'
         self.trigger = "Det 3 SiPM Wall + Det 3 Scint"
 
         self.dream_daq_info = {
@@ -256,26 +256,55 @@ class Config(RunConfigBase):
         #         self.sub_runs.append(new_subrun)
         #         hv_scan_i += 1
         #
-        new_subrun = {
-            'sub_run_name': f'long_run',
-            'run_time': 60 * 3,  # Minutes
-            'hvs': {
-                '5': {  # Positive Resists
-                    '0': 790,  # mx17_3 30mm drift
-                    '1': 790,  # mx17_4 3.6mm drift
-                },
-                '9': {  # Negative Drifts
-                    '0': 600,  # mx17_3 30mm drift
-                    '1': 600,  # mx17_4 3.6mm drift
-                },
-                # '8': {  # PMTs
-                #     '0': scint_A_HV,  # Top
-                #     '1': scint_B_HV,  # Bottom
-                # },
-            }
-        }
+        # new_subrun = {
+        #     'sub_run_name': f'long_run',
+        #     'run_time': 60 * 3,  # Minutes
+        #     'hvs': {
+        #         '5': {  # Positive Resists
+        #             '0': 790,  # mx17_3 30mm drift
+        #             '1': 790,  # mx17_4 3.6mm drift
+        #         },
+        #         '9': {  # Negative Drifts
+        #             '0': 600,  # mx17_3 30mm drift
+        #             '1': 600,  # mx17_4 3.6mm drift
+        #         },
+        #         # '8': {  # PMTs
+        #         #     '0': scint_A_HV,  # Top
+        #         #     '1': scint_B_HV,  # Bottom
+        #         # },
+        #     }
+        # }
 
-        self.sub_runs.append(new_subrun)
+        for i in range(20):
+            new_subrun = {
+                'sub_run_name': f'run{i}',
+                'run_time': 60 * 3,  # Minutes
+                'hvs': {
+                    '5': {  # Positive Resists
+                        '1': 800,  # mx17_4 3.6mm drift
+                    },
+                    '9': {  # Negative Drifts
+                        '1': 600,  # mx17_4 3.6mm drift
+                    },
+                }
+            }
+            self.sub_runs.append(new_subrun)
+
+        # v_start, v_step, n_steps = 800, 10, 10
+        # resist_scan_voltages = [v_start + i * v_step for i in range(n_steps)]
+        # for resist_v in resist_scan_voltages:
+        #     self.sub_runs.append({
+        #         'sub_run_name': f'hv_scan_resist_{resist_v}V',
+        #         'run_time': 5,  # Minutes
+        #         'hvs': {
+        #             '5': {  # Positive Resists
+        #                 '1': resist_v,
+        #             },
+        #             '9': {  # Negative Drifts
+        #                 '1': 600,
+        #             },
+        #         }
+        #     })
         #
         # v_step, n_steps = 10, 10
         # resists_0 = [r0_init - i * v_step for i in range(n_steps)]
@@ -334,8 +363,8 @@ class Config(RunConfigBase):
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
         }
 
-        # self.included_detectors = ['mx17_3', 'mx17_4', 'scint_A', 'scint_B']
-        self.included_detectors = ['mx17_3', 'mx17_4']
+        self.included_detectors = ['mx17_3', 'scint_A', 'scint_B']
+        # self.included_detectors = ['mx17_3', 'mx17_4']
 
         self.detectors = [
             {
@@ -357,8 +386,8 @@ class Config(RunConfigBase):
                     'z': 0,  # deg  Rotation about z axis
                 },
                 'hv_channels': {
-                    'drift': (9, 0),
-                    'resist': (5, 0),
+                    'drift': (9, 1),
+                    'resist': (5, 1),
                 },
                 'mx_cards': '4 M1',
                 'dream_feus': {

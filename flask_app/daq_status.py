@@ -258,6 +258,64 @@ def get_qa_watcher_status():
     return {"status": "UNKNOWN", "color": "danger", "fields": []}
 
 
+def get_backup_watcher_status():
+    try:
+        output = subprocess.check_output(
+            ["tmux", "capture-pane", "-pS", "-50", "-t", "backup_watcher:0.0"],
+            text=True
+        )
+    except subprocess.CalledProcessError:
+        return {"status": "STOPPED", "color": "secondary", "fields": []}
+
+    lines = [l for l in output.splitlines() if l.strip()]
+
+    fields = []
+    for line in reversed(lines):
+        m = re.search(r'\[backup\] (\S+)/(\S+)\s+size=', line)
+        if m:
+            fields = [
+                {"label": "Run",    "value": m.group(1)},
+                {"label": "Subrun", "value": m.group(2)},
+            ]
+            break
+
+    # Pull rsync --info=progress2 line if present: "  1,234,567  45%  12.3MB/s  0:00:42 (xfr#1, to-chk=123/456)"
+    progress_fields = []
+    for line in lines:
+        mp = re.search(r'([\d,]+)\s+(\d+)%\s+([\d.]+\s*\S+/s)\s+([\d:]+)(?:.*?to-chk=(\d+)/(\d+))?', line)
+        if mp:
+            pct, speed, eta = mp.group(2), mp.group(3).strip(), mp.group(4)
+            progress_fields = [{"label": "Progress", "value": f"{pct}%  {speed}  eta {eta}"}]
+            if mp.group(5) and mp.group(6):
+                remaining, total = int(mp.group(5)), int(mp.group(6))
+                progress_fields.append({"label": "Files", "value": f"{total - remaining}/{total}"})
+
+    for line in reversed(lines):
+        if "[backup] rsync ->" in line or "[backup] rsync done" in line:
+            return {"status": "Syncing",         "color": "success", "fields": fields + progress_fields}
+        m = re.search(r'\[backup\] extra sync(?! done| FAILED): (\S+)', line)
+        if m:
+            folder = m.group(1)
+            return {"status": "Syncing",         "color": "success",
+                    "fields": [{"label": "Folder", "value": folder}] + progress_fields}
+        if "[backup] extra sync done" in line or "[backup] extra sync FAILED" in line:
+            pass  # don't use these as the current status — keep scanning
+        if "AUTH ERROR" in line or "Kerberos FAILED" in line:
+            return {"status": "Auth Error",      "color": "danger",  "fields": fields}
+        if "[backup] rsync FAILED" in line:
+            return {"status": "rsync Error",     "color": "danger",  "fields": fields}
+        if "[backup] Kerberos OK" in line and " idle " not in line:
+            return {"status": "IDLE",            "color": "info",    "fields": fields}
+        if "[backup]" in line and " idle " in line:
+            return {"status": "IDLE",            "color": "info",    "fields": fields}
+        if "[backup]" in line and "waiting for source_dir" in line:
+            return {"status": "Waiting for Dir", "color": "warning", "fields": []}
+        if "[backup]" in line:
+            return {"status": "RUNNING",         "color": "info",    "fields": fields}
+
+    return {"status": "UNKNOWN", "color": "danger", "fields": []}
+
+
 def get_decoder_status():
     try:
         output = subprocess.check_output(
