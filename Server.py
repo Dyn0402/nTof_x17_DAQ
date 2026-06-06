@@ -51,9 +51,16 @@ class Server:
                 time.sleep(1)
 
     def receive(self):
-        data = self.client_socket.recv(self.max_recv).decode()
-        print(f"Received: {data}")
-        return data
+        length_header = self.client_socket.recv(4)
+        if not length_header:
+            return ''
+        length = struct.unpack('!I', length_header)[0]
+        data = b''
+        while len(data) < length:
+            data += self.client_socket.recv(self.max_recv)
+        text = data.decode()
+        print(f"Received: {text}")
+        return text
 
     def receive_json(self):
         # Read the length header first
@@ -73,7 +80,8 @@ class Server:
         return data
 
     def send(self, data, silent=False):
-        self.client_socket.send(data.encode())
+        encoded = data.encode()
+        self.client_socket.sendall(struct.pack('!I', len(encoded)) + encoded)
         if not silent:
             print(f"Sent: {data}")
 
