@@ -44,33 +44,31 @@ class Client:
             if not self.silent:
                 print(f"Failed to connect to {self.host}:{self.port}. {e}")
 
+    def _recv_exactly(self, n):
+        data = b''
+        while len(data) < n:
+            chunk = self.client.recv(n - len(data))
+            if not chunk:
+                return b''
+            data += chunk
+        return data
+
     def receive(self, silent=False):
-        length_header = self.client.recv(4)
+        length_header = self._recv_exactly(4)
         if not length_header:
             return ''
         length = struct.unpack('!I', length_header)[0]
-        data = b''
-        while len(data) < length:
-            data += self.client.recv(self.max_recv)
-        text = data.decode()
+        text = self._recv_exactly(length).decode()
         if not (self.silent or silent):
             print(f"Received: {text}")
         return text
 
     def receive_json(self):
-        # Read the length header first
-        length_header = self.client.recv(4)
+        length_header = self._recv_exactly(4)
         if not length_header:
             return None
-
         length = struct.unpack('!I', length_header)[0]
-        data = b''
-
-        while len(data) < length:
-            packet = self.client.recv(self.max_recv)
-            data += packet
-
-        data = json.loads(data.decode())
+        data = json.loads(self._recv_exactly(length).decode())
         if not self.silent:
             print(f"Received: {data}")
         return data

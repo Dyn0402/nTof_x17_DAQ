@@ -50,32 +50,30 @@ class Server:
                 print("Connection error. Retrying...")
                 time.sleep(1)
 
+    def _recv_exactly(self, n):
+        data = b''
+        while len(data) < n:
+            chunk = self.client_socket.recv(n - len(data))
+            if not chunk:
+                return b''
+            data += chunk
+        return data
+
     def receive(self):
-        length_header = self.client_socket.recv(4)
+        length_header = self._recv_exactly(4)
         if not length_header:
             return ''
         length = struct.unpack('!I', length_header)[0]
-        data = b''
-        while len(data) < length:
-            data += self.client_socket.recv(self.max_recv)
-        text = data.decode()
+        text = self._recv_exactly(length).decode()
         print(f"Received: {text}")
         return text
 
     def receive_json(self):
-        # Read the length header first
-        length_header = self.client_socket.recv(4)
+        length_header = self._recv_exactly(4)
         if not length_header:
             return None
-
         length = struct.unpack('!I', length_header)[0]
-        data = b''
-
-        while len(data) < length:
-            packet = self.client_socket.recv(self.max_recv)
-            data += packet
-
-        data = json.loads(data.decode())
+        data = json.loads(self._recv_exactly(length).decode())
         print(f"Received: {data}")
         return data
 
