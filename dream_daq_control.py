@@ -34,52 +34,56 @@ def main():
                 server.receive()
                 server.send('Dream DAQ control connected')
                 dream_info = server.receive_json()
-                cfg_template_path = dream_info['daq_config_template_path']
-                run_directory = dream_info['run_directory']
-                out_directory = dream_info['data_out_dir']
-                raw_daq_inner_dir = dream_info['raw_daq_inner_dir']
-                go_timeout = dream_info['go_timeout']
-                max_run_time_addition = dream_info['max_run_time_addition']
-                copy_on_fly = dream_info['copy_on_fly']
-                batch_mode = dream_info['batch_mode']
-                zero_supress = dream_info.get('zero_suppress', False)
-                samples_per_waveform = dream_info.get('n_samples_per_waveform', None)
-                pedestals_dir = dream_info.get('pedestals_dir', None)
-                pedestals = dream_info.get('pedestals', None)
                 original_working_directory = os.getcwd()
 
-                create_dir_if_not_exist(run_directory)
+                create_dir_if_not_exist(dream_info['run_directory'])
                 # create_dir_if_not_exist(out_directory)  # Think this is causing race condition with daq_control.py
 
                 res = server.receive()
                 while 'Finished' not in res:
                     if 'Start' in res:
-                        print(res)
-                        res_parts = res.strip().split()
-                        sub_run_name = res_parts[-3]
-                        run_time = float(res_parts[-2])
-                        cfg_file_run_time = float(res_parts[-1])
+                        subrun = server.receive_json()
+                        effective_info = {**dream_info, **subrun}
+
+                        sub_run_name = subrun['sub_run_name']
+                        run_time = float(subrun['run_time'])
                         print(f'Sub-run name: {sub_run_name}, Run time: {run_time} minutes')
-                        sub_run_out_raw_inner_dir = f'{out_directory}/{sub_run_name}/{raw_daq_inner_dir}/'
+
+                        effective_cfg_template_path = effective_info['daq_config_template_path']
+                        effective_out_directory = effective_info['data_out_dir']
+                        effective_raw_daq_inner_dir = effective_info['raw_daq_inner_dir']
+                        effective_run_directory = effective_info['run_directory']
+                        effective_copy_on_fly = effective_info['copy_on_fly']
+                        effective_zero_suppress = effective_info.get('zero_suppress', False)
+                        effective_samples_per_waveform = effective_info.get('n_samples_per_waveform', None)
+                        effective_pedestals_dir = effective_info.get('pedestals_dir', None)
+                        effective_pedestals = effective_info.get('pedestals', None)
+                        effective_pedestal_subtraction = effective_info.get('pedestal_subtraction', None)
+                        effective_common_noise_subtraction = effective_info.get('common_noise_subtraction', None)
+                        effective_zs_type = effective_info.get('zs_type', None)
+                        effective_zs_check_sample = effective_info.get('zs_check_sample', None)
+                        effective_latency = effective_info.get('latency', None)
+
+                        sub_run_out_raw_inner_dir = f'{effective_out_directory}/{sub_run_name}/{effective_raw_daq_inner_dir}/'
                         create_dir_if_not_exist(sub_run_out_raw_inner_dir)
 
-                        if run_directory is not None:
-                            sub_run_dir = f'{run_directory}{sub_run_name}/'
+                        if effective_run_directory is not None:
+                            sub_run_dir = f'{effective_run_directory}{sub_run_name}/'
                             create_dir_if_not_exist(sub_run_dir)
                             os.chdir(sub_run_dir)
                         else:
                             sub_run_dir = os.getcwd()
 
-                        # Make cfg from template
-                        cfg_run_path = make_config_from_template(sub_run_dir, cfg_template_path, cfg_file_run_time,
-                                                                 zero_supress, samples_per_waveform)
-
-                        # Copy dream config file to out directory for future reference
+                        cfg_run_path = make_config_from_template(
+                            sub_run_dir, effective_cfg_template_path, run_time,
+                            effective_zero_suppress, effective_samples_per_waveform,
+                            effective_pedestal_subtraction, effective_common_noise_subtraction,
+                            effective_zs_type, effective_zs_check_sample, effective_latency)
                         shutil.copy(cfg_run_path, sub_run_out_raw_inner_dir)
 
-                        if pedestals_dir is not None:  # If pedestals_dir is not None, copy pedestal files to run dir.
-                            print(f'Getting pedestal files from {pedestals_dir}...')
-                            get_pedestals(pedestals_dir, pedestals, sub_run_dir, sub_run_out_raw_inner_dir)
+                        if effective_pedestals_dir is not None:
+                            print(f'Getting pedestal files from {effective_pedestals_dir}...')
+                            get_pedestals(effective_pedestals_dir, effective_pedestals, sub_run_dir, sub_run_out_raw_inner_dir)
 
                         # run_command = f'RunCtrl -c {cfg_run_path} -f {sub_run_name}'
                         # if batch_mode:
@@ -98,13 +102,13 @@ def main():
                         #     copy_files_on_the_fly_thread = threading.Thread(target=copy_files_on_the_fly,
                         #                                                        args=copy_files_args)
                         #     copy_files_on_the_fly_thread.start()
-                        if copy_on_fly:
+                        if effective_copy_on_fly:
                             daq_finished = threading.Event()
                             copy_files_args = (sub_run_dir, sub_run_out_raw_inner_dir, daq_finished)
                             copy_files_on_the_fly_thread = threading.Thread(
                                 target=copy_files_on_the_fly,
                                 args=copy_files_args,
-                                daemon=True,  # <- important: thread lives independently
+                                daemon=True,
                             )
                             copy_files_on_the_fly_thread.start()
                         server.send('Dream DAQ starting')
@@ -190,9 +194,14 @@ def main():
                         #     print('Waiting for on-the-fly copy thread to finish.')
                         #     daq_finished.set()
                         #     copy_files_on_the_fly_thread.join()
-                        if copy_on_fly:
+                        if effective_copy_on_fly:
                             print('Signaling on-the-fly copier to finish soon (but not waiting).')
-                            daq_finished.set()  # thread continues running in background
+                            daq_finished.set()
+
+                        for log_file in os.listdir(sub_run_dir):
+                            if log_file.endswith('.log'):
+                                shutil.copy(os.path.join(sub_run_dir, log_file), sub_run_out_raw_inner_dir)
+                                print(f'Copied log file {log_file} to {sub_run_out_raw_inner_dir}')
 
                         os.chdir(original_working_directory)
 
@@ -407,8 +416,38 @@ def clear_terminal():
         print('Failed to clear terminal')  # Ignore any errors
 
 
+def _to_bit(val):
+    """Convert bool/int/str (0, 1, True, False, 'true', 'false') to integer 0 or 1."""
+    if isinstance(val, bool):
+        return int(val)
+    if isinstance(val, int):
+        return int(bool(val))
+    s = str(val).strip().lower()
+    if s in ('1', 'true', 'yes'):
+        return 1
+    if s in ('0', 'false', 'no'):
+        return 0
+    raise ValueError(f"Cannot convert {val!r} to 0/1")
+
+
+def _to_zs_typ(val):
+    """Convert ZsTyp value: 0/'tracker' → 0, 1/'tpc' → 1."""
+    if isinstance(val, bool):
+        return int(val)
+    if isinstance(val, int):
+        return val
+    s = str(val).strip().lower()
+    if s in ('tpc', '1'):
+        return 1
+    if s in ('tracker', '0'):
+        return 0
+    raise ValueError(f"Cannot convert {val!r} to ZsTyp (0=tracker, 1=tpc)")
+
+
 def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time, zero_suppress_mode=False,
-                              samples_per_waveform=None):
+                              samples_per_waveform=None, pedestal_subtraction=None,
+                              common_noise_subtraction=None, zs_type=None, zs_check_sample=None,
+                              latency=None):
     print('Making config file from template...')
     dest = run_dir
     cfg_file_name = os.path.basename(cfg_template_file_path)
@@ -421,12 +460,26 @@ def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time
         if file.startswith('Grace_'):
             shutil.copy(f'{template_dir}/{file}', f'{dest}{file}')
 
-    updates = {  # Update config file with desired parameters
+    updates = {
         "Sys DaqRun Time": cfg_file_run_time * 60,  # Seconds
         "Sys DaqRun Mode": 'ZS' if zero_suppress_mode else 'Raw',
+        "Feu * Feu_RunCtrl_ZS": _to_bit(zero_suppress_mode),
     }
     if samples_per_waveform is not None:
-        updates["Sys NbOfSamples"] = samples_per_waveform  # Use specified number of samples
+        updates["Sys NbOfSamples"] = samples_per_waveform
+    if pedestal_subtraction is not None:
+        updates["Feu * Feu_RunCtrl_Pd"] = _to_bit(pedestal_subtraction)
+    if common_noise_subtraction is not None:
+        updates["Feu * Feu_RunCtrl_CM"] = _to_bit(common_noise_subtraction)
+    if zs_type is not None:
+        updates["Feu * Feu_RunCtrl_ZsTyp"] = _to_zs_typ(zs_type)
+    if zs_check_sample is not None:
+        val = int(zs_check_sample)
+        if not (0 <= val <= 4):
+            raise ValueError(f"zs_check_sample must be between 0 and 4, got {val}")
+        updates["Feu * Feu_RunCtrl_ZsChkSmp"] = val
+    if latency is not None:
+        updates["Feu * Dream * 12"] = f'0x{int(latency):04X}'
     update_config_value(cfg_file_path, updates)
 
     return cfg_file_path
@@ -459,7 +512,7 @@ def update_config_value(filepath, updates, output_path=None):
             continue
 
         for flag_pattern, new_value in updates.items():
-            pattern = rf"^(\s*{flag_pattern}\s+)([^\s#]+)(?=(\s*#|$))"
+            pattern = rf"^(\s*{flag_pattern}\s+)([^\s#]+)"
             if re.search(pattern, line):
                 # Use a lambda to avoid backreference confusion
                 line = re.sub(pattern, lambda m: f"{m.group(1)}{new_value}", line)
@@ -527,7 +580,7 @@ def get_pedestals(pedestals_dir, pedestals, run_dir, out_dir=None):
     # two parameters (eg dream_pedestals_thresholds_03_thr.prg)
     for file in os.listdir(pedestals_prg_dir):
         print(f'Checking pedestal file: {file}')
-        if file.endswith('.prg') and sub_run_name in file:
+        if file.endswith('.prg'):
             feu_num_search = re.search(r'_(\d{2})_', file)
             if feu_num_search:
                 feu_num = feu_num_search.group(1)
@@ -552,6 +605,15 @@ def get_pedestals(pedestals_dir, pedestals, run_dir, out_dir=None):
                 print(f'Copied pedestal file {file} to {dest_file_name}')
             else:
                 print(f'Could not find FEU number in pedestal file name {file}, skipping.')
+        elif file.endswith('.fdf'):
+            feu_num_search = re.search(r'_(\d{2})_', file)
+            if feu_num_search:
+                print(f'Copying pedestal fdf file {file}...')
+                shutil.copy(f'{pedestals_prg_dir}{file}', f'{run_dir}{file}')
+                if out_dir:
+                    shutil.copy(f'{pedestals_prg_dir}{file}', f'{out_dir}{file}')
+            else:
+                print(f'Could not find FEU number in pedestal fdf file name {file}, skipping.')
 
 
 if __name__ == '__main__':

@@ -14,14 +14,14 @@ from time import time
 
 
 class DAQController:
-    def __init__(self, cfg_template_file_path=None, run_time=10, out_name=None, out_dir=None, dream_daq_client=None):
-        self.cfg_template_file_path = cfg_template_file_path
+    def __init__(self, subrun=None, out_dir=None, dream_daq_client=None):
+        self.subrun = subrun or {}
         self.out_directory = out_dir
-        self.out_name = out_name
+        self.out_name = self.subrun.get('sub_run_name')
+        self.run_time = self.subrun.get('run_time', 10)  # minutes
         self.dream_daq_client = dream_daq_client
         self.original_working_directory = os.getcwd()
 
-        self.run_time = run_time  # minutes
         self.run_start_time = None
         self.measured_run_time = None
 
@@ -38,7 +38,8 @@ class DAQController:
         run_successful = True
 
         try:
-            self.dream_daq_client.send(f'Start {self.out_name} {self.run_time} {self.run_time}')
+            self.dream_daq_client.send('Start')
+            self.dream_daq_client.send_json(self.subrun)
             res = self.dream_daq_client.receive()
             if res != 'Dream DAQ starting':
                 print('Error starting Dream DAQ')

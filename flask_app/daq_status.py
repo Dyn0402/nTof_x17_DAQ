@@ -126,7 +126,7 @@ def get_hv_control_status():
 def get_daq_control_status():
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-10", "-t", "daq_control:0.0"],
+            ["tmux", "capture-pane", "-pS", "-50", "-t", "daq_control:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
@@ -150,12 +150,12 @@ def get_daq_control_status():
     ]
 
     fields = []
-    for line in reversed(output.splitlines()):  # Find most recent "Sent: Start ..." line
-        if line.startswith("Sent: Start"):
-            parts = line.split()
-            if len(parts) >= 4:
-                fields.append({"label": "Subrun", "value": parts[2]})
-                fields.append({"label": "Runtime (min)", "value": parts[3]})
+    for line in reversed(output.splitlines()):
+        m = re.search(r'\[status\] run=(\S+)\s+subrun=(\S+)\s+run_time=(\S+)', line)
+        if m:
+            fields.append({"label": "Run",     "value": m.group(1)})
+            fields.append({"label": "Subrun",  "value": m.group(2)})
+            fields.append({"label": "Run Time", "value": m.group(3)})
             break
 
     for line in reversed(output.splitlines()):

@@ -85,7 +85,7 @@ class Config(RunConfigBase):
             # 'latency': 24,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             # 'sample_period': 60,  # ns, sampling period
-            'samples_beyond_threshold': 4,  # Number of samples to read out beyond threshold crossing
+            'zs_check_sample': 4,  # Number of samples to read out beyond threshold crossing
         }
 
         self.processor_info = {
