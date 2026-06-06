@@ -9,8 +9,23 @@ Created as Cosmic_Bench_DAQ_Control/common_functions.py
 """
 
 import os
+import logging
 from datetime import datetime
 import time
+
+
+def setup_logging(log_path):
+    """Attach a FileHandler for log_path to the root logger. Returns the handler."""
+    handler = logging.FileHandler(log_path)
+    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
+def teardown_logging(handler):
+    """Remove and close a logging FileHandler."""
+    logging.getLogger().removeHandler(handler)
+    handler.close()
 
 
 def create_dir_if_not_exist(dir_path):

@@ -41,8 +41,10 @@ class DAQController:
             self.dream_daq_client.send('Start')
             self.dream_daq_client.send_json(self.subrun)
             res = self.dream_daq_client.receive()
+            if res == '':
+                raise ConnectionError('Dream DAQ server closed connection unexpectedly')
             if res != 'Dream DAQ starting':
-                print('Error starting Dream DAQ')
+                print(f'Error starting Dream DAQ: received "{res}"')
                 return False
             self.run_start_time = time()
 

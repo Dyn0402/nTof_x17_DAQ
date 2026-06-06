@@ -11,6 +11,7 @@ Created as Cosmic_Bench_DAQ_Control/dream_daq_control
 import os
 import sys
 import re
+import logging
 import subprocess
 from subprocess import Popen, PIPE, STDOUT
 import pty
@@ -26,8 +27,15 @@ from common_functions import *
 
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s: %(message)s',
+        handlers=[logging.StreamHandler()]
+    )
     port = 1101
     while True:
+        run_log_handler = None
+        subrun_log_handler = None
         try:
             clear_terminal()  # Dream DAQ output can get messy, try to clear after
             with Server(port=port) as server:
@@ -35,6 +43,11 @@ def main():
                 server.send('Dream DAQ control connected')
                 dream_info = server.receive_json()
                 original_working_directory = os.getcwd()
+
+                create_dir_if_not_exist(dream_info['data_out_dir'])
+                run_log_handler = setup_logging(
+                    os.path.join(dream_info['data_out_dir'], 'dream_daq.log'))
+                logging.info('Run started')
 
                 create_dir_if_not_exist(dream_info['run_directory'])
                 # create_dir_if_not_exist(out_directory)  # Think this is causing race condition with daq_control.py
@@ -66,6 +79,9 @@ def main():
 
                         sub_run_out_raw_inner_dir = f'{effective_out_directory}/{sub_run_name}/{effective_raw_daq_inner_dir}/'
                         create_dir_if_not_exist(sub_run_out_raw_inner_dir)
+                        subrun_log_handler = setup_logging(
+                            os.path.join(sub_run_out_raw_inner_dir, 'dream_daq.log'))
+                        logging.info(f'Subrun started: {sub_run_name}  run_time={run_time}min')
 
                         if effective_run_directory is not None:
                             sub_run_dir = f'{effective_run_directory}{sub_run_name}/'
@@ -210,12 +226,32 @@ def main():
                         #     move_data_files(sub_run_dir, sub_run_out_raw_inner_dir)
 
                         server.send('Dream DAQ stopped')
+                        logging.info(f'Subrun finished: {sub_run_name}')
+                        teardown_logging(subrun_log_handler)
+                        subrun_log_handler = None
                     else:
                         server.send('Unknown Command')
                     res = server.receive()
+                logging.info('Run finished normally')
+                if run_log_handler is not None:
+                    teardown_logging(run_log_handler)
+                    run_log_handler = None
         except Exception as e:
-            traceback.print_exc()
-            print(f'Error: {e}')
+            logging.exception(f'Unhandled error: {e}')
+            if subrun_log_handler is not None:
+                teardown_logging(subrun_log_handler)
+                subrun_log_handler = None
+            if run_log_handler is not None:
+                teardown_logging(run_log_handler)
+                run_log_handler = None
+            try:
+                os.chdir(original_working_directory)
+            except Exception:
+                pass
+            try:
+                server.send(f'Dream DAQ error: {e}')
+            except Exception:
+                pass
             sleep(30)
     print('donzo')
 
@@ -606,7 +642,7 @@ def get_pedestals(pedestals_dir, pedestals, run_dir, out_dir=None):
             else:
                 print(f'Could not find FEU number in pedestal file name {file}, skipping.')
         elif file.endswith('.fdf'):
-            feu_num_search = re.search(r'_(\d{2})_', file)
+            feu_num_search = re.search(r'_(\d{3})_(\d{2})\.', file)
             if feu_num_search:
                 print(f'Copying pedestal fdf file {file}...')
                 shutil.copy(f'{pedestals_prg_dir}{file}', f'{run_dir}{file}')
