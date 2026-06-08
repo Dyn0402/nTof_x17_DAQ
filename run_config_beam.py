@@ -10,6 +10,13 @@ Created as Cosmic_Bench_DAQ_Control/run_config_template.py
 
 from run_config_base import RunConfigBase
 
+# ---------------------------------------------------------------------------
+# Site configuration — edit here to change the data location
+# ---------------------------------------------------------------------------
+BASE_DISK     = '/mnt/data/x17/'
+PROJECT       = 'beam_may'
+BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
+
 
 class Config(RunConfigBase):
     def __init__(self, config_path=None):
@@ -20,7 +27,7 @@ class Config(RunConfigBase):
 
     def _set_defaults(self, config_path=None):
         self.run_name = 'run_74'
-        self.base_out_dir = '/mnt/data/x17/beam_may/'
+        self.base_out_dir = BASE_DATA_DIR
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
         self.raw_daq_inner_dir = 'raw_daq_data'

@@ -27,7 +27,7 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_qa_watcher_status, get_backup_watcher_status)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
-from run_config_beam import Config
+from run_config_beam import Config, BASE_DATA_DIR
 from get_run_events import get_total_events_for_run
 from monitor import DaqMonitor, fetch_chat_id, get_bot_username
 
@@ -46,10 +46,9 @@ BACKUP_CONFIG_PATH = f"{BASE_DIR}/config/backup_config.json"
 BACKUP_TMUX = "backup_watcher"
 # ANALYSIS_DIR = "/media/dylan/data/x17"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
-BEAM_DIR = "beam_may"  # "beam_feb" or "beam_may"
-ANALYSIS_DIR = f"/mnt/data/x17/{BEAM_DIR}/analysis"
-RUN_DIR = f"/mnt/data/x17/{BEAM_DIR}/runs"
-GENERAL_ANALYSIS_DIR = f"/mnt/data/x17/{BEAM_DIR}/runs/Analysis"
+ANALYSIS_DIR = f'{BASE_DATA_DIR}analysis'
+RUN_DIR = f'{BASE_DATA_DIR}runs'
+GENERAL_ANALYSIS_DIR = f'{BASE_DATA_DIR}runs/Analysis'
 HV_TAIL = 1000  # number of most recent rows to show
 
 LOG_DIR = f"{BASE_DIR}/logs"
@@ -541,10 +540,9 @@ def get_run_events():
         output = result.stdout.strip()
         config_data = json.loads(output)
         run_name = config_data.get("run_name", "Unknown")
-        run_number = int(run_name.replace("run_", ""))
         total_events, subrun_details = get_total_events_for_run(
             run_dir=RUN_DIR,
-            run_number=run_number
+            run_name=run_name
         )
         return jsonify({
             "success": True,

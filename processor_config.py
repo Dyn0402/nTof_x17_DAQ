@@ -9,9 +9,11 @@ The flask UI's Start Processor button reads that JSON to launch processor_watche
 import json
 import os
 
+from run_config_beam import BASE_DATA_DIR
+
 # --- Paths ---
 BASE_SOFT = '/home/mx17/CLionProjects/mm_strip_reconstruction/build/'
-BASE_DATA = '/mnt/data/x17/beam_may/'
+BASE_DATA = BASE_DATA_DIR
 
 CONFIG = {
     # Top-level directory containing all run_N/ subdirectories
