@@ -20,7 +20,7 @@ def main():
     manager = DreamThresholdManager()
 
     # 1. Provide a dummy file name for testing (Replace with your actual file path)
-    input_filename = "dream_thresholds_04_thr.prg"
+    input_filename = "/home/dylan/Desktop/zs_test/MX17_pedestals_pedthr_260605_21H32_000_03_thr.prg"
     output_filename = "dream_thresholds_updated.prg"
 
     # Quick test file creation so the script can run right away out-of-the-box

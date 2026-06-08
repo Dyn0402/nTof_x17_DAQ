@@ -279,7 +279,8 @@ def encode_register1(params):
 
 # Example
 if __name__ == "__main__":
-    test = "0x081FD023"  # Nominal MMs self trigger
+    # test = "0x081FD023"  # Nominal MMs self trigger
+    test = "0x881FD043"  # Nominal MMs self trigger
     # test = "0x281FE823"  # Nominal + polarity to gain 2 - hit polarity
     # test = "0x081FE823"  # Nominal + polarity to CSA - hit polarity
     # test = "0x83FE823"  # Nominal + polarity to CSA + hit polarity
