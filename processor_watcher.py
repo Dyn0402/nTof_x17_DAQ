@@ -85,6 +85,7 @@ def run_watcher(config: dict):
     do_decode  = config.get('do_decode',  True)  and bool(decode_exe)
     do_analyze = config.get('do_analyze', False) and bool(analyze_exe)
     do_combine = config.get('do_combine', False) and bool(combine_exe)
+    common_noise_subtraction = config.get('common_noise_subtraction', True)
 
     save_fdfs    = config.get('save_fdfs',    True)
     save_decoded = config.get('save_decoded', True)
@@ -186,7 +187,7 @@ def run_watcher(config: dict):
                                 decode_exe, analyze_exe, combine_exe,
                                 do_decode, do_analyze, do_combine,
                                 save_fdfs, save_decoded, n_threads,
-                                sample_period
+                                sample_period, common_noise_subtraction
                             )
                             del prev_sizes[key]
                             found_new = True
@@ -224,7 +225,7 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                        decode_exe, analyze_exe, combine_exe,
                        do_decode, do_analyze, do_combine,
                        save_fdfs, save_decoded, n_threads,
-                       sample_period=None):
+                       sample_period=None, common_noise_subtraction=True):
 
     decoded_dir  = subrun_dir / decoded_inner
     hits_dir     = subrun_dir / hits_inner
@@ -258,7 +259,7 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                 if hits_path.exists():
                     continue
                 tasks.append(pool.submit(
-                    _analyze_file, str(root_path), ped_dir, str(hits_path), analyze_exe, sample_period
+                    _analyze_file, str(root_path), ped_dir, str(hits_path), analyze_exe, sample_period, common_noise_subtraction
                 ))
             for t in as_completed(tasks):
                 t.result()
@@ -428,7 +429,7 @@ def _decode_file(fdf_path: str, root_path: str, decode_exe: str):
 
 
 def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe: str,
-                  sample_period=None):
+                  sample_period=None, common_noise_subtraction: bool = True):
     m = re.search(r'_(\d{3})_(\d{2})', os.path.basename(root_path))
     if not m:
         print(f"[analyze] Cannot extract FEU number from {root_path}, skipping")
@@ -456,6 +457,7 @@ def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe:
     cmd = [analyze_exe, root_path, hits_out_path, ped_path]
     if sample_period is not None:
         cmd += ['--tps', str(sample_period)]
+    cmd += ['--cns', '1' if common_noise_subtraction else '0']
     subprocess.run(cmd)
 
 
