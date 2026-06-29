@@ -400,6 +400,8 @@ async function updateHVPlots() {
             return;
         }
         const time = data.time;
+        const run = document.getElementById("run-select").value;
+        const subrun = document.getElementById("hv-subrun-select").value;
 
         const voltageTraces = Object.entries(data.voltage).map(([key, values]) => ({
             x: time,
@@ -415,21 +417,36 @@ async function updateHVPlots() {
             name: key
         }));
 
-        Plotly.newPlot('hv-voltage-plot', voltageTraces, {
+        // uirevision keyed to run/subrun: Plotly preserves zoom/pan/legend state across
+        // auto-refreshes (key unchanged) but resets the view when the subrun changes (new key).
+        const uirev = `${run}/${subrun}`;
+
+        const voltageLayout = {
             title: 'Voltage (V) vs Time',
             xaxis: { title: 'Time' },
             yaxis: { title: 'Voltage (V)' },
             legend: { orientation: 'h' },
+            hovermode: 'x unified',
+            uirevision: uirev,
             template: 'plotly_dark'
-        });
+        };
 
-        Plotly.newPlot('hv-current-plot', currentTraces, {
+        const currentLayout = {
             title: 'Current (µA) vs Time',
             xaxis: { title: 'Time' },
             yaxis: { title: 'Current (µA)' },
             legend: { orientation: 'h' },
+            hovermode: 'x unified',
+            uirevision: uirev,
             template: 'plotly_dark'
-        });
+        };
+
+        const plotConfig = { responsive: true, displaylogo: false };
+
+        // Plotly.react updates the existing plot in place (instead of rebuilding like
+        // newPlot), so combined with a stable uirevision the current zoom/pan is kept.
+        Plotly.react('hv-voltage-plot', voltageTraces, voltageLayout, plotConfig);
+        Plotly.react('hv-current-plot', currentTraces, currentLayout, plotConfig);
 
     } catch (err) {
         console.error("HV update failed:", err);
