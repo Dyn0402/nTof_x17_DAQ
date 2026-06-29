@@ -22,6 +22,10 @@ Config keys (see qa_config.py to generate the JSON):
   exclude_runs            : list of run directory names to skip (null = none)
   poll_interval           : seconds between scans   (default: 10)
   stale_run_days          : runs with no new combined_hits for this many days are skipped (default: 4)
+  memory_kill_pct         : kill the QA process if system RAM usage exceeds this % (default: 80)
+                              The QA is always launched; memory is monitored during the run and
+                              the process is terminated if the system crosses the threshold.
+                              A killed subrun is NOT marked done and will be retried next poll.
 """
 
 import re
@@ -31,6 +35,20 @@ import time
 import datetime
 import subprocess
 from pathlib import Path
+
+_LOG_FILE = Path(__file__).parent / 'logs' / 'qa_watcher.log'
+
+
+def _log(event: str, **details):
+    try:
+        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ts         = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        detail_str = ' | '.join(f'{k}={v}' for k, v in details.items())
+        line       = f"{ts} | {event:<16} | qa_watcher   | {detail_str}\n"
+        with open(_LOG_FILE, 'a') as f:
+            f.write(line)
+    except Exception as e:
+        print(f"[qa_watcher] Warning: could not write to log: {e}")
 
 
 def main():
@@ -59,21 +77,24 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
     include_runs = set(config['include_runs']) if config.get('include_runs') else None
     exclude_runs = set(config['exclude_runs']) if config.get('exclude_runs') else set()
 
-    poll_interval  = config.get('poll_interval',  10)
-    stale_run_days = config.get('stale_run_days',  4)
+    poll_interval   = config.get('poll_interval',   10)
+    stale_run_days  = config.get('stale_run_days',    4)
+    memory_kill_pct = config.get('memory_kill_pct',  80)
 
     qa_script  = ntof_x17_dir / 'ntof_daq_analysis' / 'detector_qa.py'
     qa_python  = ntof_x17_dir / '.venv' / 'bin' / 'python'
 
-    print(f"[qa_watcher] runs_dir     : {runs_dir}")
-    print(f"[qa_watcher] qa_script    : {qa_script}")
-    print(f"[qa_watcher] python       : {qa_python}")
-    print(f"[qa_watcher] mode         : {mode}")
+    print(f"[qa_watcher] runs_dir        : {runs_dir}")
+    print(f"[qa_watcher] qa_script       : {qa_script}")
+    print(f"[qa_watcher] python          : {qa_python}")
+    print(f"[qa_watcher] mode            : {mode}")
     if include_runs:
-        print(f"[qa_watcher] include_runs : {sorted(include_runs)}")
+        print(f"[qa_watcher] include_runs    : {sorted(include_runs)}")
     if exclude_runs:
-        print(f"[qa_watcher] exclude_runs : {sorted(exclude_runs)}")
-    print(f"[qa_watcher] poll         : {poll_interval}s  stale_after={stale_run_days}d")
+        print(f"[qa_watcher] exclude_runs    : {sorted(exclude_runs)}")
+    print(f"[qa_watcher] poll            : {poll_interval}s  stale_after={stale_run_days}d")
+    print(f"[qa_watcher] memory_kill_pct : {memory_kill_pct}%")
+    _log('START', runs_dir=runs_dir, mode=mode, memory_kill_pct=f'{memory_kill_pct}%')
 
     state_path = reset_signal_path.parent / 'qa_state.json' if reset_signal_path else None
 
@@ -156,21 +177,35 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                         current = frozenset(stable)
                         if current != seen_files.get(key):
                             _end_idle()
+                            mem_pct, free_mb = _mem_usage_pct()
                             print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
-                                  f"  n_files={len(stable)}")
-                            _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'all')
-                            seen_files[key] = current
-                            _save_state(state_path, seen_files)
+                                  f"  n_files={len(stable)}  mem={mem_pct:.1f}%  free={free_mb:.0f}MB")
+                            _log('QA_LAUNCH', run=run_dir.name, subrun=subrun_dir.name,
+                                 n_files=len(stable), mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
+                            completed_ok = _run_qa_monitored(
+                                qa_python, qa_script, subrun_dir, run_config_path,
+                                'all', memory_kill_pct=memory_kill_pct)
+                            if completed_ok:
+                                seen_files[key] = current
+                                _save_state(state_path, seen_files)
+                                _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name)
                             found_new = True
 
                     elif mode == 'first':
                         if key not in done_first:
                             if any(_file_num(f) == 0 for f in stable):
                                 _end_idle()
+                                mem_pct, free_mb = _mem_usage_pct()
                                 print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
-                                      f"  file_num=0")
-                                _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'first')
-                                done_first.add(key)
+                                      f"  file_num=0  mem={mem_pct:.1f}%  free={free_mb:.0f}MB")
+                                _log('QA_LAUNCH', run=run_dir.name, subrun=subrun_dir.name,
+                                     file_num=0, mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
+                                completed_ok = _run_qa_monitored(
+                                    qa_python, qa_script, subrun_dir, run_config_path,
+                                    'first', memory_kill_pct=memory_kill_pct)
+                                if completed_ok:
+                                    done_first.add(key)
+                                    _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name)
                                 found_new = True
 
                     elif mode == 'per_file':
@@ -178,10 +213,18 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                         new_fnums = {_file_num(f) for f in stable} - {None} - completed
                         for fnum in sorted(new_fnums):
                             _end_idle()
+                            mem_pct, free_mb = _mem_usage_pct()
                             print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
-                                  f"  file_num={fnum:03d}")
-                            _run_qa(qa_python, qa_script, subrun_dir, run_config_path, 'per_file', fnum)
-                            completed.add(fnum)
+                                  f"  file_num={fnum:03d}  mem={mem_pct:.1f}%  free={free_mb:.0f}MB")
+                            _log('QA_LAUNCH', run=run_dir.name, subrun=subrun_dir.name,
+                                 file_num=fnum, mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
+                            completed_ok = _run_qa_monitored(
+                                qa_python, qa_script, subrun_dir, run_config_path,
+                                'per_file', file_num=fnum, memory_kill_pct=memory_kill_pct)
+                            if completed_ok:
+                                completed.add(fnum)
+                                _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name,
+                                     file_num=fnum)
                             found_new = True
                         done_fnums[key] = completed
 
@@ -258,15 +301,80 @@ def _pop_reset_signal(signal_path: Path):
         return False
 
 
-def _run_qa(qa_python: Path, qa_script: Path, subrun_dir: Path, run_config_path: Path,
-             mode: str, file_num: int = None):
+def _read_meminfo() -> tuple:
+    """
+    Read /proc/meminfo and return (mem_total_kb, mem_available_kb).
+    Returns (0, 0) on error.
+    """
+    total, avail = 0, 0
+    try:
+        with open('/proc/meminfo') as f:
+            for line in f:
+                if line.startswith('MemTotal:'):
+                    total = int(line.split()[1])
+                elif line.startswith('MemAvailable:'):
+                    avail = int(line.split()[1])
+                if total and avail:
+                    break
+    except Exception:
+        pass
+    return total, avail
+
+
+def _mem_usage_pct() -> tuple:
+    """
+    Return (used_pct, free_mb).
+    used_pct = percentage of total RAM that is in use (0-100).
+    Returns (0.0, inf) if /proc/meminfo is unreadable.
+    """
+    total, avail = _read_meminfo()
+    if total == 0:
+        return 0.0, float('inf')
+    used_pct = (total - avail) / total * 100
+    free_mb  = avail / 1024
+    return used_pct, free_mb
+
+
+def _run_qa_monitored(qa_python, qa_script: Path, subrun_dir: Path,
+                       run_config_path: Path, mode: str, file_num: int = None,
+                       memory_kill_pct: float = 80, monitor_interval: float = 1.0) -> bool:
+    """
+    Launch detector_qa.py as a subprocess and monitor system RAM while it runs.
+
+    Polls every monitor_interval seconds (default 1 s).  If system RAM usage
+    crosses memory_kill_pct (default 80%), the process is terminated (SIGTERM,
+    then SIGKILL after 5 s) and False is returned.
+    Returns True if the process completed without being killed.
+    A killed run is NOT marked done in the caller's state — it will be retried.
+    """
     cmd = [str(qa_python), str(qa_script),
            '--subrun_dir', str(subrun_dir),
            '--run_config', str(run_config_path),
            '--mode', mode]
     if file_num is not None:
         cmd += ['--file_num', str(file_num)]
-    subprocess.run(cmd)
+
+    run_label = f"{subrun_dir.parent.name}/{subrun_dir.name}"
+    proc = subprocess.Popen(cmd)
+
+    while proc.poll() is None:
+        time.sleep(monitor_interval)
+        mem_pct, free_mb = _mem_usage_pct()
+        if mem_pct >= memory_kill_pct:
+            print(f"\n[qa_watcher] Memory {mem_pct:.1f}% >= {memory_kill_pct}%"
+                  f" — killing QA process ({run_label})")
+            _log('QA_KILLED', run=subrun_dir.parent.name, subrun=subrun_dir.name,
+                 mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}', threshold=f'{memory_kill_pct}%')
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            print(f"[qa_watcher] QA process killed ({run_label}) — will retry next poll")
+            return False
+
+    return proc.returncode == 0
 
 
 def _stable_combined_files(combined_dir: Path) -> list:
