@@ -76,6 +76,9 @@ def main():
                         effective_zs_type = effective_info.get('zs_type', None)
                         effective_zs_check_sample = effective_info.get('zs_check_sample', None)
                         effective_latency = effective_info.get('latency', None)
+                        effective_included_feus = effective_info.get('included_feus', None)
+                        effective_feu_connectors = effective_info.get('feu_connectors', None)
+                        effective_trigger_feu = effective_info.get('trigger_feu', None)
 
                         sub_run_out_raw_inner_dir = f'{effective_out_directory}/{sub_run_name}/{effective_raw_daq_inner_dir}/'
                         create_dir_if_not_exist(sub_run_out_raw_inner_dir)
@@ -94,7 +97,8 @@ def main():
                             sub_run_dir, effective_cfg_template_path, run_time,
                             effective_zero_suppress, effective_samples_per_waveform,
                             effective_pedestal_subtraction, effective_common_noise_subtraction,
-                            effective_zs_type, effective_zs_check_sample, effective_latency)
+                            effective_zs_type, effective_zs_check_sample, effective_latency,
+                            effective_included_feus, effective_feu_connectors, effective_trigger_feu)
                         shutil.copy(cfg_run_path, sub_run_out_raw_inner_dir)
 
                         if effective_pedestals_dir is not None:
@@ -483,7 +487,7 @@ def _to_zs_typ(val):
 def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time, zero_suppress_mode=False,
                               samples_per_waveform=None, pedestal_subtraction=None,
                               common_noise_subtraction=None, zs_type=None, zs_check_sample=None,
-                              latency=None):
+                              latency=None, included_feus=None, feu_connectors=None, trigger_feu=None):
     print('Making config file from template...')
     dest = run_dir
     cfg_file_name = os.path.basename(cfg_template_file_path)
@@ -518,7 +522,104 @@ def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time
         updates["Feu * Dream * 12"] = f'0x{int(latency):04X}'
     update_config_value(cfg_file_path, updates)
 
+    if included_feus is not None:
+        set_active_feus(cfg_file_path, included_feus, feu_connectors=feu_connectors, trigger_feu=trigger_feu)
+
     return cfg_file_path
+
+
+# Connectors in dream_feus are 1-based (1..8) and map to FEU Dream indices 0..7.
+CONNECTOR_DREAM_OFFSET = 1  # connector = dream_index + CONNECTOR_DREAM_OFFSET
+
+
+def set_active_feus(filepath, included_feus, feu_connectors=None, trigger_feu=None, output_path=None):
+    """
+    Enable only the given FEUs in a Dream .cfg, and set per-Dream roles, by editing lines in place.
+
+    For each FEU-specific hardware line (``Feu N Feu_RunCtrl_Id ...``, ``Feu N NetChan_Ip ...``) and
+    the ``Sys Topo Feu N ...`` topology line, the line is left active when its FEU number N is in
+    ``included_feus`` and commented out otherwise.
+
+    For an active ``Sys Topo`` line, the per-Dream roles are also rewritten when ``feu_connectors`` is
+    given (a ``{feu_number: [used connectors]}`` map): each Dream becomes ``Dat`` when its connector is
+    used by an included detector, else ``Msk``. The ``trigger_feu`` (e.g. a dedicated trigger FEU) is
+    left untouched so it keeps its template roles. nTof triggers on multiplicity coincidence and has no
+    dedicated trigger FEU, so trigger_feu is normally None here.
+
+    Wildcard ``Feu * ...`` lines and per-FEU register overrides (e.g. ``Feu 1 Dream * ...``) are left
+    untouched, so the template remains the source of truth for hardware Id/IP and Dream registers.
+    """
+    output_path = output_path or filepath
+    included = {int(f) for f in included_feus}
+    feu_connectors = {int(k): set(v) for k, v in (feu_connectors or {}).items()}
+    trigger_feu = int(trigger_feu) if trigger_feu is not None else None
+
+    topo_pat = re.compile(
+        r'^(?P<indent>\s*)#*\s*(?P<head>Sys\s+Topo\s+Feu\s+(?P<num>\d+)\s+Dream\s+)(?P<dreams>.*)$')
+    hw_pats = [
+        re.compile(r'^(?P<indent>\s*)#*\s*(?P<body>Feu\s+(?P<num>\d+)\s+Feu_RunCtrl_Id\b.*)$'),
+        re.compile(r'^(?P<indent>\s*)#*\s*(?P<body>Feu\s+(?P<num>\d+)\s+NetChan_Ip\b.*)$'),
+    ]
+
+    def set_dream_roles(dreams_str, connectors):
+        # Replace each "<dream_index> <whitespace> <role>" triplet's role, preserving spacing.
+        def repl(m):
+            dream_idx = int(m.group(1))
+            role = 'Dat' if (dream_idx + CONNECTOR_DREAM_OFFSET) in connectors else 'Msk'
+            return f'{m.group(1)}{m.group(2)}{role}'
+        return re.sub(r'(\d+)(\s+)(?:Trg|Dat|Msk)', repl, dreams_str)
+
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+
+    new_lines = []
+    activated, deactivated = set(), set()
+    for line in lines:
+        raw = line.rstrip('\n')
+
+        m = topo_pat.match(raw)
+        if m:
+            feu_num = int(m.group('num'))
+            indent, head, dreams = m.group('indent'), m.group('head'), m.group('dreams')
+            if feu_num in included:
+                # Rewrite roles for active data FEUs; leave the trigger FEU's roles as-is.
+                if feu_num != trigger_feu and feu_num in feu_connectors:
+                    dreams = set_dream_roles(dreams, feu_connectors[feu_num])
+                new_lines.append(f'{indent}{head}{dreams}\n')
+                activated.add(feu_num)
+            else:
+                new_lines.append(f'{indent}#{head}{dreams}\n')
+                deactivated.add(feu_num)
+            continue
+
+        for pat in hw_pats:
+            hm = pat.match(raw)
+            if not hm:
+                continue
+            feu_num = int(hm.group('num'))
+            indent, body = hm.group('indent'), hm.group('body')
+            was_commented = raw.lstrip().startswith('#')
+            if feu_num in included:
+                # Preserve the template's comment state for included FEUs. nTof templates may carry a
+                # second, commented-out alternate hardware block (spare FEU Ids/IPs); force-uncommenting
+                # would resurrect it and create a duplicate Feu_RunCtrl_Id/NetChan_Ip line. The template's
+                # already-active block stays the single source of truth for each FEU's Id/IP.
+                new_lines.append(line)
+            else:
+                # Comment out hardware for FEUs not in this run (no-op if already commented).
+                new_lines.append(line if was_commented else f'{indent}#{body}\n')
+            break
+        else:
+            new_lines.append(line)
+
+    with open(output_path, 'w') as f:
+        f.writelines(new_lines)
+
+    print(f'Set active FEUs from detectors: enabled {sorted(activated)}, disabled {sorted(deactivated)}')
+    missing = included - activated
+    if missing:
+        print(f'WARNING: requested FEUs {sorted(missing)} have no Sys Topo lines in the template '
+              f'and could not be enabled.')
 
 
 def update_config_value(filepath, updates, output_path=None):

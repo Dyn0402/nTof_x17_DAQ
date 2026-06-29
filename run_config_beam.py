@@ -37,6 +37,7 @@ class Config(RunConfigBase):
         self.start_time = None
         self.process_on_fly = False  # True to process fdfs on the fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
+        self.resume = False  # True to resume an existing run: skip sub-runs already marked .subrun_complete.
         self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
@@ -93,6 +94,12 @@ class Config(RunConfigBase):
             'sample_period': 20,  # ns, sampling period
             # 'sample_period': 60,  # ns, sampling period
             'zs_check_sample': 4,  # Number of samples to read out beyond threshold crossing
+            # True to auto-select the active FEUs in the .cfg from the included detectors' dream_feus maps.
+            # Only the Sys Topo / Feu_RunCtrl_Id / NetChan_Ip lines for FEUs actually used by the included
+            # detectors are left active; the rest are commented out. On each active Sys Topo line the per-
+            # Dream roles are set to Dat for used connectors and Msk otherwise. nTof has no dedicated
+            # trigger FEU (multiplicity coincidence), so trigger_feu stays None.
+            'set_feus_from_detectors': True,
         }
 
         self.processor_info = {
@@ -553,6 +560,47 @@ class Config(RunConfigBase):
 
         if not self.write_all_detectors_to_json:
             self.detectors = [det for det in self.detectors if det['name'] in self.included_detectors]
+
+        # Derive the active FEUs (and their used connectors) from the included detectors so
+        # dream_daq_control can enable only those FEUs in the .cfg and set per-Dream roles.
+        # Derived from the included subset explicitly so it works whether or not self.detectors
+        # was already filtered above (write_all_detectors_to_json defaults True for nTof).
+        if self.dream_daq_info.get('set_feus_from_detectors', False):
+            feu_connectors = self.get_active_feu_connectors()
+            if feu_connectors:
+                self.dream_daq_info['included_feus'] = sorted(feu_connectors)
+                self.dream_daq_info['feu_connectors'] = feu_connectors
+                self.dream_daq_info['trigger_feu'] = None  # nTof triggers on multiplicity, no trigger FEU
+            else:
+                # No included detector exposes dream_feus (e.g. scintillator-only run). Leave the
+                # template's FEU selection untouched rather than commenting out every FEU.
+                print('set_feus_from_detectors is on but no included detector has dream_feus; '
+                      'leaving the template FEU selection unchanged.')
+
+    def get_active_feu_connectors(self):
+        """Map each FEU used by the included detectors to the sorted list of its used connectors.
+
+        Each dream_feus value is a (feu_number, connector) tuple. Connectors are 1-based (1..8) and
+        correspond to FEU Dream indices 0..7 (Dream index = connector - 1). Detectors without a
+        dict-valued dream_feus map (e.g. PMT scintillators) carry no FEU/connector numbers and are
+        skipped. Restricted to included_detectors so it is correct even when self.detectors still
+        holds the full list.
+        """
+        included = [det for det in self.detectors if det['name'] in self.included_detectors]
+        feu_connectors = {}
+        for det in included:
+            dream_feus = det.get('dream_feus')
+            if not isinstance(dream_feus, dict):
+                continue
+            for mapping in dream_feus.values():
+                if isinstance(mapping, (tuple, list)) and len(mapping) >= 2:
+                    feu, connector = int(mapping[0]), int(mapping[1])
+                    feu_connectors.setdefault(feu, set()).add(connector)
+        return {feu: sorted(conns) for feu, conns in feu_connectors.items()}
+
+    def get_active_feus(self):
+        """Sorted FEU numbers used by the included detectors (keys of get_active_feu_connectors)."""
+        return sorted(self.get_active_feu_connectors())
 
 if __name__ == '__main__':
     out_run_dir = 'config/json_run_configs/'
