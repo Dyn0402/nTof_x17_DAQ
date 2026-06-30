@@ -26,7 +26,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_74'
+        self.run_name = 'run_0'
         self.base_out_dir = BASE_DATA_DIR
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -377,18 +377,18 @@ class Config(RunConfigBase):
             'board_thickness': 5,  # mm  Thickness of PCB for test boards  Guess!
         }
 
-        self.included_detectors = ['mx17_3', 'scint_A', 'scint_B']
-        # self.included_detectors = ['mx17_3', 'mx17_4']
+        self.included_detectors = ['mx17_A', 'mx17_B', 'mx17_C', 'mx17_D']
+        # self.included_detectors = ['mx17_A', 'mx17_B', 'mx17_C', 'mx17_D']
 
         self.detectors = [
             {
-                'name': 'mx17_3',
+                'name': 'mx17_B',
+                'alias': 'mx17_2',
+                'description': 'Bulked by Arnaud June 12. Giant pillars on parts of the detector.',
                 'det_type': 'mx17',
                 'resist_type': 'strip',
-                'drift_gap': '16 mm',
+                'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
-                # 'distance_from_target': 20, # cm from target
-                'aluminum_shielding': False,
                 'det_center_coords': {  # Center of detector
                     'x': 0,  # mm
                     'y': 0,  # mm
@@ -399,11 +399,248 @@ class Config(RunConfigBase):
                     'y': 0,  # deg  Rotation about y axis
                     'z': 0,  # deg  Rotation about z axis
                 },
-                'hv_channels': {
-                    'drift': (9, 1),
-                    'resist': (5, 1),
+                'hv_channels': {  # Placeholders, channels not yet known
+                    'drift': (None, None),
+                    'resist': (None, None),
                 },
-                'mx_cards': '4 M1',
+                'mx_cards': '4 Bad M1',
+                'dream_feus': {
+                    'x_1': (5, 1),  # Runs along x direction, indicates y hit location
+                    'x_2': (5, 2),
+                    'x_3': (5, 3),
+                    'x_4': (5, 4),
+                    'x_5': (5, 5),
+                    'x_6': (5, 6),
+                    'x_7': (5, 7),
+                    'x_8': (5, 8),
+                    'y_1': (6, 1),  # Runs along y direction, indicates x hit location
+                    'y_2': (6, 2),
+                    'y_3': (6, 3),
+                    'y_4': (6, 4),
+                    'y_5': (6, 5),
+                    'y_6': (6, 6),
+                    'y_7': (6, 7),
+                    'y_8': (6, 8),
+                },
+                'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
+                    'x_1': 'inverted',
+                    'x_2': 'inverted',
+                    'x_3': 'inverted',
+                    'x_4': 'inverted',
+                    'x_5': 'inverted',
+                    'x_6': 'inverted',
+                    'x_7': 'inverted',
+                    'x_8': 'inverted',
+                    'y_1': 'inverted',
+                    'y_2': 'inverted',
+                    'y_3': 'inverted',
+                    'y_4': 'inverted',
+                    'y_5': 'inverted',
+                    'y_6': 'inverted',
+                    'y_7': 'inverted',
+                    'y_8': 'inverted',
+                },
+                'dream_feu_cable_length': {  # Cable length from detector connector to FEU
+                    'x_1': '1.5 m',
+                    'x_2': '1.5 m',
+                    'x_3': '1.5 m',
+                    'x_4': '1.5 m',
+                    'x_5': '1.5 m',
+                    'x_6': '1.5 m',
+                    'x_7': '1.5 m',
+                    'x_8': '1.5 m',
+                    'y_1': '1.5 m',
+                    'y_2': '1.5 m',
+                    'y_3': '1.5 m',
+                    'y_4': '1.5 m',
+                    'y_5': '1.5 m',
+                    'y_6': '1.5 m',
+                    'y_7': '1.5 m',
+                    'y_8': '1.5 m',
+                },
+            },
+            {
+                'name': 'mx17_A',
+                'alias': 'mx17_3',
+                'description': 'Bulked by Stephan June 15',
+                'det_type': 'mx17',
+                'resist_type': 'strip',
+                'drift_gap': '30 mm',
+                'frame_type': 'aluminum',  # carbon or aluminum
+                'det_center_coords': {  # Center of detector
+                    'x': 0,  # mm
+                    'y': 0,  # mm
+                    'z': 0,  # mm
+                },
+                'det_orientation': {
+                    'x': 0,  # deg  Rotation about x axis
+                    'y': 0,  # deg  Rotation about y axis
+                    'z': 0,  # deg  Rotation about z axis
+                },
+                'hv_channels': {  # Placeholders, channels not yet known
+                    'drift': (None, None),
+                    'resist': (None, None),
+                },
+                'mx_cards': '4 Good M1',
+                'dream_feus': {
+                    'x_1': (3, 1),  # Runs along x direction, indicates y hit location
+                    'x_2': (3, 2),
+                    'x_3': (3, 3),
+                    'x_4': (3, 4),
+                    'x_5': (3, 5),
+                    'x_6': (3, 6),
+                    'x_7': (3, 7),
+                    'x_8': (3, 8),
+                    'y_1': (4, 1),  # Runs along y direction, indicates x hit location
+                    'y_2': (4, 2),
+                    'y_3': (4, 3),
+                    'y_4': (4, 4),
+                    'y_5': (4, 5),
+                    'y_6': (4, 6),
+                    'y_7': (4, 7),
+                    'y_8': (4, 8),
+                },
+                'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
+                    'x_1': 'inverted',
+                    'x_2': 'inverted',
+                    'x_3': 'inverted',
+                    'x_4': 'inverted',
+                    'x_5': 'inverted',
+                    'x_6': 'inverted',
+                    'x_7': 'inverted',
+                    'x_8': 'inverted',
+                    'y_1': 'inverted',
+                    'y_2': 'inverted',
+                    'y_3': 'inverted',
+                    'y_4': 'inverted',
+                    'y_5': 'inverted',
+                    'y_6': 'inverted',
+                    'y_7': 'inverted',
+                    'y_8': 'inverted',
+                },
+                'dream_feu_cable_length': {  # Cable length from detector connector to FEU
+                    'x_1': '1.5 m',
+                    'x_2': '1.5 m',
+                    'x_3': '1.5 m',
+                    'x_4': '1.5 m',
+                    'x_5': '1.5 m',
+                    'x_6': '1.5 m',
+                    'x_7': '1.5 m',
+                    'x_8': '1.5 m',
+                    'y_1': '1.5 m',
+                    'y_2': '1.5 m',
+                    'y_3': '1.5 m',
+                    'y_4': '1.5 m',
+                    'y_5': '1.5 m',
+                    'y_6': '1.5 m',
+                    'y_7': '1.5 m',
+                    'y_8': '1.5 m',
+                },
+            },
+            {
+                'name': 'mx17_C',
+                'alias': 'mx17_6',
+                'description': 'Bulked by Stephan June 24 (?). Was board D. Stephan redid the lamination after first '
+                               'layer had wrinkles a few times until good. In the end, a column of waves in the mesh '
+                               'and maybe a spot with no pillar caps.',
+                'det_type': 'mx17',
+                'resist_type': 'strip',
+                'drift_gap': '30 mm',
+                'frame_type': 'aluminum',  # carbon or aluminum
+                'det_center_coords': {  # Center of detector
+                    'x': 0,  # mm
+                    'y': 0,  # mm
+                    'z': 0,  # mm
+                },
+                'det_orientation': {
+                    'x': 0,  # deg  Rotation about x axis
+                    'y': 0,  # deg  Rotation about y axis
+                    'z': 0,  # deg  Rotation about z axis
+                },
+                'hv_channels': {  # Placeholders, channels not yet known
+                    'drift': (None, None),
+                    'resist': (None, None),
+                },
+                'mx_cards': '4 Bad M1',
+                'dream_feus': {
+                    'x_1': (7, 1),  # Runs along x direction, indicates y hit location
+                    'x_2': (7, 2),
+                    'x_3': (7, 3),
+                    'x_4': (7, 4),
+                    'x_5': (7, 5),
+                    'x_6': (7, 6),
+                    'x_7': (7, 7),
+                    'x_8': (7, 8),
+                    'y_1': (8, 1),  # Runs along y direction, indicates x hit location
+                    'y_2': (8, 2),
+                    'y_3': (8, 3),
+                    'y_4': (8, 4),
+                    'y_5': (8, 5),
+                    'y_6': (8, 6),
+                    'y_7': (8, 7),
+                    'y_8': (8, 8),
+                },
+                'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
+                    'x_1': 'inverted',
+                    'x_2': 'inverted',
+                    'x_3': 'inverted',
+                    'x_4': 'inverted',
+                    'x_5': 'inverted',
+                    'x_6': 'inverted',
+                    'x_7': 'inverted',
+                    'x_8': 'inverted',
+                    'y_1': 'inverted',
+                    'y_2': 'inverted',
+                    'y_3': 'inverted',
+                    'y_4': 'inverted',
+                    'y_5': 'inverted',
+                    'y_6': 'inverted',
+                    'y_7': 'inverted',
+                    'y_8': 'inverted',
+                },
+                'dream_feu_cable_length': {  # Cable length from detector connector to FEU
+                    'x_1': '1.5 m',
+                    'x_2': '1.5 m',
+                    'x_3': '1.5 m',
+                    'x_4': '1.5 m',
+                    'x_5': '1.5 m',
+                    'x_6': '1.5 m',
+                    'x_7': '1.5 m',
+                    'x_8': '1.5 m',
+                    'y_1': '1.5 m',
+                    'y_2': '1.5 m',
+                    'y_3': '1.5 m',
+                    'y_4': '1.5 m',
+                    'y_5': '1.5 m',
+                    'y_6': '1.5 m',
+                    'y_7': '1.5 m',
+                    'y_8': '1.5 m',
+                },
+            },
+            {
+                'name': 'mx17_D',
+                'alias': 'mx17_7',
+                'description': 'Bulked by Stephan in batch of 3 on June 22. Was board B. Had one or two bubbles, but '
+                               'appears that the pillars underneath were still there, so just no caps',
+                'det_type': 'mx17',
+                'resist_type': 'strip',
+                'drift_gap': '30 mm',
+                'frame_type': 'aluminum',  # carbon or aluminum
+                'det_center_coords': {  # Center of detector
+                    'x': 0,  # mm
+                    'y': 0,  # mm
+                    'z': 0,  # mm
+                },
+                'det_orientation': {
+                    'x': 0,  # deg  Rotation about x axis
+                    'y': 0,  # deg  Rotation about y axis
+                    'z': 0,  # deg  Rotation about z axis
+                },
+                'hv_channels': {  # Placeholders, channels not yet known
+                    'drift': (None, None),
+                    'resist': (None, None),
+                },
+                'mx_cards': '4 Bad M1',
                 'dream_feus': {
                     'x_1': (1, 1),  # Runs along x direction, indicates y hit location
                     'x_2': (1, 2),
@@ -440,86 +677,24 @@ class Config(RunConfigBase):
                     'y_7': 'inverted',
                     'y_8': 'inverted',
                 },
-            },
-            {
-                'name': 'mx17_4',
-                'det_type': 'mx17',
-                'resist_type': 'strip',
-                'drift_gap': '30 mm',
-                'frame_type': 'aluminum',  # carbon or aluminum
-                # 'distance_from_target': 20,  # cm from target
-                'aluminum_shielding': True,
-                'det_center_coords': {  # Center of detector
-                    'x': 0,  # mm
-                    'y': 0,  # mm
-                    'z': 0,  # mm
+                'dream_feu_cable_length': {  # Cable length from detector connector to FEU
+                    'x_1': '2 m',
+                    'x_2': '2 m',
+                    'x_3': '2 m',
+                    'x_4': '2 m',
+                    'x_5': '2 m',
+                    'x_6': '2 m',
+                    'x_7': '2 m',
+                    'x_8': '2 m',
+                    'y_1': '2 m',
+                    'y_2': '2 m',
+                    'y_3': '2 m',
+                    'y_4': '2 m',
+                    'y_5': '2 m',
+                    'y_6': '2 m',
+                    'y_7': '2 m',
+                    'y_8': '2 m',
                 },
-                'det_orientation': {
-                    'x': 0,  # deg  Rotation about x axis
-                    'y': 0,  # deg  Rotation about y axis
-                    'z': 0,  # deg  Rotation about z axis
-                },
-                'hv_channels': {
-                    'drift': (9, 1),
-                    'resist': (5, 1),
-                },
-                'mx_cards': '4 M2',
-                'dream_feus': {
-                    'x_1': (3, 1),  # Runs along x direction, indicates y hit location
-                    'x_2': (3, 2),
-                    'x_3': (3, 3),
-                    'x_4': (3, 4),
-                    'y_1': (3, 5),  # Runs along y direction, indicates x hit location
-                    'y_2': (3, 6),
-                    'y_3': (3, 7),
-                    'y_4': (3, 8),
-                },
-                'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
-                    'x_1': 'inverted',
-                    'x_2': 'inverted',
-                    'x_3': 'inverted',
-                    'x_4': 'inverted',
-                    'y_1': 'inverted',
-                    'y_2': 'inverted',
-                    'y_3': 'inverted',
-                    'y_4': 'inverted',
-                },
-                # 'dream_feus': {
-                #     'x_1': (3, 1),  # Runs along x direction, indicates y hit location
-                #     'x_2': (3, 2),
-                #     'x_3': (3, 3),
-                #     'x_4': (3, 4),
-                #     'x_5': (3, 5),
-                #     'x_6': (3, 6),
-                #     'x_7': (3, 7),
-                #     'x_8': (3, 8),
-                #     'y_1': (4, 1),  # Runs along y direction, indicates x hit location
-                #     'y_2': (4, 2),
-                #     'y_3': (4, 3),
-                #     'y_4': (4, 4),
-                #     'y_5': (4, 5),
-                #     'y_6': (4, 6),
-                #     'y_7': (4, 7),
-                #     'y_8': (4, 8),
-                # },
-                # 'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
-                #     'x_1': 'inverted',
-                #     'x_2': 'inverted',
-                #     'x_3': 'inverted',
-                #     'x_4': 'inverted',
-                #     'x_5': 'inverted',
-                #     'x_6': 'inverted',
-                #     'x_7': 'inverted',
-                #     'x_8': 'inverted',
-                #     'y_1': 'inverted',
-                #     'y_2': 'inverted',
-                #     'y_3': 'inverted',
-                #     'y_4': 'inverted',
-                #     'y_5': 'inverted',
-                #     'y_6': 'inverted',
-                #     'y_7': 'inverted',
-                #     'y_8': 'inverted',
-                # },
             },
             {
                 'name': 'scint_A',
