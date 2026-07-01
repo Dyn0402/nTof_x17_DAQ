@@ -9,7 +9,9 @@ The flask UI's Start QA Watcher button reads that JSON to launch qa_watcher.py.
 import json
 import os
 
-BASE_DATA    = '/mnt/data/x17/beam_may/'
+from run_config_beam import BASE_DATA_DIR
+
+BASE_DATA    = BASE_DATA_DIR
 NTOF_X17_DIR = '/home/mx17/PycharmProjects/nTof_x17'
 
 CONFIG = {
