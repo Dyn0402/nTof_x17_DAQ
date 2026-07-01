@@ -39,15 +39,18 @@ class Config(RunConfigBase):
         self.start_time = None
 
         # dream_daq_info: inherit from beam, then force pedestal-mode settings.
-        # Use the dedicated pedestal cfg template (pedestal/threshold run baked
-        # in), write to the pedestal output dirs, run full readout, and do not
-        # apply existing pedestals while taking fresh ones.
+        # Reuse the beam data-run .cfg template and flip Sys Action PedThrRun on
+        # the fly (do_pedestal_threshold_run) instead of pointing at a separate
+        # hand-maintained _ped.cfg. This guarantees the pedestal run always uses
+        # the same up-to-date FEU topology as the data run. Write to the pedestal
+        # output dirs, run full readout, and do not apply existing pedestals
+        # while taking fresh ones.
         self.dream_daq_info = copy.deepcopy(beam.dream_daq_info)
         self.dream_daq_info.update({
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May_ped.cfg',
             'run_directory': f'{self.run_out_dir}',
             'data_out_dir': f'{self.run_out_dir}',
             'zero_suppress': False,   # pedestals are always full readout
+            'do_pedestal_threshold_run': True,  # Sys Action PedThrRun -> 1
             'pedestals_dir': None,    # taking fresh pedestals -> don't apply existing ones
             'pedestals': None,
         })
