@@ -24,8 +24,9 @@ class Config(RunConfigBase):
 
     def _set_defaults(self, config_path=None):
         # Pull all hardware / detector settings from the beam run config so the
-        # pedestal and beam configs never drift apart. Pedestals are then taken
-        # with the same DAQ sampling/timing as the data runs they apply to.
+        # pedestal and beam configs never drift apart. Timing (latency, sample
+        # period) follows the data run, but the sample count is forced to 32 below
+        # (see n_samples_per_waveform override).
         beam = BeamConfig()
         self.__dict__.update(copy.deepcopy(beam.__dict__))
 
@@ -45,11 +46,18 @@ class Config(RunConfigBase):
         # the same up-to-date FEU topology as the data run. Write to the pedestal
         # output dirs, run full readout, and do not apply existing pedestals
         # while taking fresh ones.
+        # Pedestals are always taken with a short waveform (32 samples) regardless
+        # of the data run's n_samples_per_waveform. Longer windows (e.g. 400) yield
+        # a fraction of short/malformed events (FeuDataFileReader sample_cnt !=
+        # nb_of_samples) that pollute the pedestal/threshold computation; 32 samples
+        # avoids this and is plenty for a baseline measurement.
+        ped_n_samples = 32
         self.dream_daq_info = copy.deepcopy(beam.dream_daq_info)
         self.dream_daq_info.update({
             'run_directory': f'{self.run_out_dir}',
             'data_out_dir': f'{self.run_out_dir}',
             'zero_suppress': False,   # pedestals are always full readout
+            'n_samples_per_waveform': ped_n_samples,  # always 32 for pedestals
             'do_pedestal_threshold_run': True,  # Sys Action PedThrRun -> 1
             'pedestals_dir': None,    # taking fresh pedestals -> don't apply existing ones
             'pedestals': None,
