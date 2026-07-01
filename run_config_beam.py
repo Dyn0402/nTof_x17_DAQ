@@ -14,7 +14,7 @@ from run_config_base import RunConfigBase
 # Site configuration — edit here to change the data location
 # ---------------------------------------------------------------------------
 BASE_DISK     = '/mnt/data/x17/'
-PROJECT       = 'beam_may'
+PROJECT       = 'beam_july'
 BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
 
 
