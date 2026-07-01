@@ -26,7 +26,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_0'
+        self.run_name = 'run_1'
         self.base_out_dir = BASE_DATA_DIR
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -71,14 +71,7 @@ class Config(RunConfigBase):
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-            # 'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 390,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 510,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 450,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
-            # 'n_samples_per_waveform': 100,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 300,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -86,11 +79,7 @@ class Config(RunConfigBase):
             'zero_suppress': True,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-            # 'latency': 90,  # Latency setting for DAQ in clock cycles
-            # 'latency': 100,  # Latency setting for DAQ in clock cycles
-            # 'latency': 2,  # Latency setting for DAQ in clock cycles
-            'latency': 190,  # Latency setting for DAQ in clock cycles
-            # 'latency': 24,  # Latency setting for DAQ in clock cycles
+            'latency': 3,  # Latency setting for DAQ in clock cycles
             'sample_period': 20,  # ns, sampling period
             # 'sample_period': 60,  # ns, sampling period
             'zs_check_sample': 4,  # Number of samples to read out beyond threshold crossing
@@ -382,84 +371,6 @@ class Config(RunConfigBase):
 
         self.detectors = [
             {
-                'name': 'mx17_B',
-                'alias': 'mx17_2',
-                'description': 'Bulked by Arnaud June 12. Giant pillars on parts of the detector.',
-                'det_type': 'mx17',
-                'resist_type': 'strip',
-                'drift_gap': '30 mm',
-                'frame_type': 'aluminum',  # carbon or aluminum
-                'det_center_coords': {  # Center of detector
-                    'x': 0,  # mm
-                    'y': 0,  # mm
-                    'z': 0,  # mm
-                },
-                'det_orientation': {
-                    'x': 0,  # deg  Rotation about x axis
-                    'y': 0,  # deg  Rotation about y axis
-                    'z': 0,  # deg  Rotation about z axis
-                },
-                'hv_channels': {  # Placeholders, channels not yet known
-                    'drift': (None, None),
-                    'resist': (None, None),
-                },
-                'mx_cards': '4 Bad M1',
-                'dream_feus': {
-                    'x_1': (5, 1),  # Runs along x direction, indicates y hit location
-                    'x_2': (5, 2),
-                    'x_3': (5, 3),
-                    'x_4': (5, 4),
-                    'x_5': (5, 5),
-                    'x_6': (5, 6),
-                    'x_7': (5, 7),
-                    'x_8': (5, 8),
-                    'y_1': (6, 1),  # Runs along y direction, indicates x hit location
-                    'y_2': (6, 2),
-                    'y_3': (6, 3),
-                    'y_4': (6, 4),
-                    'y_5': (6, 5),
-                    'y_6': (6, 6),
-                    'y_7': (6, 7),
-                    'y_8': (6, 8),
-                },
-                'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
-                    'x_1': 'inverted',
-                    'x_2': 'inverted',
-                    'x_3': 'inverted',
-                    'x_4': 'inverted',
-                    'x_5': 'inverted',
-                    'x_6': 'inverted',
-                    'x_7': 'inverted',
-                    'x_8': 'inverted',
-                    'y_1': 'inverted',
-                    'y_2': 'inverted',
-                    'y_3': 'inverted',
-                    'y_4': 'inverted',
-                    'y_5': 'inverted',
-                    'y_6': 'inverted',
-                    'y_7': 'inverted',
-                    'y_8': 'inverted',
-                },
-                'dream_feu_cable_length': {  # Cable length from detector connector to FEU
-                    'x_1': '1.5 m',
-                    'x_2': '1.5 m',
-                    'x_3': '1.5 m',
-                    'x_4': '1.5 m',
-                    'x_5': '1.5 m',
-                    'x_6': '1.5 m',
-                    'x_7': '1.5 m',
-                    'x_8': '1.5 m',
-                    'y_1': '1.5 m',
-                    'y_2': '1.5 m',
-                    'y_3': '1.5 m',
-                    'y_4': '1.5 m',
-                    'y_5': '1.5 m',
-                    'y_6': '1.5 m',
-                    'y_7': '1.5 m',
-                    'y_8': '1.5 m',
-                },
-            },
-            {
                 'name': 'mx17_A',
                 'alias': 'mx17_3',
                 'description': 'Bulked by Stephan June 15',
@@ -467,19 +378,19 @@ class Config(RunConfigBase):
                 'resist_type': 'strip',
                 'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
-                'det_center_coords': {  # Center of detector
-                    'x': 0,  # mm
+                'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
+                    'x': -32.7,  # mm  tangential pinwheel shift (-X)
                     'y': 0,  # mm
-                    'z': 0,  # mm
+                    'z': 234.6,  # mm  +Z normal: mylar 204.5 + 30.1 (drift gap to mesh)
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
-                    'y': 0,  # deg  Rotation about y axis
+                    'y': 0,  # deg  Rotation about y axis (faces +Z, sim Arm 2 unrotated)
                     'z': 0,  # deg  Rotation about z axis
                 },
-                'hv_channels': {  # Placeholders, channels not yet known
-                    'drift': (None, None),
-                    'resist': (None, None),
+                'hv_channels': {
+                    'drift': (9, 0),
+                    'resist': (5, 1),
                 },
                 'mx_cards': '4 Good M1',
                 'dream_feus': {
@@ -538,6 +449,84 @@ class Config(RunConfigBase):
                 },
             },
             {
+                'name': 'mx17_B',
+                'alias': 'mx17_2',
+                'description': 'Bulked by Arnaud June 12. Giant pillars on parts of the detector.',
+                'det_type': 'mx17',
+                'resist_type': 'strip',
+                'drift_gap': '30 mm',
+                'frame_type': 'aluminum',  # carbon or aluminum
+                'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
+                    'x': -234.1,  # mm  -X normal: mylar 204.0 + 30.1 (drift gap to mesh)
+                    'y': 0,  # mm
+                    'z': -31.5,  # mm  tangential pinwheel shift (-Z)
+                },
+                'det_orientation': {
+                    'x': 0,  # deg  Rotation about x axis
+                    'y': -90,  # deg  Rotation about y axis (faces -X, sim Arm 1)
+                    'z': 0,  # deg  Rotation about z axis
+                },
+                'hv_channels': {
+                    'drift': (9, 1),
+                    'resist': (5, 2),
+                },
+                'mx_cards': '4 Bad M1',
+                'dream_feus': {
+                    'x_1': (5, 1),  # Runs along x direction, indicates y hit location
+                    'x_2': (5, 2),
+                    'x_3': (5, 3),
+                    'x_4': (5, 4),
+                    'x_5': (5, 5),
+                    'x_6': (5, 6),
+                    'x_7': (5, 7),
+                    'x_8': (5, 8),
+                    'y_1': (6, 1),  # Runs along y direction, indicates x hit location
+                    'y_2': (6, 2),
+                    'y_3': (6, 3),
+                    'y_4': (6, 4),
+                    'y_5': (6, 5),
+                    'y_6': (6, 6),
+                    'y_7': (6, 7),
+                    'y_8': (6, 8),
+                },
+                'dream_feu_orientation': {  # If connector is normal, inverted, rotated, or rotated_inverted
+                    'x_1': 'inverted',
+                    'x_2': 'inverted',
+                    'x_3': 'inverted',
+                    'x_4': 'inverted',
+                    'x_5': 'inverted',
+                    'x_6': 'inverted',
+                    'x_7': 'inverted',
+                    'x_8': 'inverted',
+                    'y_1': 'inverted',
+                    'y_2': 'inverted',
+                    'y_3': 'inverted',
+                    'y_4': 'inverted',
+                    'y_5': 'inverted',
+                    'y_6': 'inverted',
+                    'y_7': 'inverted',
+                    'y_8': 'inverted',
+                },
+                'dream_feu_cable_length': {  # Cable length from detector connector to FEU
+                    'x_1': '1.5 m',
+                    'x_2': '1.5 m',
+                    'x_3': '1.5 m',
+                    'x_4': '1.5 m',
+                    'x_5': '1.5 m',
+                    'x_6': '1.5 m',
+                    'x_7': '1.5 m',
+                    'x_8': '1.5 m',
+                    'y_1': '1.5 m',
+                    'y_2': '1.5 m',
+                    'y_3': '1.5 m',
+                    'y_4': '1.5 m',
+                    'y_5': '1.5 m',
+                    'y_6': '1.5 m',
+                    'y_7': '1.5 m',
+                    'y_8': '1.5 m',
+                },
+            },
+            {
                 'name': 'mx17_C',
                 'alias': 'mx17_6',
                 'description': 'Bulked by Stephan June 24 (?). Was board D. Stephan redid the lamination after first '
@@ -547,19 +536,19 @@ class Config(RunConfigBase):
                 'resist_type': 'strip',
                 'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
-                'det_center_coords': {  # Center of detector
-                    'x': 0,  # mm
+                'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
+                    'x': 34.6,  # mm  tangential pinwheel shift (+X)
                     'y': 0,  # mm
-                    'z': 0,  # mm
+                    'z': -234.6,  # mm  -Z normal: mylar 204.5 + 30.1 (drift gap to mesh)
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
-                    'y': 0,  # deg  Rotation about y axis
+                    'y': 180,  # deg  Rotation about y axis (faces -Z, sim Arm 3)
                     'z': 0,  # deg  Rotation about z axis
                 },
-                'hv_channels': {  # Placeholders, channels not yet known
-                    'drift': (None, None),
-                    'resist': (None, None),
+                'hv_channels': {
+                    'drift': (9, 2),
+                    'resist': (5, 3),
                 },
                 'mx_cards': '4 Bad M1',
                 'dream_feus': {
@@ -626,19 +615,19 @@ class Config(RunConfigBase):
                 'resist_type': 'strip',
                 'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
-                'det_center_coords': {  # Center of detector
-                    'x': 0,  # mm
+                'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
+                    'x': 234.1,  # mm  +X normal: mylar 204.0 + 30.1 (drift gap to mesh)
                     'y': 0,  # mm
-                    'z': 0,  # mm
+                    'z': 31.0,  # mm  tangential pinwheel shift (+Z)
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
-                    'y': 0,  # deg  Rotation about y axis
+                    'y': 90,  # deg  Rotation about y axis (faces +X, sim Arm 0)
                     'z': 0,  # deg  Rotation about z axis
                 },
-                'hv_channels': {  # Placeholders, channels not yet known
-                    'drift': (None, None),
-                    'resist': (None, None),
+                'hv_channels': {
+                    'drift': (9, 3),
+                    'resist': (5, 4),
                 },
                 'mx_cards': '4 Bad M1',
                 'dream_feus': {
