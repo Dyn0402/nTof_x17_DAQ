@@ -1,0 +1,4 @@
+# Bulky downloadable artifact — SDK is pip-installed; re-download if needed
+docs/*.zip
+# Transient error logs from piped runs
+snapshots/*.err

@@ -1,0 +1,104 @@
+=== 192.168.10.240 ===
+  backup backup_pre_homog.json already exists on board — NOT overwriting
+  download_configuration_file raw keys: ['Response', 'Result', 'callback', 'command', 'data']
+    SEC_A set_input NIM/50/th0 -> True
+    SEC_A set_function wire -> True
+    SEC_A configure_wire 0-3 + input ch0-5 enabled
+    SEC_A set_output NIM -> True
+    SEC_B set_input NIM/50/th0 -> True
+    SEC_B set_function wire -> True
+    SEC_B configure_wire 0-3 + input ch0-5 enabled
+    SEC_B set_output NIM -> True
+    SEC_C set_input NIM/50/th0 -> True
+    SEC_C set_function wire -> True
+    SEC_C configure_wire 0-3 + input ch0-5 enabled
+    SEC_C set_output NIM -> True
+    SEC_D set_input NIM/50/th0 -> True
+    SEC_D set_function wire -> True
+    SEC_D configure_wire 0-3 + input ch0-5 enabled
+    SEC_D set_output NIM -> True
+  save_configuration_file(homogeneous_wire.json) -> True
+  VERIFY sections_function: ['wire', 'wire', 'wire', 'wire']
+  VERIFY SEC_A input: std=0 imp=True th=0
+  VERIFY SEC_B input: std=0 imp=True th=0
+  VERIFY SEC_C input: std=0 imp=True th=0
+  VERIFY SEC_D input: std=0 imp=True th=0
+=== 192.168.10.241 ===
+  backup backup_pre_homog.json already exists on board — NOT overwriting
+  download_configuration_file raw keys: ['Response', 'Result', 'callback', 'command', 'data']
+    SEC_A set_input NIM/50/th0 -> True
+    SEC_A set_function wire -> True
+    SEC_A configure_wire 0-3 + input ch0-5 enabled
+    SEC_A set_output NIM -> True
+    SEC_B set_input NIM/50/th0 -> True
+    SEC_B set_function wire -> True
+    SEC_B configure_wire 0-3 + input ch0-5 enabled
+    SEC_B set_output NIM -> True
+    SEC_C set_input NIM/50/th0 -> True
+    SEC_C set_function wire -> True
+    SEC_C configure_wire 0-3 + input ch0-5 enabled
+    SEC_C set_output NIM -> True
+    SEC_D set_input NIM/50/th0 -> True
+    SEC_D set_function wire -> True
+    SEC_D configure_wire 0-3 + input ch0-5 enabled
+    SEC_D set_output NIM -> True
+  save_configuration_file(homogeneous_wire.json) -> True
+  VERIFY sections_function: ['wire', 'wire', 'wire', 'wire']
+  VERIFY SEC_A input: std=0 imp=True th=0
+  VERIFY SEC_B input: std=0 imp=True th=0
+  VERIFY SEC_C input: std=0 imp=True th=0
+  VERIFY SEC_D input: std=0 imp=True th=0
+=== 192.168.10.242 ===
+  backup backup_pre_homog.json already exists on board — NOT overwriting
+  download_configuration_file raw keys: ['Response', 'Result', 'callback', 'command', 'data']
+    SEC_A set_input NIM/50/th0 -> True
+    SEC_A set_function wire -> True
+    SEC_A configure_wire 0-3 + input ch0-5 enabled
+    SEC_A set_output NIM -> True
+    SEC_B set_input NIM/50/th0 -> True
+    SEC_B set_function wire -> True
+    SEC_B configure_wire 0-3 + input ch0-5 enabled
+    SEC_B set_output NIM -> True
+    SEC_C set_input NIM/50/th0 -> True
+    SEC_C set_function wire -> True
+    SEC_C configure_wire 0-3 + input ch0-5 enabled
+    SEC_C set_output NIM -> True
+    SEC_D set_input NIM/50/th0 -> True
+    SEC_D set_function wire -> True
+    SEC_D configure_wire 0-3 + input ch0-5 enabled
+    SEC_D set_output NIM -> True
+  save_configuration_file(homogeneous_wire.json) -> True
+  VERIFY sections_function: ['wire', 'wire', 'wire', 'wire']
+  VERIFY SEC_A input: std=0 imp=True th=0
+  VERIFY SEC_B input: std=0 imp=True th=0
+  VERIFY SEC_C input: std=0 imp=True th=0
+  VERIFY SEC_D input: std=0 imp=True th=0
+=== 192.168.10.243 ===
+  backup backup_pre_homog.json already exists on board — NOT overwriting
+  download_configuration_file raw keys: ['Response', 'Result', 'callback', 'command', 'data']
+    SEC_A set_input NIM/50/th0 -> True
+    SEC_A set_function wire -> True
+    SEC_A configure_wire 0-3 + input ch0-5 enabled
+    SEC_A set_output NIM -> True
+    SEC_B set_input NIM/50/th0 -> True
+    SEC_B set_function wire -> True
+    SEC_B configure_wire 0-3 + input ch0-5 enabled
+    SEC_B set_output NIM -> True
+    SEC_C set_input NIM/50/th0 -> True
+    SEC_C set_function wire -> True
+    SEC_C configure_wire 0-3 + input ch0-5 enabled
+    SEC_C set_output NIM -> True
+    SEC_D set_input NIM/50/th0 -> True
+    SEC_D set_function wire -> True
+    SEC_D configure_wire 0-3 + input ch0-5 enabled
+    SEC_D set_output NIM -> True
+  save_configuration_file(homogeneous_wire.json) -> True
+  VERIFY sections_function: ['wire', 'wire', 'wire', 'wire']
+  VERIFY SEC_A input: std=0 imp=True th=0
+  VERIFY SEC_B input: std=0 imp=True th=0
+  VERIFY SEC_C input: std=0 imp=True th=0
+  VERIFY SEC_D input: std=0 imp=True th=0
+
+===BACKUPS_JSON_BEGIN===
+{"192.168.10.240": {"Response": "", "Result": true, "callback": "download_cfg_file", "command": "download_config", "data": null}, "192.168.10.241": {"Response": "", "Result": true, "callback": "download_cfg_file", "command": "download_config", "data": null}, "192.168.10.242": {"Response": "", "Result": true, "callback": "download_cfg_file", "command": "download_config", "data": null}, "192.168.10.243": {"Response": "", "Result": true, "callback": "download_cfg_file", "command": "download_config", "data": null}}
+===BACKUPS_JSON_END===

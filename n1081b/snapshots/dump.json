@@ -1,0 +1,4869 @@
+{
+  "192.168.10.240": {
+    "ip": "192.168.10.240",
+    "errors": {},
+    "login": true,
+    "version": {
+      "Response": "",
+      "Result": true,
+      "callback": "version",
+      "command": "get_version",
+      "data": {
+        "serial_number": "49323",
+        "software_version": "2025.3.27.0",
+        "zynq_version": "22.10.07.00",
+        "fpga_version": "23.11.10.00",
+        "mac_address": "00:12:5E:00:1B:7E"
+      }
+    },
+    "ethernet": {
+      "Response": "",
+      "Result": true,
+      "callback": "ethernet_config",
+      "command": "get_eth_config",
+      "data": {
+        "dhcp": 0,
+        "ip": "192.168.10.240",
+        "nm": "255.255.0.0",
+        "gw": "10.128.0.1",
+        "dns": "8.8.8.8"
+      }
+    },
+    "clock": {
+      "Response": "",
+      "Result": true,
+      "callback": "clock",
+      "command": "get_clk_status",
+      "data": "2",
+      "clk_out_enable": 1
+    },
+    "sections_function": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_fn",
+      "command": "get_all_sections_function",
+      "data": [
+        {
+          "section": 0,
+          "function_name": "pulse_generator"
+        },
+        {
+          "section": 1,
+          "function_name": "counter"
+        },
+        {
+          "section": 2,
+          "function_name": "counter"
+        },
+        {
+          "section": 3,
+          "function_name": "counter"
+        }
+      ]
+    },
+    "config_file_list": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_cfg_file",
+      "command": "get_config_file",
+      "data": "Config_Demo.json;"
+    },
+    "sections": {
+      "SEC_A": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "frequency_type": 0,
+            "period": 300,
+            "width": 150
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 15,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": true,
+              "mono_value": 90,
+              "invert": true
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 16777216,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_B": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 0
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": false
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_C": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 0
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": false
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_D": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 0
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": false
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "192.168.10.241": {
+    "ip": "192.168.10.241",
+    "errors": {},
+    "login": true,
+    "version": {
+      "Response": "",
+      "Result": true,
+      "callback": "version",
+      "command": "get_version",
+      "data": {
+        "serial_number": "22428",
+        "software_version": "2025.3.27.0",
+        "zynq_version": "22.10.07.00",
+        "fpga_version": "23.11.10.00",
+        "mac_address": "00:12:5E:00:17:1B"
+      }
+    },
+    "ethernet": {
+      "Response": "",
+      "Result": true,
+      "callback": "ethernet_config",
+      "command": "get_eth_config",
+      "data": {
+        "dhcp": 0,
+        "ip": "192.168.10.241",
+        "nm": "255.255.0.0",
+        "gw": "10.128.0.1",
+        "dns": "8.8.8.8"
+      }
+    },
+    "clock": {
+      "Response": "",
+      "Result": true,
+      "callback": "clock",
+      "command": "get_clk_status",
+      "data": "2",
+      "clk_out_enable": 1
+    },
+    "sections_function": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_fn",
+      "command": "get_all_sections_function",
+      "data": [
+        {
+          "section": 0,
+          "function_name": "pulse_generator"
+        },
+        {
+          "section": 1,
+          "function_name": "counter"
+        },
+        {
+          "section": 2,
+          "function_name": "counter"
+        },
+        {
+          "section": 3,
+          "function_name": "counter"
+        }
+      ]
+    },
+    "config_file_list": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_cfg_file",
+      "command": "get_config_file",
+      "data": "RD51-Gen-test.json;Temp-trig-counter.json;Config2024start.json;Tiger-APV-H8.json;Config_Demo.json;RD51-work.json;DUMP_2COIN_20-09.json;RD51_config1.json;BKconfiguration.json;"
+    },
+    "sections": {
+      "SEC_A": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "frequency_type": 0,
+            "period": 400,
+            "width": 200
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 15,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_B": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 0
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": false
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_C": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 0
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": false
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_D": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 0
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": false
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "192.168.10.242": {
+    "ip": "192.168.10.242",
+    "errors": {},
+    "login": true,
+    "version": {
+      "Response": "",
+      "Result": true,
+      "callback": "version",
+      "command": "get_version",
+      "data": {
+        "serial_number": "49325",
+        "software_version": "2023.12.4.0",
+        "zynq_version": "22.10.07.00",
+        "fpga_version": "23.11.10.00",
+        "mac_address": "00:12:5E:00:1B:80"
+      }
+    },
+    "ethernet": {
+      "Response": "",
+      "Result": true,
+      "callback": "ethernet_config",
+      "command": "get_eth_config",
+      "data": {
+        "dhcp": 0,
+        "ip": "192.168.10.242",
+        "nm": "255.255.0.0",
+        "gw": "10.128.0.1",
+        "dns": "8.8.8.8"
+      }
+    },
+    "clock": {
+      "Response": "",
+      "Result": true,
+      "callback": "clock",
+      "command": "get_clk_status",
+      "data": "2",
+      "clk_out_enable": 1
+    },
+    "sections_function": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_fn",
+      "command": "get_all_sections_function",
+      "data": [
+        {
+          "section": 0,
+          "function_name": "scaler"
+        },
+        {
+          "section": 1,
+          "function_name": "wire"
+        },
+        {
+          "section": 2,
+          "function_name": "wire"
+        },
+        {
+          "section": 3,
+          "function_name": "wire"
+        }
+      ]
+    },
+    "config_file_list": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_cfg_file",
+      "command": "get_config_file",
+      "data": "Config_Demo.json;"
+    },
+    "sections": {
+      "SEC_A": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "scale": 2,
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 0
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 1,
+            "standard_sub": 1,
+            "threshold": 300,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 1,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_B": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ]
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 1,
+            "standard_sub": 1,
+            "threshold": 300,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 1,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_C": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ]
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 1,
+            "standard_sub": 1,
+            "threshold": 300,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 1,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_D": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ]
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 1,
+            "standard_sub": 1,
+            "threshold": 300,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 1,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 10,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "192.168.10.243": {
+    "ip": "192.168.10.243",
+    "errors": {},
+    "login": true,
+    "version": {
+      "Response": "",
+      "Result": true,
+      "callback": "version",
+      "command": "get_version",
+      "data": {
+        "serial_number": "49326",
+        "software_version": "2025.3.27.0",
+        "zynq_version": "22.10.07.00",
+        "fpga_version": "23.11.10.00",
+        "mac_address": "00:12:53:00:1B:81"
+      }
+    },
+    "ethernet": {
+      "Response": "",
+      "Result": true,
+      "callback": "ethernet_config",
+      "command": "get_eth_config",
+      "data": {
+        "dhcp": 0,
+        "ip": "192.168.10.243",
+        "nm": "255.255.0.0",
+        "gw": "10.128.0.1",
+        "dns": "8.8.8.8"
+      }
+    },
+    "clock": {
+      "Response": "",
+      "Result": true,
+      "callback": "clock",
+      "command": "get_clk_status",
+      "data": "2",
+      "clk_out_enable": 1
+    },
+    "sections_function": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_fn",
+      "command": "get_all_sections_function",
+      "data": [
+        {
+          "section": 0,
+          "function_name": "or"
+        },
+        {
+          "section": 1,
+          "function_name": "or"
+        },
+        {
+          "section": 2,
+          "function_name": "counter"
+        },
+        {
+          "section": 3,
+          "function_name": "or"
+        }
+      ]
+    },
+    "config_file_list": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_cfg_file",
+      "command": "get_config_file",
+      "data": "Config_Demo.json;"
+    },
+    "sections": {
+      "SEC_A": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": false
+              },
+              {
+                "lemo": 3,
+                "enable": false
+              },
+              {
+                "lemo": 4,
+                "enable": false
+              },
+              {
+                "lemo": 5,
+                "enable": false
+              }
+            ],
+            "bypass_enable": false,
+            "bypass_section": 0
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 2,
+            "standard_sub": 0,
+            "threshold": -30,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": true,
+              "mono_value": 50,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": true,
+              "mono_value": 50,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 15,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 15,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_B": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": false
+              },
+              {
+                "lemo": 3,
+                "enable": false
+              },
+              {
+                "lemo": 4,
+                "enable": false
+              },
+              {
+                "lemo": 5,
+                "enable": false
+              }
+            ],
+            "bypass_enable": false,
+            "bypass_section": 0
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 2,
+            "standard_sub": 0,
+            "threshold": -90,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 25,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 15,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": true,
+              "mono_value": 50,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_C": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": false
+              },
+              {
+                "lemo": 2,
+                "enable": false
+              },
+              {
+                "lemo": 3,
+                "enable": false
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 0
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": -20,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 50,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 50,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": false,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": false,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": false,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 50,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 15,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_D": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              },
+              {
+                "lemo": 4,
+                "enable": true
+              },
+              {
+                "lemo": 5,
+                "enable": true
+              }
+            ],
+            "bypass_enable": false,
+            "bypass_section": 0
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 5,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 15,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": true,
+              "mono_value": 50,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "192.168.10.244": {
+    "ip": "192.168.10.244",
+    "errors": {},
+    "login": true,
+    "version": {
+      "Response": "",
+      "Result": true,
+      "callback": "version",
+      "command": "get_version",
+      "data": {
+        "serial_number": "32429",
+        "software_version": "2025.3.27.0",
+        "zynq_version": "22.10.07.00",
+        "fpga_version": "23.11.10.00",
+        "mac_address": "00:12:5E:00:1A:66"
+      }
+    },
+    "ethernet": {
+      "Response": "",
+      "Result": true,
+      "callback": "ethernet_config",
+      "command": "get_eth_config",
+      "data": {
+        "dhcp": 0,
+        "ip": "192.168.10.244",
+        "nm": "255.255.0.0",
+        "gw": "10.128.0.1",
+        "dns": "8.8.8.8"
+      }
+    },
+    "clock": {
+      "Response": "",
+      "Result": true,
+      "callback": "clock",
+      "command": "get_clk_status",
+      "data": "2",
+      "clk_out_enable": 0
+    },
+    "sections_function": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_fn",
+      "command": "get_all_sections_function",
+      "data": [
+        {
+          "section": 0,
+          "function_name": "majority"
+        },
+        {
+          "section": 1,
+          "function_name": "counter"
+        },
+        {
+          "section": 2,
+          "function_name": "or_veto"
+        },
+        {
+          "section": 3,
+          "function_name": "counter"
+        }
+      ]
+    },
+    "config_file_list": {
+      "Response": "",
+      "Result": true,
+      "callback": "get_cfg_file",
+      "command": "get_config_file",
+      "data": "Config_Demo.json;"
+    },
+    "sections": {
+      "SEC_A": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": false
+              },
+              {
+                "lemo": 2,
+                "enable": false
+              },
+              {
+                "lemo": 3,
+                "enable": false
+              },
+              {
+                "lemo": 4,
+                "enable": false
+              },
+              {
+                "lemo": 5,
+                "enable": false
+              }
+            ]
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": true
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": false,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": true,
+              "mono_value": 200,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": true,
+              "mono_value": 15,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_B": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 0
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": false
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 200,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_C": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              },
+              {
+                "lemo": 4,
+                "enable": true
+              }
+            ],
+            "bypass_enable": false,
+            "bypass_section": 0
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "result": "none"
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": false
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 15,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": true,
+              "mono_value": 200,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": true,
+              "mono_value": 200,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": true,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      },
+      "SEC_D": {
+        "function_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_config",
+          "command": "get_function_config",
+          "data": {
+            "lemo_enables": [
+              {
+                "lemo": 0,
+                "enable": true
+              },
+              {
+                "lemo": 1,
+                "enable": true
+              },
+              {
+                "lemo": 2,
+                "enable": true
+              },
+              {
+                "lemo": 3,
+                "enable": true
+              }
+            ],
+            "gate": false
+          }
+        },
+        "function_results": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_results",
+          "command": "get_function_results",
+          "data": {
+            "counters": [
+              {
+                "lemo": 0,
+                "value": 135
+              },
+              {
+                "lemo": 1,
+                "value": 0
+              },
+              {
+                "lemo": 2,
+                "value": 0
+              },
+              {
+                "lemo": 3,
+                "value": 0
+              }
+            ]
+          }
+        },
+        "input_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_input_config",
+          "command": "get_input_config",
+          "data": {
+            "standard": 0,
+            "standard_sub": 0,
+            "threshold": 0,
+            "th_unit": 0,
+            "imp": true
+          }
+        },
+        "output_configuration": {
+          "Response": "",
+          "Result": true,
+          "callback": "get_output_config",
+          "command": "get_output_config",
+          "data": {
+            "standard": 0,
+            "imp": false
+          }
+        },
+        "input_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": true,
+              "gate": 50,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_input_ch_config",
+            "command": "get_input_channel_config",
+            "data": {
+              "status": true,
+              "enable_gd": false,
+              "gate": 0,
+              "delay": 0,
+              "invert": false
+            }
+          }
+        },
+        "output_channels": {
+          "0": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "1": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "2": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "3": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "4": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          },
+          "5": {
+            "Response": "",
+            "Result": true,
+            "callback": "get_output_ch_config",
+            "command": "get_output_channel_config",
+            "data": {
+              "status": false,
+              "enable_mono": false,
+              "mono_value": 0,
+              "invert": false
+            }
+          }
+        }
+      }
+    }
+  }
+}
