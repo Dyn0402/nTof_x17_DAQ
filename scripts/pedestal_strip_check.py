@@ -26,21 +26,19 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-BASE_SOFT  = '/home/mx17/CLionProjects/mm_strip_reconstruction/build'
-DECODE_EXE = os.path.join(BASE_SOFT, 'decoder', 'decode')
+BASE_SOFT  = os.environ.get('BASE_SOFT', '/home/mx17/CLionProjects/mm_strip_reconstruction/build')
+DECODE_EXE = os.environ.get('DECODE_EXE', os.path.join(BASE_SOFT, 'decoder', 'decode'))
 N_THREADS  = max(1, (os.cpu_count() or 1) - 2)
 
 N_CH_PER_FEU = 512   # 8 DREAMs × 64 channels
 N_CH_DREAM   = 64
 
 # Thresholds relative to the global reference CNS RMS
-NOISY_FLOAT_MULT   = 3.0   # ch rms > N × ref → noisy/floating (not plugged in)
-DEAD_STUCK_FRAC    = 0.10  # ch rms < F × dream_median → stuck/dead
-DREAM_SUSPECT_MULT = 2.5   # dream median > N × ref → suspect cable
+DEAD_STUCK_FRAC    = 0.40  # ch RAW rms < F × FEU raw-median → dead/stuck (low outlier)
+NOISY_RAW_MULT     = 2.0   # ch RAW rms > N × FEU raw-median → noisy (high outlier)
+NOISY_FLOAT_MULT   = 3.0   # CNS rms > N × ref → reference line for floating/disconnected cables
+DREAM_SUSPECT_MULT = 2.5   # dream median > N × ref → suspect/disconnected cable
 DREAM_BAD_FRAC     = 0.50  # fraction bad channels for a DREAM to be "disconnected"
-
-RAIL_LOW_MEAN  = 15.0
-RAIL_HIGH_MEAN = 4080.0
 
 # ─── Filename helpers ─────────────────────────────────────────────────────────
 
@@ -112,13 +110,20 @@ def decode_fdfs(fdf_paths, out_dir):
 
 # ─── Pedestal analysis ────────────────────────────────────────────────────────
 
-def analyze_pedestal_root(root_path):
+def analyze_pedestal_root(root_path, chunk_events=128):
     """
-    Per-channel mean, raw RMS, and CNS RMS.
+    Per-channel mean, raw RMS, and CNS RMS (vectorized, chunked over events).
 
     Raw RMS  = std(raw amplitudes) across all events/samples.
-    CNS RMS  = std after subtracting the per-sample median across each 64-ch
-               DREAM block — matches WaveformAnalyzer::computePedestals() in C++.
+    CNS RMS  = std after subtracting, per (event, sample), the median across each
+               64-ch DREAM block — the per-channel residual mean is removed, matching
+               WaveformAnalyzer::computePedestals() in C++.
+
+    Each chunk of events is scattered into a dense (event, channel, sample) grid;
+    missing cells stay NaN and are excluded via the NaN-aware reductions, so the block
+    medians and RMSs are computed over the present channels exactly as the original
+    per-event loop did. The stats are additive over events, so chunking keeps the peak
+    memory bounded (some runs are 400 samples × 512 ch × ~1000 events per FEU).
     """
     import uproot
 
@@ -129,42 +134,56 @@ def analyze_pedestal_root(root_path):
         samp_arrs = nt['sample'].array(library='np')
         amp_arrs  = nt['amplitude'].array(library='np')
 
-    raw_s  = {}; raw_s2 = {}; raw_n = {}
-    cns_s2 = {}; cns_n  = {}
+    n_blk  = N_CH_PER_FEU // N_CH_DREAM
+    n_samp = 1
+    for a in samp_arrs:
+        if len(a):
+            n_samp = max(n_samp, int(np.asarray(a).max()) + 1)
 
-    for evt_chs, evt_samps, evt_amps in zip(ch_arrs, samp_arrs, amp_arrs):
-        evt_chs  = np.asarray(evt_chs,  dtype=np.int32)
-        evt_samps= np.asarray(evt_samps,dtype=np.int32)
-        evt_amps = np.asarray(evt_amps, dtype=np.float32)
+    raw_s  = np.zeros(N_CH_PER_FEU); raw_s2 = np.zeros(N_CH_PER_FEU)
+    cns_s  = np.zeros(N_CH_PER_FEU); cns_s2 = np.zeros(N_CH_PER_FEU)
+    cnt    = np.zeros(N_CH_PER_FEU)
 
-        # raw accumulation
-        for ch, amp in zip(evt_chs.tolist(), evt_amps.tolist()):
-            raw_s[ch]  = raw_s.get(ch, 0.0)  + amp
-            raw_s2[ch] = raw_s2.get(ch, 0.0) + amp * amp
-            raw_n[ch]  = raw_n.get(ch, 0)    + 1
+    for start in range(0, n_events, chunk_events):
+        end = min(start + chunk_events, n_events)
+        chs = [np.asarray(a) for a in ch_arrs[start:end]]
+        sps = [np.asarray(a) for a in samp_arrs[start:end]]
+        ams = [np.asarray(a) for a in amp_arrs[start:end]]
+        m   = len(chs)
+        lens = np.fromiter((len(a) for a in chs), dtype=np.int64, count=m)
+        ev = np.repeat(np.arange(m, dtype=np.int64), lens)
+        ch = np.concatenate(chs).astype(np.int64)
+        sp = np.concatenate(sps).astype(np.int64)
+        am = np.concatenate(ams).astype(np.float64)
 
-        # CNS: per sample, subtract median of 64-ch DREAM block
-        for s in np.unique(evt_samps):
-            mask_s = evt_samps == s
-            chs_s  = evt_chs[mask_s]
-            amps_s = evt_amps[mask_s]
-            for d in range(N_CH_PER_FEU // N_CH_DREAM):
-                lo, hi = d * N_CH_DREAM, (d + 1) * N_CH_DREAM
-                mask_d = (chs_s >= lo) & (chs_s < hi)
-                if not mask_d.any(): continue
-                median = float(np.median(amps_s[mask_d]))
-                for ch, amp in zip(chs_s[mask_d].tolist(), amps_s[mask_d].tolist()):
-                    r = amp - median
-                    cns_s2[ch] = cns_s2.get(ch, 0.0) + r * r
-                    cns_n[ch]  = cns_n.get(ch, 0)    + 1
+        grid = np.full((m, N_CH_PER_FEU, n_samp), np.nan, dtype=np.float64)
+        grid[ev, ch, sp] = am
+
+        # Common-noise subtraction: per (event, sample), median across the 64 channels
+        # of each DREAM block, subtracted from each channel.
+        blocks = grid.reshape(m, n_blk, N_CH_DREAM, n_samp)
+        with np.errstate(invalid='ignore'):
+            block_med = np.nanmedian(blocks, axis=2, keepdims=True)
+        resid = (blocks - block_med).reshape(m, N_CH_PER_FEU, n_samp)
+
+        cnt    += (~np.isnan(grid)).sum(axis=(0, 2))
+        raw_s  += np.nansum(grid, axis=(0, 2))
+        raw_s2 += np.nansum(grid * grid, axis=(0, 2))
+        cns_s  += np.nansum(resid, axis=(0, 2))
+        cns_s2 += np.nansum(resid * resid, axis=(0, 2))
 
     stats = {}
-    for ch in raw_n:
-        n    = raw_n[ch]
-        mean = raw_s[ch] / n
-        raw_rms = float(np.sqrt(max(0.0, raw_s2[ch] / n - mean ** 2)))
-        cn = cns_n.get(ch, 0)
-        cns_rms = float(np.sqrt(cns_s2.get(ch, 0.0) / cn)) if cn > 0 else float('nan')
+    for ch in range(N_CH_PER_FEU):
+        n = int(cnt[ch])
+        if n == 0:
+            continue
+        mean    = raw_s[ch] / n
+        raw_rms = float(np.sqrt(max(0.0, raw_s2[ch] / n - mean * mean)))
+        # std-dev of the CNS-subtracted values: subtract the per-channel residual mean
+        # (each strip's DC offset from its block median), else the "RMS" is dominated by
+        # baseline spread, not noise.
+        cmean   = cns_s[ch] / n
+        cns_rms = float(np.sqrt(max(0.0, cns_s2[ch] / n - cmean * cmean)))
         stats[ch] = {'mean': float(mean), 'raw_rms': raw_rms,
                      'cns_rms': cns_rms, 'count': n}
 
@@ -200,32 +219,35 @@ def _global_ref_rms(all_dream_stats):
     return float(np.median(vals)) if vals else 1.0
 
 
+def _feu_raw_median(channel_stats):
+    """Median raw RMS across all present channels in a FEU (the dead/noisy reference)."""
+    vals = [s['raw_rms'] for s in channel_stats.values() if not np.isnan(s['raw_rms'])]
+    return float(np.median(vals)) if vals else float('nan')
+
+
 def classify(channel_stats, dream_stats, ref_rms):
     """
     Returns ch_cls {ch->status} and dream_cls {dream->status}.
 
-    Channel statuses: ok | dead_stuck | noisy_floating | railed_low | railed_high | missing
+    Channel statuses: ok | dead_stuck | noisy_floating | missing
     DREAM statuses:   ok | suspect_cable | disconnected_cable
     """
-    dream_med = {ds['dream']: ds['med_cns_rms'] for ds in dream_stats}
+    feu_med_raw = _feu_raw_median(channel_stats)
+    has_med     = not np.isnan(feu_med_raw) and feu_med_raw > 0
 
     ch_cls = {}
     for ch in range(N_CH_PER_FEU):
         if ch not in channel_stats:
             ch_cls[ch] = 'missing'; continue
-        s    = channel_stats[ch]
-        rms  = s['cns_rms']
-        mean = s['mean']
-        d    = ch // N_CH_DREAM
-        d_med = dream_med.get(d, ref_rms)
+        raw_rms = channel_stats[ch]['raw_rms']
 
-        if np.isnan(rms) or (d_med > 0 and rms < DEAD_STUCK_FRAC * d_med):
+        # Both dead and noisy are judged on the RAW RMS relative to the FEU's raw
+        # median: a live strip's raw waveform carries common-mode + noise, so raw RMS
+        # is tightly clustered across the FEU. A strip far BELOW the median has no
+        # variation (dead/stuck); one far ABOVE it is abnormally noisy.
+        if np.isnan(raw_rms) or (has_med and raw_rms < DEAD_STUCK_FRAC * feu_med_raw):
             ch_cls[ch] = 'dead_stuck'
-        elif mean < RAIL_LOW_MEAN:
-            ch_cls[ch] = 'railed_low'
-        elif mean > RAIL_HIGH_MEAN:
-            ch_cls[ch] = 'railed_high'
-        elif rms > NOISY_FLOAT_MULT * ref_rms:
+        elif has_med and raw_rms > NOISY_RAW_MULT * feu_med_raw:
             ch_cls[ch] = 'noisy_floating'
         else:
             ch_cls[ch] = 'ok'
@@ -248,12 +270,11 @@ def classify(channel_stats, dream_stats, ref_rms):
 
 # ─── Plot helpers ─────────────────────────────────────────────────────────────
 
-_S_ORDER = ['ok', 'dead_stuck', 'noisy_floating', 'railed_low', 'railed_high', 'missing']
+_S_ORDER = ['ok', 'dead_stuck', 'noisy_floating', 'missing']
 _S_COLOR = {'ok': 'steelblue', 'dead_stuck': 'limegreen', 'noisy_floating': 'red',
-            'railed_low': 'purple', 'railed_high': 'saddlebrown', 'missing': 'black'}
-_S_LABEL = {'ok': 'OK', 'dead_stuck': 'Dead/stuck (low RMS)',
-            'noisy_floating': 'Noisy/floating (not plugged in?)',
-            'railed_low': 'Railed low', 'railed_high': 'Railed high', 'missing': 'Missing'}
+            'missing': 'black'}
+_S_LABEL = {'ok': 'OK', 'dead_stuck': 'Dead/stuck (raw RMS << FEU median)',
+            'noisy_floating': 'Noisy (raw RMS >> FEU median)', 'missing': 'Missing'}
 _D_COLOR = {'ok': 'tab:green', 'suspect_cable': 'tab:orange', 'disconnected_cable': 'tab:red'}
 _D_LABEL = {'ok': 'OK', 'suspect_cable': 'Suspect', 'disconnected_cable': 'Disconnected'}
 
@@ -312,23 +333,40 @@ def plot_feu_rms(feu_num, stats, ch_cls, dream_cls, ref_rms):
     fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
     fig.suptitle(f'FEU {feu_num:02d}  —  Per-channel pedestal  ({n_evt} events)', fontsize=12)
 
-    for ax, vals, ylabel, extra in [
-        (axes[0], means,  'Pedestal mean (ADC)', []),
-        (axes[1], r_rms,  'Raw RMS (ADC)',        [('gray', '--', f'Median {np.median(r_rms):.1f}', np.median(r_rms))]),
-        (axes[2], c_rms,  'CNS RMS (ADC)',        [('steelblue', ':', f'Global ref {ref_rms:.1f}', ref_rms),
-                                                    ('red', '--', f'{NOISY_FLOAT_MULT}x ref = {NOISY_FLOAT_MULT*ref_rms:.1f}', NOISY_FLOAT_MULT*ref_rms),
-                                                    ('gray', '-.', f'Median {np.median(c_rms):.1f}', np.median(c_rms))]),
-    ]:
-        ax.scatter(chs, vals, c=colors, s=6, linewidths=0, zorder=3)
-        for color, ls, lbl, val in extra:
-            ax.axhline(val, color=color, lw=0.9, ls=ls, label=lbl)
-        if axes[0] is ax:
-            ax.axhline(RAIL_LOW_MEAN,  color='purple',      lw=0.9, ls='--', label=f'Rail low {RAIL_LOW_MEAN:.0f}')
-            ax.axhline(RAIL_HIGH_MEAN, color='saddlebrown', lw=0.9, ls='--', label=f'Rail high {RAIL_HIGH_MEAN:.0f}')
-        ax.set_ylabel(ylabel, fontsize=9)
-        ax.legend(fontsize=7, loc='upper right')
-        ax.grid(alpha=0.3)
-        _dream_vlines(ax)
+    # Panel 0: pedestal mean — self-scaled to the data, with mean and median lines
+    ax = axes[0]
+    ax.scatter(chs, means, c=colors, s=6, linewidths=0, zorder=3)
+    mean_of_means = float(np.mean(means)) if means else float('nan')
+    med_of_means  = float(np.median(means)) if means else float('nan')
+    if not np.isnan(mean_of_means):
+        ax.axhline(mean_of_means, color='gray', lw=1.0, ls='-',  label=f'Mean {mean_of_means:.1f}')
+        ax.axhline(med_of_means,  color='gray', lw=1.0, ls='--', label=f'Median {med_of_means:.1f}')
+    ax.set_ylabel('Pedestal mean (ADC)', fontsize=9)
+    ax.legend(fontsize=7, loc='upper right'); ax.grid(alpha=0.3); _dream_vlines(ax)
+
+    # Panel 1: RAW RMS — drives the dead (green) / noisy (red) colours. Thresholds are
+    # a factor × the FEU's raw median (single lines across the whole FEU). Linear y.
+    ax = axes[1]
+    ax.scatter(chs, r_rms, c=colors, s=6, linewidths=0, zorder=3)
+    feu_med_raw = _feu_raw_median(ch_s)
+    if not np.isnan(feu_med_raw):
+        ax.axhline(feu_med_raw, color='gray', lw=1.0, ls='-',
+                   label=f'FEU raw median {feu_med_raw:.1f}')
+        ax.axhline(DEAD_STUCK_FRAC * feu_med_raw, color=_S_COLOR['dead_stuck'], lw=1.0, ls='--',
+                   label=f'Dead < {DEAD_STUCK_FRAC:g}× median = {DEAD_STUCK_FRAC*feu_med_raw:.1f}')
+        ax.axhline(NOISY_RAW_MULT * feu_med_raw, color=_S_COLOR['noisy_floating'], lw=1.0, ls='--',
+                   label=f'Noisy > {NOISY_RAW_MULT:g}× median = {NOISY_RAW_MULT*feu_med_raw:.1f}')
+    ax.set_ylabel('Raw RMS (ADC)', fontsize=9)
+    ax.legend(fontsize=7, loc='upper right'); ax.grid(alpha=0.3); _dream_vlines(ax)
+
+    # Panel 2: CNS RMS (true noise) — global ref + disconnected-cable threshold (DREAM-level)
+    ax = axes[2]
+    ax.scatter(chs, c_rms, c=colors, s=6, linewidths=0, zorder=3)
+    ax.axhline(ref_rms, color='steelblue', lw=0.9, ls=':', label=f'Global ref {ref_rms:.1f}')
+    ax.axhline(DREAM_SUSPECT_MULT * ref_rms, color='red', lw=0.9, ls='--',
+               label=f'Disconnected cable > {DREAM_SUSPECT_MULT:g}× ref = {DREAM_SUSPECT_MULT*ref_rms:.1f}')
+    ax.set_ylabel('CNS RMS (ADC)', fontsize=9)
+    ax.legend(fontsize=7, loc='upper right'); ax.grid(alpha=0.3); _dream_vlines(ax)
 
     # DREAM status badges along top
     ylim = axes[0].get_ylim()
@@ -354,15 +392,16 @@ def plot_dream_bars(feu_num, dream_stats, dream_cls, ch_cls, ref_rms):
 
     raw_vals = [ds['med_raw_rms']   for ds in dream_stats]
     cns_vals = [ds['med_cns_rms'] if not np.isnan(ds['med_cns_rms']) else 0 for ds in dream_stats]
-    cm_vals  = [ds['common_noise'] if not np.isnan(ds['common_noise']) else 0 for ds in dream_stats]
     bcolors  = [_D_COLOR.get(dream_cls.get(ds['dream'], 'ok'), 'tab:green') for ds in dream_stats]
 
-    n_bad_per_dream = []
+    dead_per, noisy_per, n_bad_per_dream = [], [], []
     for ds in dream_stats:
         d = ds['dream']
-        n_bad = sum(1 for c in range(d*N_CH_DREAM, (d+1)*N_CH_DREAM)
-                    if ch_cls.get(c, 'ok') != 'ok')
-        n_bad_per_dream.append(n_bad)
+        chs_d  = range(d*N_CH_DREAM, (d+1)*N_CH_DREAM)
+        n_dead = sum(1 for c in chs_d if ch_cls.get(c) == 'dead_stuck')
+        n_nois = sum(1 for c in chs_d if ch_cls.get(c) == 'noisy_floating')
+        dead_per.append(n_dead); noisy_per.append(n_nois)
+        n_bad_per_dream.append(sum(1 for c in chs_d if ch_cls.get(c, 'ok') != 'ok'))
 
     fig, axes = plt.subplots(2, 1, figsize=(12, 8))
     fig.suptitle(f'FEU {feu_num:02d}  —  Per-DREAM (cable) summary', fontsize=12)
@@ -393,15 +432,18 @@ def plot_dream_bars(feu_num, dream_stats, dream_cls, ch_cls, ref_rms):
                 color=_D_COLOR[dcls], fontweight='bold')
 
     ax = axes[1]
-    ax.bar(xs, cm_vals, color=bcolors, edgecolor='k', linewidth=0.6, alpha=0.85)
+    bd = ax.bar(xs - w/2, dead_per,  w, color=_S_COLOR['dead_stuck'],
+                edgecolor='k', linewidth=0.6, label='Dead')
+    bn = ax.bar(xs + w/2, noisy_per, w, color=_S_COLOR['noisy_floating'],
+                edgecolor='k', linewidth=0.6, label='Noisy')
+    ax.bar_label(bd, fontsize=7, padding=1)
+    ax.bar_label(bn, fontsize=7, padding=1)
     ax.set_xticks(xs)
     ax.set_xticklabels([f'D{ds["dream"]}' for ds in dream_stats], fontsize=9)
-    ax.set_ylabel('Common-mode noise (ADC)\n= sqrt(raw_rms^2 - cns_rms^2)')
-    ax.set_title('Estimated common-mode noise per DREAM cable')
+    ax.set_ylabel('Channel count')
+    ax.set_title('Dead / noisy channel count per DREAM cable')
     ax.grid(alpha=0.3, axis='y')
-    legend_handles = [mpatches.Patch(facecolor=_D_COLOR[k], label=_D_LABEL[k])
-                      for k in _D_COLOR]
-    ax.legend(handles=legend_handles, fontsize=8, loc='upper right')
+    ax.legend(fontsize=8, loc='upper right')
 
     plt.tight_layout()
     return fig
@@ -411,8 +453,8 @@ def plot_dream_bars(feu_num, dream_stats, dream_cls, ch_cls, ref_rms):
 
 def plot_summary_table(all_feu_data, ref_rms):
     feu_nums = sorted(all_feu_data)
-    col_labels = ['FEU', 'Events', 'OK chs', 'Noisy/Float', 'Dead/Stuck',
-                  'Railed/Miss', 'Med CNS RMS', 'Problem DREAMs']
+    col_labels = ['FEU', 'Events', 'OK chs', 'Noisy', 'Dead/Stuck',
+                  'Missing', 'Med Raw RMS', 'Med CNS RMS', 'Problem DREAMs']
     rows, row_colors = [], []
 
     for feu in feu_nums:
@@ -423,13 +465,16 @@ def plot_summary_table(all_feu_data, ref_rms):
         n_nois = sum(1 for s in ch_cls.values() if s == 'noisy_floating')
         n_dead = sum(1 for s in ch_cls.values() if s == 'dead_stuck')
         n_misc = sum(1 for s in ch_cls.values() if s not in ('ok','noisy_floating','dead_stuck'))
+        raw_v  = [v['raw_rms'] for v in d['stats']['channel_stats'].values()
+                  if not np.isnan(v['raw_rms'])]
         cns_v  = [v['cns_rms'] for v in d['stats']['channel_stats'].values()
                   if not np.isnan(v['cns_rms'])]
+        med_raw= f'{np.median(raw_v):.1f}' if raw_v else 'N/A'
         med_cns= f'{np.median(cns_v):.1f}' if cns_v else 'N/A'
         bad_ds = ', '.join(f'D{dd}' for dd, ds in sorted(d_cls.items()) if ds != 'ok') or '—'
 
         rows.append([f'FEU {feu:02d}', d['stats']['n_events'],
-                     n_ok, n_nois, n_dead, n_misc, med_cns, bad_ds])
+                     n_ok, n_nois, n_dead, n_misc, med_raw, med_cns, bad_ds])
 
         n_bad = N_CH_PER_FEU - n_ok
         frac  = n_bad / N_CH_PER_FEU
@@ -439,9 +484,9 @@ def plot_summary_table(all_feu_data, ref_rms):
     fig, ax = plt.subplots(figsize=(15, fig_h))
     ax.axis('off')
     ax.set_title(
-        f'Summary — Global reference CNS RMS: {ref_rms:.1f} ADC  |  '
-        f'Noisy threshold: >{NOISY_FLOAT_MULT}x = {NOISY_FLOAT_MULT*ref_rms:.1f}  |  '
-        f'Dead threshold: <{DEAD_STUCK_FRAC}x DREAM median',
+        f'Summary — Dead: raw RMS <{DEAD_STUCK_FRAC:g}× FEU raw-median  |  '
+        f'Noisy: raw RMS >{NOISY_RAW_MULT:g}× FEU raw-median  |  '
+        f'Disconnected cable: CNS median >{DREAM_SUSPECT_MULT:g}× global ref ({ref_rms:.1f} ADC)',
         fontsize=10, pad=14)
 
     tbl = ax.table(cellText=rows, colLabels=col_labels,
@@ -461,14 +506,113 @@ def plot_summary_table(all_feu_data, ref_rms):
     return fig
 
 
+# ─── Plot 5: per-cable (DREAM) bad-channel count table ────────────────────────
+
+def plot_dream_bad_table(all_feu_data):
+    """Grid: rows = FEU, cols = D0..D7 cables, each cell = '<dead> / <noisy>' channel
+    counts. Cell colour reflects the count: green = 0, yellow = some, red = >= half."""
+    feu_nums = sorted(all_feu_data)
+    n_dream  = N_CH_PER_FEU // N_CH_DREAM
+    col_labels = ['FEU'] + [f'D{d}' for d in range(n_dream)]
+    rows, cell_bg = [], []
+
+    for feu in feu_nums:
+        d      = all_feu_data[feu]
+        ch_cls = d['ch_cls']
+        row  = [f'FEU {feu:02d}']
+        bgs  = ['white']
+        for dd in range(n_dream):
+            chs    = range(dd * N_CH_DREAM, (dd + 1) * N_CH_DREAM)
+            n_dead = sum(1 for c in chs if ch_cls.get(c) == 'dead_stuck')
+            n_nois = sum(1 for c in chs if ch_cls.get(c) == 'noisy_floating')
+            row.append(f'{n_dead} / {n_nois}')
+            # Colour reflects the displayed count (dead + noisy).
+            n_bad = n_dead + n_nois
+            if n_bad >= N_CH_DREAM // 2:
+                bgs.append('#f4b6b6')   # red: at least half the cable bad
+            elif n_bad > 0:
+                bgs.append('#fff3cc')   # yellow: some bad channels
+            else:
+                bgs.append('#d4edda')   # green: no dead/noisy channels
+        rows.append(row); cell_bg.append(bgs)
+
+    fig_h = max(3, len(feu_nums) * 0.55 + 2.5)
+    fig, ax = plt.subplots(figsize=(13, fig_h))
+    ax.axis('off')
+    ax.set_title('Bad channels per cable (DREAM) — cell = dead / noisy count\n'
+                 'colour by count: green = 0, yellow = some, red = >= half the cable',
+                 fontsize=10, pad=14)
+
+    tbl = ax.table(cellText=rows, colLabels=col_labels, loc='center', cellLoc='center')
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(9)
+    tbl.auto_set_column_width(list(range(len(col_labels))))
+    tbl.scale(1, 1.5)
+    for i, bgs in enumerate(cell_bg):
+        for j, bg in enumerate(bgs):
+            tbl[i + 1, j].set_facecolor(bg)
+    for j in range(len(col_labels)):
+        tbl[0, j].set_facecolor('#c8d8e8')
+        tbl[0, j].set_text_props(fontweight='bold')
+
+    plt.tight_layout()
+    return fig
+
+
+# ─── Plot 6: dead/noisy bar charts per connector, one row per FEU ─────────────
+
+def plot_dead_noisy_bars_all(all_feu_data):
+    """One row per FEU (like the channel map), each a grouped bar chart of the
+    dead and noisy channel counts for the 8 connectors (DREAMs D0-D7). Shared y so
+    FEUs are directly comparable; every non-zero bar is annotated with its count."""
+    feu_nums = sorted(all_feu_data)
+    n_feu    = len(feu_nums)
+    n_dream  = N_CH_PER_FEU // N_CH_DREAM
+    xs, w    = np.arange(n_dream), 0.4
+
+    dead, noisy, ymax = {}, {}, 1
+    for feu in feu_nums:
+        ch_cls = all_feu_data[feu]['ch_cls']
+        dd, nn = [], []
+        for d in range(n_dream):
+            chs = range(d * N_CH_DREAM, (d + 1) * N_CH_DREAM)
+            dd.append(sum(1 for c in chs if ch_cls.get(c) == 'dead_stuck'))
+            nn.append(sum(1 for c in chs if ch_cls.get(c) == 'noisy_floating'))
+        dead[feu], noisy[feu] = dd, nn
+        ymax = max(ymax, max(dd + nn))
+
+    fig, axes = plt.subplots(n_feu, 1, figsize=(12, max(4, n_feu * 1.15 + 1)), sharex=True)
+    if n_feu == 1:
+        axes = [axes]
+    fig.suptitle('Dead / noisy channel count per connector (DREAM D0-D7), by FEU', fontsize=12)
+
+    for ax, feu in zip(axes, feu_nums):
+        bd = ax.bar(xs - w/2, dead[feu],  w, color=_S_COLOR['dead_stuck'],
+                    edgecolor='k', linewidth=0.4, label='Dead')
+        bn = ax.bar(xs + w/2, noisy[feu], w, color=_S_COLOR['noisy_floating'],
+                    edgecolor='k', linewidth=0.4, label='Noisy')
+        ax.bar_label(bd, labels=[str(v) if v else '' for v in dead[feu]],  fontsize=7, padding=1)
+        ax.bar_label(bn, labels=[str(v) if v else '' for v in noisy[feu]], fontsize=7, padding=1)
+        ax.set_ylim(0, ymax * 1.18)
+        ax.set_ylabel(f'FEU {feu:02d}', fontsize=9, rotation=0, ha='right', va='center')
+        ax.grid(alpha=0.3, axis='y')
+
+    axes[0].legend(fontsize=8, loc='upper right', ncol=2)
+    axes[-1].set_xticks(xs)
+    axes[-1].set_xticklabels([f'D{d}' for d in range(n_dream)])
+    axes[-1].set_xlabel('Connector (DREAM D0-D7 = cable 0-7, each 64 channels)')
+    plt.tight_layout()
+    return fig
+
+
 # ─── Console summary ──────────────────────────────────────────────────────────
 
 def print_summary(all_feu_data, ref_rms):
     print('\n' + '=' * 65)
     print('PEDESTAL QA SUMMARY')
-    print(f'  Global reference CNS RMS : {ref_rms:.1f} ADC')
-    print(f'  Noisy/float threshold    : > {NOISY_FLOAT_MULT}x ref = {NOISY_FLOAT_MULT*ref_rms:.1f} ADC')
-    print(f'  Dead/stuck threshold     : < {DEAD_STUCK_FRAC}x DREAM median')
+    print(f'  Global reference CNS RMS : {ref_rms:.1f} ADC  (for disconnected-cable flag)')
+    print(f'  Noisy threshold          : raw RMS > {NOISY_RAW_MULT}x FEU raw-median')
+    print(f'  Dead/stuck threshold     : raw RMS < {DEAD_STUCK_FRAC}x FEU raw-median')
     print('=' * 65)
     total_bad = 0
     for feu in sorted(all_feu_data):
@@ -489,6 +633,54 @@ def print_summary(all_feu_data, ref_rms):
                       f'{dcls}  med_cns_rms={ds["med_cns_rms"]:.1f} ADC')
     print(f'\nTotal bad channels: {total_bad} / {len(all_feu_data)*N_CH_PER_FEU}')
     print('=' * 65)
+
+
+# ─── CSV output (per-run status, for tracking / comparison) ───────────────────
+
+def write_channel_csv(all_feu_data, ref_rms, csv_path):
+    """One row per channel: the per-run status record used for cross-run comparison."""
+    import csv
+    with open(csv_path, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['feu', 'connector', 'channel', 'strip', 'status',
+                    'raw_rms', 'cns_rms', 'mean', 'n_events', 'ref_cns_rms'])
+        for feu in sorted(all_feu_data):
+            d      = all_feu_data[feu]
+            ch_s   = d['stats']['channel_stats']
+            ch_cls = d['ch_cls']
+            n_evt  = d['stats']['n_events']
+            for ch in range(N_CH_PER_FEU):
+                s = ch_s.get(ch)
+                raw = f'{s["raw_rms"]:.3f}' if s else ''
+                cns = f'{s["cns_rms"]:.3f}' if s and not np.isnan(s['cns_rms']) else ''
+                mean = f'{s["mean"]:.2f}' if s else ''
+                w.writerow([feu, ch // N_CH_DREAM, ch, ch % N_CH_DREAM,
+                            ch_cls.get(ch, 'missing'), raw, cns, mean, n_evt, f'{ref_rms:.3f}'])
+    print(f'[done] channel CSV -> {csv_path}')
+
+
+def write_summary_csv(all_feu_data, csv_path):
+    """One row per (FEU, connector): dead/noisy counts, median RMS, cable status."""
+    import csv
+    with open(csv_path, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['feu', 'connector', 'n_dead', 'n_noisy', 'n_ok',
+                    'med_raw_rms', 'med_cns_rms', 'cable_status'])
+        for feu in sorted(all_feu_data):
+            d      = all_feu_data[feu]
+            ch_cls = d['ch_cls']
+            d_cls  = d['dream_cls']
+            dmap   = {ds['dream']: ds for ds in d['dream_stats']}
+            for dd in range(N_CH_PER_FEU // N_CH_DREAM):
+                chs = range(dd * N_CH_DREAM, (dd + 1) * N_CH_DREAM)
+                n_dead = sum(1 for c in chs if ch_cls.get(c) == 'dead_stuck')
+                n_nois = sum(1 for c in chs if ch_cls.get(c) == 'noisy_floating')
+                n_ok   = sum(1 for c in chs if ch_cls.get(c) == 'ok')
+                ds     = dmap.get(dd, {})
+                mr = f'{ds.get("med_raw_rms", float("nan")):.3f}'
+                mc = f'{ds.get("med_cns_rms", float("nan")):.3f}'
+                w.writerow([feu, dd, n_dead, n_nois, n_ok, mr, mc, d_cls.get(dd, 'ok')])
+    print(f'[done] summary CSV -> {csv_path}')
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -534,6 +726,12 @@ def main():
         # p2: summary table
         pdf.savefig(plot_summary_table(all_feu_data, ref_rms), bbox_inches='tight')
         plt.close('all')
+        # p3: per-cable (DREAM) dead/noisy count table
+        pdf.savefig(plot_dream_bad_table(all_feu_data), bbox_inches='tight')
+        plt.close('all')
+        # p4: dead/noisy bar charts per connector, one row per FEU
+        pdf.savefig(plot_dead_noisy_bars_all(all_feu_data), bbox_inches='tight')
+        plt.close('all')
         # per-FEU pages
         for feu in sorted(all_feu_data):
             d = all_feu_data[feu]
@@ -545,6 +743,10 @@ def main():
             plt.close('all')
 
     print(f'\n[done] PDF -> {pdf_path}')
+
+    # Per-run status CSVs (used by compare_pedestals.py for quick cross-run diffs).
+    write_channel_csv(all_feu_data, ref_rms, os.path.join(output_dir, 'pedestal_channels.csv'))
+    write_summary_csv(all_feu_data, os.path.join(output_dir, 'pedestal_summary.csv'))
 
 
 if __name__ == '__main__':
