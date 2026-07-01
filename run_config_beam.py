@@ -63,7 +63,7 @@ class Config(RunConfigBase):
             'ip': '192.168.10.8',
             'port': 1101,
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
-            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May_Coinc.cfg',
+            'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_July.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Cosmics_Mx17_May.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_QA.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_det3_QA.cfg',
