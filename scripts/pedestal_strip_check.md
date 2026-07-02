@@ -1,25 +1,46 @@
 # pedestal_strip_check.py — Pedestal QA & Dead-Strip Finder
 
 Quickly decode the latest pedestal FDF files from a run directory, compute
-per-channel noise statistics, and produce a PDF report identifying disconnected
-or dead strips across all FEUs.
+per-channel noise statistics, and produce a QA report (per-figure PNGs +
+`summary.json` + PDF) identifying disconnected or dead strips across all FEUs.
+
+This script is run automatically after each pedestal run by
+`pedestal_watcher.py` and displayed in the DAQ GUI's Pedestals tab — see
+`docs/pedestal_qa.md`. It also still works standalone as described here.
 
 ---
 
 ## Quick start
 
 ```bash
-python3 pedestal_strip_check.py [data_dir] [output_dir]
+python3 pedestal_strip_check.py [data_dir] [output_dir] \
+    [--decode-exe PATH] [--no-pngs]
 ```
 
 `data_dir` defaults to `/mnt/data/x17/beam_july/test/test1`.
 `output_dir` defaults to the same directory as the data.
-The PDF report is written to `<output_dir>/pedestal_strip_check.pdf`.
+
+Outputs in `output_dir`:
+- `pedestal_strip_check.pdf` — full report
+- one PNG per report page (`00_channel_map.png`, `01_summary_table.png`,
+  `feu_XX_channels.png`, `feu_XX_dreams.png`) — numeric prefixes keep the
+  GUI gallery in report order; stale PNGs from a previous pass are deleted
+  first
+- `summary.json` — machine-readable per-FEU verdicts for the GUI (written
+  atomically via a `.tmp` + rename, since the GUI polls it); schema in
+  `docs/pedestal_qa.md`
+
+`--no-pngs` skips the PNGs and summary.json (PDF only).
+`--decode-exe` overrides the default decoder path (`DECODE_EXE` at the top of
+the script); the watcher always passes it explicitly from its config.
 
 **Dependencies:** `uproot`, `numpy`, `matplotlib`
 (install with `pip install uproot awkward numpy matplotlib`).
-The C++ `decode` executable from `mm_strip_reconstruction` must be built and
-pointed to by `DECODE_EXE` at the top of the script.
+The C++ `decode` executable from `mm_strip_reconstruction` must be built.
+
+**Memory:** the ROOT trees are read in 100-event chunks and only one
+matplotlib figure is open at a time, keeping the footprint small — the DAQ
+machine idles at ~70% RAM and the watcher kills the analysis at 80%.
 
 ---
 
@@ -36,7 +57,7 @@ pedestal runs in one directory without mixing them.
 ## Pipeline
 
 ```
-_pedthr_ FDFs  ──decode (C++)──>  .root  ──uproot──>  per-ch stats  ──>  PDF
+_pedthr_ FDFs  ──decode (C++)──>  .root  ──uproot──>  per-ch stats  ──>  PNGs + summary.json + PDF
 ```
 
 1. **Decode (parallel):** Each FDF is passed to the C++ `decode` executable,
@@ -75,7 +96,8 @@ _pedthr_ FDFs  ──decode (C++)──>  .root  ──uproot──>  per-ch sta
    - `disconnected_cable` — median CNS RMS > 2.5× global ref (whole cable floating)
    - `suspect_cable` — ≥ 50% of its channels are individually bad
 
-4. **PDF report (4 pages per FEU + 2 overview pages):**
+4. **Report (2 overview pages + 2 pages per FEU; each page is a PDF page and
+   a PNG):**
 
    - **Page 1 — Channel map:** Grid of all FEUs × 512 channels, coloured by
      status. DREAMs are labelled D0–D7. Good for a one-glance system overview.

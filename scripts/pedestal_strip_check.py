@@ -3,16 +3,21 @@
 pedestal_strip_check.py
 
 Find the latest pedestal FDFs in a directory, decode them, analyze per-channel
-statistics (raw + CNS RMS), and produce a QA PDF identifying dead/disconnected strips.
+statistics (raw + CNS RMS), and produce a QA report (PDF + per-figure PNGs +
+summary.json + status CSVs) identifying dead/disconnected strips.
 
 Usage:
-    python3 pedestal_strip_check.py [data_dir] [output_dir]
+    python3 pedestal_strip_check.py [data_dir] [output_dir] [--decode-exe PATH]
 
 "Latest" = the _pedthr_ FDF group sharing the most recent YYMMDD_HHhMM timestamp.
 Groups of 64 channels = one DREAM chip = one physical cable.
+
+The PNGs and summary.json are consumed by the DAQ flask GUI's Pedestals tab
+(served by pedestal_watcher.py); the PDF and CSVs are for offline use /
+cross-run comparison (see compare_pedestals.py).
 """
 
-import os, re, sys, subprocess
+import os, re, sys, json, argparse, subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
@@ -27,7 +32,7 @@ from matplotlib.colors import ListedColormap, BoundaryNorm
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 BASE_SOFT  = os.environ.get('BASE_SOFT', '/home/mx17/CLionProjects/mm_strip_reconstruction/build')
-DECODE_EXE = os.environ.get('DECODE_EXE', os.path.join(BASE_SOFT, 'decoder', 'decode'))
+DECODE_EXE = os.environ.get('DECODE_EXE', os.path.join(BASE_SOFT, 'decoder', 'decode'))  # default; --decode-exe overrides
 N_THREADS  = max(1, (os.cpu_count() or 1) - 2)
 
 N_CH_PER_FEU = 512   # 8 DREAMs × 64 channels
@@ -59,6 +64,7 @@ def _feu_num(fn):
 
 
 def find_latest_ped_fdfs(data_dir):
+    """Return (fdf_paths, timestamp) for the most recent _pedthr_ group."""
     fdfs = [f for f in os.listdir(data_dir) if f.endswith('.fdf') and '_pedthr_' in f]
     if not fdfs:
         raise RuntimeError(f'No _pedthr_ FDFs in {data_dir}')
@@ -73,19 +79,19 @@ def find_latest_ped_fdfs(data_dir):
     print(f'[info] Latest pedestal run: {latest:%Y-%m-%d %H:%M}  '
           f'({len(by_ts)} run(s) in dir, chose latest → {len(chosen)} FDFs)')
     for f in chosen: print(f'         {f}')
-    return [os.path.join(data_dir, f) for f in chosen]
+    return [os.path.join(data_dir, f) for f in chosen], latest
 
 
 # ─── Decode ──────────────────────────────────────────────────────────────────
 
-def _decode_one(fdf, root):
-    if not os.path.exists(DECODE_EXE):
-        raise FileNotFoundError(DECODE_EXE)
-    subprocess.run([DECODE_EXE, fdf, root], check=True)
+def _decode_one(fdf, root, decode_exe):
+    if not os.path.exists(decode_exe):
+        raise FileNotFoundError(decode_exe)
+    subprocess.run([decode_exe, fdf, root], check=True)
     return root
 
 
-def decode_fdfs(fdf_paths, out_dir):
+def decode_fdfs(fdf_paths, out_dir, decode_exe=DECODE_EXE):
     os.makedirs(out_dir, exist_ok=True)
     pending, result = {}, {}
     with ThreadPoolExecutor(max_workers=N_THREADS) as pool:
@@ -98,7 +104,7 @@ def decode_fdfs(fdf_paths, out_dir):
                 print(f'[decode] {os.path.basename(fdf)} already done, reusing')
                 result[feu] = root; continue
             print(f'[decode] {os.path.basename(fdf)}')
-            pending[pool.submit(_decode_one, fdf, root)] = (feu, root)
+            pending[pool.submit(_decode_one, fdf, root, decode_exe)] = (feu, root)
         for fut in as_completed(pending):
             feu, root = pending[fut]
             try:
@@ -683,17 +689,79 @@ def write_summary_csv(all_feu_data, csv_path):
     print(f'[done] summary CSV -> {csv_path}')
 
 
+# ─── Summary JSON (consumed by the flask Pedestals tab) ─────────────────────
+
+def build_summary_json(all_feu_data, ref_rms, ped_ts, data_dir):
+    feus = {}
+    worst = 'good'
+    total_bad = 0
+    for feu in sorted(all_feu_data):
+        d      = all_feu_data[feu]
+        ch_cls = d['ch_cls']
+        counts = {}
+        for s in ch_cls.values():
+            counts[s] = counts.get(s, 0) + 1
+        n_ok  = counts.get('ok', 0)
+        n_bad = N_CH_PER_FEU - n_ok
+        total_bad += n_bad
+        cns_v = [v['cns_rms'] for v in d['stats']['channel_stats'].values()
+                 if not np.isnan(v['cns_rms'])]
+        bad_dreams = {str(dd): cls for dd, cls in sorted(d['dream_cls'].items())
+                      if cls != 'ok'}
+        frac = n_bad / N_CH_PER_FEU
+        level = 'bad' if frac > 0.5 else 'warn' if frac > 0.1 else 'good'
+        if level == 'bad':
+            worst = 'bad'
+        elif level == 'warn' and worst == 'good':
+            worst = 'warn'
+        feus[str(feu)] = {
+            'n_events':    d['stats']['n_events'],
+            'n_ok':        n_ok,
+            'n_noisy':     counts.get('noisy_floating', 0),
+            'n_dead':      counts.get('dead_stuck', 0),
+            'n_other':     n_bad - counts.get('noisy_floating', 0) - counts.get('dead_stuck', 0),
+            'med_cns_rms': round(float(np.median(cns_v)), 2) if cns_v else None,
+            'bad_dreams':  bad_dreams,
+            'level':       level,
+        }
+    return {
+        'generated':    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'pedestal_ts':  f'{ped_ts:%Y-%m-%d %H:%M}' if ped_ts else None,
+        'data_dir':     data_dir,
+        'ref_cns_rms':  round(ref_rms, 2),
+        'thresholds':   {'dead_stuck_frac':    DEAD_STUCK_FRAC,
+                         'noisy_raw_mult':     NOISY_RAW_MULT,
+                         'dream_suspect_mult': DREAM_SUSPECT_MULT},
+        'n_feus':       len(feus),
+        'total_bad':    total_bad,
+        'total_ch':     len(feus) * N_CH_PER_FEU,
+        'overall':      worst,
+        'feus':         feus,
+    }
+
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main():
-    data_dir   = sys.argv[1] if len(sys.argv) > 1 else '/mnt/data/x17/beam_july/test/test1'
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else data_dir
+    ap = argparse.ArgumentParser(description='Pedestal QA / dead-strip finder')
+    ap.add_argument('data_dir',   nargs='?', default='/mnt/data/x17/beam_july/test/test1',
+                    help='directory containing the _pedthr_ FDFs')
+    ap.add_argument('output_dir', nargs='?', default=None,
+                    help='where to write PDF/PNGs/summary.json/CSVs (default: data_dir)')
+    ap.add_argument('--decode-exe', default=DECODE_EXE,
+                    help='path to the C++ decode executable')
+    ap.add_argument('--no-pngs', action='store_true',
+                    help='only write the PDF/CSVs (skip PNGs and summary.json for the GUI)')
+    args = ap.parse_args()
+
+    data_dir   = args.data_dir
+    output_dir = args.output_dir or data_dir
     os.makedirs(output_dir, exist_ok=True)
     print(f'[info] Data dir:   {data_dir}')
     print(f'[info] Output dir: {output_dir}')
 
-    fdf_paths    = find_latest_ped_fdfs(data_dir)
-    feu_root_map = decode_fdfs(fdf_paths, data_dir)
+    fdf_paths, ped_ts = find_latest_ped_fdfs(data_dir)
+    feu_root_map = decode_fdfs(fdf_paths, data_dir, decode_exe=args.decode_exe)
     if not feu_root_map:
         print('[error] No ROOT files produced.'); sys.exit(1)
 
@@ -717,36 +785,56 @@ def main():
 
     print_summary(all_feu_data, ref_rms)
 
-    # Write PDF
-    pdf_path = os.path.join(output_dir, 'pedestal_strip_check.pdf')
-    with PdfPages(pdf_path) as pdf:
-        # p1: overview channel map
-        pdf.savefig(plot_channel_map(all_feu_data), bbox_inches='tight')
-        plt.close('all')
-        # p2: summary table
-        pdf.savefig(plot_summary_table(all_feu_data, ref_rms), bbox_inches='tight')
-        plt.close('all')
-        # p3: per-cable (DREAM) dead/noisy count table
-        pdf.savefig(plot_dream_bad_table(all_feu_data), bbox_inches='tight')
-        plt.close('all')
-        # p4: dead/noisy bar charts per connector, one row per FEU
-        pdf.savefig(plot_dead_noisy_bars_all(all_feu_data), bbox_inches='tight')
-        plt.close('all')
-        # per-FEU pages
+    # One figure alive at a time (built, saved to PDF + PNG, closed) — the full set
+    # of overview + 2·n_FEU figures held open at once is enough RAM to trip the
+    # watcher's memory kill on this machine.
+    # Numeric PNG prefixes keep the flask gallery (sorted by name) in report order.
+    def figure_specs():
+        yield '00_channel_map',     lambda: plot_channel_map(all_feu_data)
+        yield '01_summary_table',   lambda: plot_summary_table(all_feu_data, ref_rms)
+        yield '02_dream_bad_table', lambda: plot_dream_bad_table(all_feu_data)
+        yield '03_dead_noisy_bars', lambda: plot_dead_noisy_bars_all(all_feu_data)
         for feu in sorted(all_feu_data):
             d = all_feu_data[feu]
-            pdf.savefig(plot_feu_rms(feu, d['stats'], d['ch_cls'],
-                                     d['dream_cls'], ref_rms), bbox_inches='tight')
-            plt.close('all')
-            pdf.savefig(plot_dream_bars(feu, d['dream_stats'], d['dream_cls'],
-                                        d['ch_cls'], ref_rms), bbox_inches='tight')
-            plt.close('all')
+            yield (f'feu_{feu:02d}_channels',
+                   lambda feu=feu, d=d: plot_feu_rms(feu, d['stats'], d['ch_cls'],
+                                                     d['dream_cls'], ref_rms))
+            yield (f'feu_{feu:02d}_dreams',
+                   lambda feu=feu, d=d: plot_dream_bars(feu, d['dream_stats'],
+                                                        d['dream_cls'], d['ch_cls'], ref_rms))
 
+    if not args.no_pngs:
+        # A re-analysis may cover a different FEU set; the flask gallery shows
+        # every PNG in the dir, so clear leftovers from previous passes.
+        for f in os.listdir(output_dir):
+            if f.lower().endswith('.png'):
+                try: os.unlink(os.path.join(output_dir, f))
+                except OSError: pass
+
+    pdf_path = os.path.join(output_dir, 'pedestal_strip_check.pdf')
+    with PdfPages(pdf_path) as pdf:
+        for name, build in figure_specs():
+            fig = build()
+            pdf.savefig(fig, bbox_inches='tight')
+            if not args.no_pngs:
+                fig.savefig(os.path.join(output_dir, f'{name}.png'),
+                            dpi=110, bbox_inches='tight')
+            plt.close(fig)
     print(f'\n[done] PDF -> {pdf_path}')
 
     # Per-run status CSVs (used by compare_pedestals.py for quick cross-run diffs).
     write_channel_csv(all_feu_data, ref_rms, os.path.join(output_dir, 'pedestal_channels.csv'))
     write_summary_csv(all_feu_data, os.path.join(output_dir, 'pedestal_summary.csv'))
+
+    if not args.no_pngs:
+        summary = build_summary_json(all_feu_data, ref_rms, ped_ts, data_dir)
+        summary_path = os.path.join(output_dir, 'summary.json')
+        # Atomic write: the flask UI polls this file every 10 s
+        tmp_path = summary_path + '.tmp'
+        with open(tmp_path, 'w') as f:
+            json.dump(summary, f, indent=2)
+        os.replace(tmp_path, summary_path)
+        print(f'[done] Summary -> {summary_path}')
 
 
 if __name__ == '__main__':

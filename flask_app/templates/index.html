@@ -142,6 +142,30 @@
 </div>
 
 
+<!-- Pedestal QA Tab -->
+<div class="tab-pane fade" id="ped-viewer">
+  <h2>Pedestal QA</h2>
+
+  <div class="d-flex flex-wrap align-items-center gap-2 mt-3 mb-3">
+    <label for="ped-run-select" class="form-label mb-0">Pedestal run:</label>
+    <select id="ped-run-select" class="form-select" style="width:auto;">
+      <option value="">Loading...</option>
+    </select>
+    <button id="ped-reload" class="btn btn-outline-info btn-sm">Reload</button>
+    <a id="ped-pdf-link" class="btn btn-outline-light btn-sm d-none" target="_blank" href="#">PDF</a>
+    <span class="ms-auto d-flex align-items-center gap-2">
+      <span class="text-muted small">Watcher:</span>
+      <span id="ped-watcher-status" class="badge bg-secondary">...</span>
+      <button id="ped-watcher-toggle" class="btn btn-sm btn-outline-secondary">Start</button>
+    </span>
+  </div>
+
+  <div id="ped-summary" class="mb-3"></div>
+  <p id="ped-no-qa" class="text-muted d-none">No QA output for this run yet — the watcher will analyze it once the run finishes.</p>
+  <div id="ped-gallery" class="row mt-2"></div>
+</div>
+
+
 <!-- Analysis Browser Tab -->
 <div class="tab-pane fade" id="analysis-browser">
   <h2>Analysis</h2>
@@ -221,6 +245,20 @@ function updateStatus() {
             let container = document.getElementById("status-cards");
             container.innerHTML = "";
             data.forEach(info => {
+                // Compact card: watchers that only need a running/not indicator
+                if (info.small) {
+                    container.innerHTML += `
+                      <div class="col-6 col-md-2 mb-3">
+                        <div class="card text-white bg-${info.color} h-100">
+                          <div class="card-body py-2 px-3">
+                            <div style="font-size:0.78em;opacity:0.85;">${info.name}</div>
+                            <div style="font-weight:bold;font-size:0.95em;">${info.status}</div>
+                          </div>
+                        </div>
+                      </div>`;
+                    return;
+                }
+
                 let details = info.fields.map(
                     f => `<p>${f.label}: ${f.value}</p>`
                 ).join("");
@@ -236,6 +274,8 @@ function updateStatus() {
                     </div>
                   </div>`;
             });
+
+            updatePedWatcherUI(data);
 
             // let container = document.getElementById("status-cards");
             // container.innerHTML = "";
@@ -956,6 +996,183 @@ document.getElementById("subdir-select-qa").addEventListener("change", loadPNGs)
 function osJoin(...parts) {
     return parts.map(p => p.replace(/^\/+|\/+$/g, "")).join("/");
 }
+
+
+// ---------------------------------------------------------------------------
+// Pedestal QA tab
+// ---------------------------------------------------------------------------
+
+let pedLastGenerated = null;   // summary.json "generated" stamp currently shown
+let pedWatcherStopped = true;  // tracked from /status for the toggle button
+
+function updatePedWatcherUI(statuses) {
+    const info = statuses.find(s => s.name === "pedestal_watcher");
+    if (!info) return;
+    pedWatcherStopped = info.status === "STOPPED";
+    const badge = document.getElementById("ped-watcher-status");
+    badge.textContent = info.status;
+    badge.className = `badge bg-${info.color}`;
+    const btn = document.getElementById("ped-watcher-toggle");
+    btn.textContent = pedWatcherStopped ? "Start" : "Stop";
+    btn.className = pedWatcherStopped
+        ? "btn btn-sm btn-outline-info"
+        : "btn btn-sm btn-outline-secondary";
+}
+
+document.getElementById("ped-watcher-toggle").addEventListener("click", async () => {
+    if (pedWatcherStopped) {
+        const res = await fetch("/start_ped_qa", { method: "POST" });
+        const d = await res.json();
+        showPopup(d.message, d.success ? "#17a2b8" : "#dc3545");
+    } else {
+        if (!confirm("Stop the pedestal QA watcher?")) return;
+        const res = await fetch("/stop_ped_qa", { method: "POST" });
+        const d = await res.json();
+        showPopup(d.message, "#6c757d");
+    }
+});
+
+async function loadPedRuns() {
+    const select = document.getElementById("ped-run-select");
+    const res = await fetch("/list_ped_runs");
+    const data = await res.json();
+    if (!data.success) {
+        select.innerHTML = `<option value="">${data.message}</option>`;
+        return;
+    }
+    // Rebuild only when the list actually changed — replacing the options
+    // closes an open dropdown and can revert a selection made mid-fetch.
+    const labels = data.runs.map(r => r.has_qa ? r.name : `${r.name}  (no QA yet)`);
+    const current = Array.from(select.options).map(o => o.textContent);
+    if (labels.length === current.length && labels.every((l, i) => l === current[i])) return;
+
+    const prev = select.value;   // read at rebuild time, after the await
+    select.innerHTML = "";
+    data.runs.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r.name;
+        opt.textContent = r.has_qa ? r.name : `${r.name}  (no QA yet)`;
+        select.appendChild(opt);
+    });
+    if (prev && data.runs.some(r => r.name === prev)) {
+        select.value = prev;           // keep user's selection on refresh
+    }                                  // else newest run (first option) is selected
+}
+
+const PED_LEVEL_BADGE = { good: "success", warn: "warning", bad: "danger" };
+
+function renderPedSummary(s) {
+    const div = document.getElementById("ped-summary");
+    if (!s) { div.innerHTML = ""; return; }
+
+    const overall = PED_LEVEL_BADGE[s.overall] || "secondary";
+    let html = `
+      <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+        <span class="badge bg-${overall}" style="font-size:1em;">${s.overall.toUpperCase()}</span>
+        <span>${s.total_bad} bad / ${s.total_ch} channels</span>
+        <span class="text-muted">Ref CNS RMS: ${s.ref_cns_rms} ADC</span>
+        <span class="text-muted">Pedestals: ${s.pedestal_ts || "?"}</span>
+        <span class="text-muted small">analyzed ${s.generated}</span>
+      </div>
+      <table class="table table-dark table-sm table-bordered" style="width:auto;font-size:0.9em;">
+        <thead><tr>
+          <th>FEU</th><th>Events</th><th>OK</th><th>Noisy/Float</th>
+          <th>Dead/Stuck</th><th>Other</th><th>Med CNS RMS</th><th>Problem DREAMs</th>
+        </tr></thead><tbody>`;
+
+    Object.keys(s.feus).sort((a, b) => a - b).forEach(feu => {
+        const f = s.feus[feu];
+        const lvl = PED_LEVEL_BADGE[f.level] || "secondary";
+        const badDreams = Object.entries(f.bad_dreams)
+            .map(([d, cls]) => `D${d} (${cls.replace("_cable", "")})`)
+            .join(", ") || "—";
+        html += `<tr>
+          <td><span class="badge bg-${lvl}">FEU ${String(feu).padStart(2, "0")}</span></td>
+          <td>${f.n_events}</td><td>${f.n_ok}</td><td>${f.n_noisy}</td>
+          <td>${f.n_dead}</td><td>${f.n_other}</td>
+          <td>${f.med_cns_rms ?? "N/A"}</td><td>${badDreams}</td>
+        </tr>`;
+    });
+    div.innerHTML = html + "</tbody></table>";
+}
+
+async function loadPedQA(bustCache = false, data = null) {
+    const run = document.getElementById("ped-run-select").value;
+    if (!run) return;
+
+    if (!data) {
+        const res = await fetch(`/ped_qa_data?run=${encodeURIComponent(run)}`);
+        data = await res.json();
+    }
+    const gallery = document.getElementById("ped-gallery");
+    const noQa = document.getElementById("ped-no-qa");
+    const pdfLink = document.getElementById("ped-pdf-link");
+
+    if (!data.success) {
+        gallery.innerHTML = `<p class="text-danger">Error: ${data.message}</p>`;
+        return;
+    }
+    if (!data.has_qa) {
+        pedLastGenerated = null;
+        renderPedSummary(null);
+        gallery.innerHTML = "";
+        noQa.classList.remove("d-none");
+        pdfLink.classList.add("d-none");
+        return;
+    }
+    noQa.classList.add("d-none");
+    pedLastGenerated = data.summary.generated;
+    renderPedSummary(data.summary);
+
+    if (data.pdf) {
+        pdfLink.href = data.pdf;
+        pdfLink.classList.remove("d-none");
+    } else {
+        pdfLink.classList.add("d-none");
+    }
+
+    gallery.innerHTML = "";
+    const suffix = bustCache ? `&t=${Date.now()}` : "";
+    data.images.forEach(imgUrl => {
+        const src = imgUrl + suffix;
+        // Overview plots (channel map, summary table) get double width
+        const wide = /00_channel_map|01_summary_table/.test(decodeURIComponent(imgUrl));
+        const col = document.createElement("div");
+        col.className = wide ? "col-md-6 mb-3" : "col-md-3 mb-3";
+        col.innerHTML = `
+            <div class="card bg-dark text-white border-0">
+                <img src="${src}" class="card-img-top"
+                     style="object-fit:contain;max-height:${wide ? 320 : 200}px;cursor:pointer;"
+                     alt="pedestal QA plot">
+            </div>`;
+        gallery.appendChild(col);
+        col.querySelector("img").addEventListener("click", () => openFullscreenImage(src));
+    });
+}
+
+document.querySelector('a[href="#ped-viewer"]').addEventListener("click", async () => {
+    await loadPedRuns();
+    await loadPedQA();
+});
+document.getElementById("ped-run-select").addEventListener("change", () => loadPedQA());
+document.getElementById("ped-reload").addEventListener("click", async () => {
+    await loadPedRuns();
+    await loadPedQA(true);
+});
+
+// While the tab is visible, pick up new runs / newly analyzed runs automatically
+setInterval(async () => {
+    const pane = document.getElementById("ped-viewer");
+    if (!pane.classList.contains("active")) return;
+    await loadPedRuns();  // no-op unless the run list changed
+    const run = document.getElementById("ped-run-select").value;
+    if (!run) return;
+    const res = await fetch(`/ped_qa_data?run=${encodeURIComponent(run)}`);
+    const data = await res.json();
+    if (data.success && data.has_qa && data.summary.generated !== pedLastGenerated) {
+        await loadPedQA(true, data);
+    }
+}, 10000);
 
 
 setInterval(updateStatus, 1000);  // update every 1s

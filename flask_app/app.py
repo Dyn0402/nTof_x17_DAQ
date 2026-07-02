@@ -9,6 +9,7 @@ Created as Cosmic_Bench_DAQ_Control/app.py
 """
 
 import os
+import re
 import sys
 import subprocess
 import pty
@@ -24,7 +25,8 @@ from flask_socketio import SocketIO, emit
 
 from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_daq_control_status, get_processor_watcher_status,
-                        get_qa_watcher_status, get_backup_watcher_status)
+                        get_qa_watcher_status, get_backup_watcher_status,
+                        get_pedestal_watcher_status)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
 from run_config_beam import Config, BASE_DATA_DIR
@@ -44,6 +46,8 @@ QA_RESET_PATH  = f"{BASE_DIR}/config/qa_reset.json"
 QA_TMUX = "qa_watcher"
 BACKUP_CONFIG_PATH = f"{BASE_DIR}/config/backup_config.json"
 BACKUP_TMUX = "backup_watcher"
+PED_QA_CONFIG_PATH = f"{BASE_DIR}/config/pedestal_qa_config.json"
+PED_QA_TMUX = "pedestal_watcher"
 # ANALYSIS_DIR = "/media/dylan/data/x17"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
 ANALYSIS_DIR = f'{BASE_DATA_DIR}analysis'
@@ -74,7 +78,8 @@ def log_event(event, source, **details):
 app = Flask(__name__)
 socketio = SocketIO(app)
 
-TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher"]
+TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
+                 "pedestal_watcher"]
 sessions = {}
 
 @app.route("/")
@@ -102,6 +107,8 @@ def status_all():
             info = get_qa_watcher_status()
         elif s == "backup_watcher":
             info = get_backup_watcher_status()
+        elif s == "pedestal_watcher":
+            info = get_pedestal_watcher_status()
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 
@@ -317,6 +324,117 @@ def stop_backup():
         return jsonify({"success": True, "message": "Backup watcher stopped"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/start_ped_qa", methods=["POST"])
+def start_ped_qa():
+    try:
+        result = subprocess.run(
+            [sys.executable, f"{BASE_DIR}/pedestal_qa_config.py"],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            return jsonify({"success": False, "message": f"Config generation failed: {result.stderr}"}), 500
+        subprocess.run(["tmux", "kill-session", "-t", PED_QA_TMUX], capture_output=True)
+        # sys.executable (flask's venv python), not bare "python": the tmux
+        # server env doesn't always carry the venv PATH, so name resolution
+        # inside new sessions is unreliable.
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", PED_QA_TMUX,
+            sys.executable, f"{BASE_DIR}/pedestal_watcher.py", PED_QA_CONFIG_PATH
+        ])
+        return jsonify({"success": True, "message": "Pedestal QA watcher started"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stop_ped_qa", methods=["POST"])
+def stop_ped_qa():
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", PED_QA_TMUX], capture_output=True)
+        return jsonify({"success": True, "message": "Pedestal QA watcher stopped"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+def _ped_qa_cfg():
+    """(pedestals_dir, output_inner_dir) from the ped QA config, with the same
+    defaults pedestal_qa_config.py writes (config may not exist yet)."""
+    try:
+        with open(PED_QA_CONFIG_PATH) as f:
+            cfg = json.load(f)
+    except Exception:
+        cfg = {}
+    return (cfg.get("pedestals_dir", f"{BASE_DATA_DIR}pedestals/"),
+            cfg.get("output_inner_dir", "ped_qa"))
+
+
+@app.route("/list_ped_runs")
+def list_ped_runs():
+    """Pedestal run dirs (newest first) with whether QA output exists yet."""
+    ped_dir, inner_dir = _ped_qa_cfg()
+
+    if not os.path.isdir(ped_dir):
+        return jsonify(success=False, message=f"Pedestals dir not found: {ped_dir}")
+
+    def run_sort_key(name, full):
+        # Prefer the datetime in the dir name (pedestals_MM-DD-YY_HH-MM-SS);
+        # dir mtime is unreliable since QA output writes touch the dir.
+        # Both key kinds are epoch floats so they compare consistently.
+        m = re.search(r'(\d{2})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})', name)
+        if m:
+            try:
+                mo, d, y, h, mi, s = (int(g) for g in m.groups())
+                return datetime(2000 + y, mo, d, h, mi, s).timestamp()
+            except ValueError:
+                pass
+        return os.path.getmtime(full)
+
+    runs = []
+    for d in os.listdir(ped_dir):
+        full = os.path.join(ped_dir, d)
+        if not os.path.isdir(full):
+            continue
+        runs.append({
+            "name": d,
+            "sort_key": run_sort_key(d, full),
+            "has_qa": os.path.isfile(os.path.join(full, inner_dir, "summary.json")),
+        })
+    runs.sort(key=lambda r: r["sort_key"], reverse=True)
+    return jsonify(success=True, runs=runs, inner_dir=inner_dir, ped_dir=ped_dir)
+
+
+@app.route("/ped_qa_data")
+def ped_qa_data():
+    """Summary JSON + image/PDF URLs for one pedestal run's QA output."""
+    run_name = request.args.get("run", "")
+    ped_dir, inner_dir = _ped_qa_cfg()
+
+    # Plain directory names only — no separators, no '.'/'..' path tricks
+    if not re.fullmatch(r'(?!\.+$)[\w.\-]+', run_name):
+        return jsonify(success=False, message="Invalid run name"), 400
+    qa_dir = os.path.join(ped_dir, run_name, inner_dir)
+    if not os.path.isdir(qa_dir):
+        return jsonify(success=True, has_qa=False, summary=None, images=[], pdf=None)
+
+    summary = None
+    summary_path = os.path.join(qa_dir, "summary.json")
+    if os.path.isfile(summary_path):
+        try:
+            with open(summary_path) as f:
+                summary = json.load(f)
+        except Exception:
+            pass
+
+    dir_q  = quote(qa_dir, safe='')
+    images = [f"/serve_png?dir={dir_q}&file={quote(f, safe='')}"
+              for f in sorted(os.listdir(qa_dir)) if f.lower().endswith(".png")]
+    pdf = None
+    if os.path.isfile(os.path.join(qa_dir, "pedestal_strip_check.pdf")):
+        pdf = f"/serve_png?dir={dir_q}&file=pedestal_strip_check.pdf"
+
+    return jsonify(success=True, has_qa=summary is not None,
+                   summary=summary, images=images, pdf=pdf)
 
 
 @app.route("/rerun_qa", methods=["POST"])

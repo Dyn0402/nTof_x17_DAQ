@@ -316,6 +316,41 @@ def get_backup_watcher_status():
     return {"status": "UNKNOWN", "color": "danger", "fields": []}
 
 
+def get_pedestal_watcher_status():
+    """
+    Minimal status for the pedestal QA watcher — rendered as a compact card
+    ("small": True), so only running/analyzing/stopped, no detail fields.
+    """
+    try:
+        output = subprocess.check_output(
+            ["tmux", "capture-pane", "-pS", "-50", "-t", "pedestal_watcher:0.0"],
+            text=True
+        )
+    except subprocess.CalledProcessError:
+        return {"status": "STOPPED", "color": "secondary", "small": True, "fields": []}
+
+    def _st(status, color):
+        return {"status": status, "color": color, "small": True, "fields": []}
+
+    for line in reversed([l for l in output.splitlines() if l.strip()]):
+        if "[ped_watcher]" in line and (" done" in line or " idle " in line):
+            return _st("IDLE", "info")
+        if "[ped_watcher]" in line and "waiting for pedestals_dir" in line:
+            return _st("No Dir", "warning")
+        if "[ped_watcher]" in line and " failed " in line:
+            return _st("Failed", "warning")
+        if "[ped_watcher]" in line and "n_pedthr=" in line:
+            return _st("Analyzing", "success")
+        if "[ped_watcher]" in line:
+            return _st("RUNNING", "info")
+        if "[decode]" in line or "[analyze]" in line or "[info]" in line or "[done]" in line:
+            return _st("Analyzing", "success")
+
+    # Session alive but no recognized line in the capture window (e.g. a long
+    # unprefixed analysis printout scrolled everything out) — not an error.
+    return _st("RUNNING", "info")
+
+
 def get_decoder_status():
     try:
         output = subprocess.check_output(
