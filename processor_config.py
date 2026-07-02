@@ -38,7 +38,7 @@ CONFIG = {
     # Common-noise subtraction (median across each 64-channel block, per sample) during
     # waveform analysis. NB: the pedestal RMS is ALWAYS computed after CNS in the processor;
     # this flag only toggles CNS on the DATA waveforms.
-    'common_noise_subtraction': True,
+    'common_noise_subtraction': False,
 
     # Cleanup options
     'save_fdfs':    True,  # Keep raw FDF files after processing
