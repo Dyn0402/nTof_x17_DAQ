@@ -129,6 +129,12 @@ def main():
                 res = hv.receive()
                 if 'HV Set' in res:
                     print(f'[status] run={config.run_name}  subrun={sub_run_name}  run_time={sub_run.get("run_time", "?")}min')
+
+                    settle_time = sub_run.get('settle_time', 0)  # Seconds; 0 for most runs
+                    if settle_time and not os.path.exists(STOP_RUN_FLAG):
+                        print(f'HV ramp complete, settling for {settle_time} seconds before starting DAQ')
+                        sleep(settle_time)
+
                     print(f'Prepping DAQs for {sub_run_name}')
 
                     print(f'Starting run for sub run {sub_run_name}')

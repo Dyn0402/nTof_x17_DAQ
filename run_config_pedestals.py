@@ -73,7 +73,10 @@ class Config(RunConfigBase):
         # Single pedestal subrun. Ramp only the HV channels of the detectors
         # included in run_config_beam.py (skipping PMT scintillators, which do
         # not need bias to take FEU pedestals) instead of the whole crate.
-        ped_voltage = 300  # V; adjust if a different pedestal bias is needed
+        ped_voltage = 200  # V; adjust if a different pedestal bias is needed
+        # Seconds to wait after the HV ramp completes, before starting the DAQ,
+        # to let the detectors settle. Bump this if pedestals look unstable.
+        ped_settle_time = 30
         ped_hvs = {}
         for det in self.detectors:
             if det['name'] not in self.included_detectors:
@@ -91,6 +94,7 @@ class Config(RunConfigBase):
                 'sub_run_name': 'pedestals',
                 'run_time': 10.0 / 60,  # Minutes
                 'hvs': ped_hvs,
+                'settle_time': ped_settle_time,  # Seconds to settle after HV ramp
             }
         ]
 
