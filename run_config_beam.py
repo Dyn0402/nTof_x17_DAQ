@@ -41,23 +41,24 @@ class Config(RunConfigBase):
         self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
-        # self.gas = 'Ar/CO2 70/30'  # Gas type for run
-        self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
+        self.gas = 'Ar/CO2 70/30'  # Gas type for run
+        # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         # self.gas = 'Ne/Iso 95/5'  # Gas type for run
         # self.beam_type = 'cosmics'
-        # self.beam_type = 'neutrons'
+        self.beam_type = 'neutrons'
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
-        self.beam_type = 'sr-90'
+        # self.beam_type = 'sr-90'
         # self.target_type = 'carbon'
         # self.target_type = 'B4C - 2.5mm (thinner)'
         # self.target_type = 'B4C - 5mm (thicker)'
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
         self.target_type = 'none'
-        self.trigger = "Det 3 SiPM Wall + Det 3 Scint"
+        # self.trigger = "Det 3 SiPM Wall + Det 3 Scint"
+        self.trigger = "PS Pickup"
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
@@ -71,8 +72,8 @@ class Config(RunConfigBase):
             'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-            # 'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
+            # 'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -279,16 +280,23 @@ class Config(RunConfigBase):
         #     }
         # }
 
+        drift_hv = 1000  # V, all four drifts
         for i in range(20):
             new_subrun = {
                 'sub_run_name': f'run{i}',
                 'run_time': 60 * 3,  # Minutes
                 'hvs': {
                     '5': {  # Positive Resists
-                        '1': 800,  # mx17_4 3.6mm drift
+                        '1': 790,  # mx17_A
+                        '2': 780,  # mx17_B
+                        '3': 760,  # mx17_C
+                        '4': 690,  # mx17_D
                     },
                     '9': {  # Negative Drifts
-                        '1': 600,  # mx17_4 3.6mm drift
+                        '0': drift_hv,  # mx17_A
+                        '1': drift_hv,  # mx17_B
+                        '2': drift_hv,  # mx17_C
+                        '3': drift_hv,  # mx17_D
                     },
                 }
             }
