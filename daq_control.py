@@ -116,6 +116,11 @@ def main():
                         print(f'Weiner Power Supply check failed, skipping sub run {sub_run_name}')
                         continue
 
+                # Emit the status line before ramping so the flask daq_control card shows the
+                # current run/subrun immediately — otherwise it displays the previous run's name
+                # (from the last [status] line still in the tmux buffer) throughout the HV ramp.
+                print(f'[status] run={config.run_name}  subrun={sub_run_name}  run_time={sub_run.get("run_time", "?")}min')
+
                 print(f'Ramping HVs for {sub_run_name}')
                 if config.hv_info['hv_monitoring']:  # Monitor hv and write to file
                     hv.send('Begin Monitoring')
@@ -128,8 +133,6 @@ def main():
                 hv.send_json(sub_run)
                 res = hv.receive()
                 if 'HV Set' in res:
-                    print(f'[status] run={config.run_name}  subrun={sub_run_name}  run_time={sub_run.get("run_time", "?")}min')
-
                     settle_time = sub_run.get('settle_time', 0)  # Seconds; 0 for most runs
                     if settle_time and not os.path.exists(STOP_RUN_FLAG):
                         print(f'HV ramp complete, settling for {settle_time} seconds before starting DAQ')
