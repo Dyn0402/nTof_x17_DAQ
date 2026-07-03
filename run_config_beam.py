@@ -70,7 +70,7 @@ class Config(RunConfigBase):
         self.start_time = None
         self.process_on_fly = False  # True to process fdfs on the fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
-        self.resume = True  # True to resume an existing run: skip sub-runs already marked .subrun_complete.
+        self.resume = False  # True to resume an existing run: skip sub-runs already marked .subrun_complete.
         self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
@@ -102,7 +102,8 @@ class Config(RunConfigBase):
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_QA.cfg',
             # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_det3_QA.cfg',
 
-            'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
+            # 'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
+            'run_directory': f'/home/mx17/july_dream/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
             'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
