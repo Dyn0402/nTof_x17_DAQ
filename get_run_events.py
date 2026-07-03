@@ -34,9 +34,12 @@ def get_total_events_for_run(run_dir, run_name, raw_inner_dir='raw_daq_data'):
     """
     Return total DREAM event count for run_name across all subruns.
 
-    Reads nb_of_events from the DREAM RunCtrl log files that dream_daq_control.py
-    copies into each subrun's raw_daq_data/ directory at the end of the subrun.
-    Returns (total_events, {subrun_name: event_count}).
+    Reads the per-FEU event count from the DREAM RunCtrl log files that
+    dream_daq_control.py copies into each subrun's raw_daq_data/ directory at the
+    end of the subrun. Each event is read out by every FEU, so the per-FEU count
+    (not the FEU-summed total) is the number of physics events.
+    Returns (total_events, {subrun_name: event_count}). Note: an in-progress
+    subrun has no RunCtrl log yet, so it contributes 0 until it completes.
     """
     run_path = os.path.join(run_dir, run_name)
     if not os.path.isdir(run_path):
@@ -64,7 +67,9 @@ def get_total_events_for_run(run_dir, run_name, raw_inner_dir='raw_daq_data'):
 
 def _read_events_from_logs(raw_dir):
     """
-    Search *.log files in raw_dir for nb_of_events=<N> (DREAM RunCtrl output).
+    Search *.log files in raw_dir for the DREAM RunCtrl data-taking summary, e.g.
+        FeuCtrl_StopDataTaking OK after total 2216 events in 8 FEUs (277/FEU) ...
+    and return the per-FEU count (277 here) as the physics event count.
     Returns the highest value found, or None if not found.
     """
     best = None
@@ -74,7 +79,7 @@ def _read_events_from_logs(raw_dir):
         try:
             with open(os.path.join(raw_dir, fname), 'r', errors='replace') as f:
                 for line in f:
-                    m = re.search(r'nb_of_events\s*=\s*(\d+)', line)
+                    m = re.search(r'\((\d+)\s*/\s*FEU\)', line)
                     if m:
                         val = int(m.group(1))
                         if best is None or val > best:

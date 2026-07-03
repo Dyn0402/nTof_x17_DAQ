@@ -80,6 +80,7 @@ def main():
                         effective_feu_connectors = effective_info.get('feu_connectors', None)
                         effective_trigger_feu = effective_info.get('trigger_feu', None)
                         effective_do_pedestal_threshold_run = effective_info.get('do_pedestal_threshold_run', None)
+                        effective_do_data_run = effective_info.get('do_data_run', None)
 
                         sub_run_out_raw_inner_dir = f'{effective_out_directory}/{sub_run_name}/{effective_raw_daq_inner_dir}/'
                         create_dir_if_not_exist(sub_run_out_raw_inner_dir)
@@ -100,7 +101,8 @@ def main():
                             effective_pedestal_subtraction, effective_common_noise_subtraction,
                             effective_zs_type, effective_zs_check_sample, effective_latency,
                             effective_included_feus, effective_feu_connectors, effective_trigger_feu,
-                            do_pedestal_threshold_run=effective_do_pedestal_threshold_run)
+                            do_pedestal_threshold_run=effective_do_pedestal_threshold_run,
+                            do_data_run=effective_do_data_run)
                         shutil.copy(cfg_run_path, sub_run_out_raw_inner_dir)
 
                         if effective_pedestals_dir is not None:
@@ -490,7 +492,7 @@ def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time
                               samples_per_waveform=None, pedestal_subtraction=None,
                               common_noise_subtraction=None, zs_type=None, zs_check_sample=None,
                               latency=None, included_feus=None, feu_connectors=None, trigger_feu=None,
-                              do_pedestal_threshold_run=None):
+                              do_pedestal_threshold_run=None, do_data_run=None):
     print('Making config file from template...')
     dest = run_dir
     cfg_file_name = os.path.basename(cfg_template_file_path)
@@ -525,6 +527,13 @@ def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time
         updates["Feu * Dream * 12"] = f'0x{int(latency):04X}'
     if do_pedestal_threshold_run is not None:
         updates["Sys Action PedThrRun"] = _to_bit(do_pedestal_threshold_run)
+    if do_data_run is not None:
+        # Sys Action DataRun controls the data-taking phase that follows the
+        # pedestal/threshold run. Pedestal runs set this to 0 so RunCtrl produces
+        # only the _pedthr_ files (and _ped/_thr .prg) and skips the pointless
+        # data run, which otherwise writes empty _datrun_ FDFs (external trigger,
+        # no beam -> 0 events).
+        updates["Sys Action DataRun"] = _to_bit(do_data_run)
     update_config_value(cfg_file_path, updates)
 
     if included_feus is not None:

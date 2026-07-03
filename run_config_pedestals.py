@@ -59,6 +59,13 @@ class Config(RunConfigBase):
             'zero_suppress': False,   # pedestals are always full readout
             'n_samples_per_waveform': ped_n_samples,  # always 32 for pedestals
             'do_pedestal_threshold_run': True,  # Sys Action PedThrRun -> 1
+            'do_data_run': False,     # Sys Action DataRun -> 0: skip the data-taking
+                                      # phase after pedestals. It only produced empty
+                                      # _datrun_ FDFs (external trigger, no beam -> 0
+                                      # events) that get_pedestals then copied into
+                                      # every real subrun and could deadlock the
+                                      # processor. Only the _pedthr_/.prg outputs
+                                      # matter, and those come from PedThrRun.
             'pedestals_dir': None,    # taking fresh pedestals -> don't apply existing ones
             'pedestals': None,
         })
