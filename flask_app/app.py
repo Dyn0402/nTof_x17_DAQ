@@ -52,7 +52,7 @@ PED_QA_TMUX = "pedestal_watcher"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
 ANALYSIS_DIR = f'{BASE_DATA_DIR}analysis'
 RUN_DIR = f'{BASE_DATA_DIR}runs'
-GENERAL_ANALYSIS_DIR = f'{BASE_DATA_DIR}runs/Analysis'
+GENERAL_ANALYSIS_DIR = f'{BASE_DATA_DIR}analysis'
 HV_TAIL = 1000  # number of most recent rows to show
 
 LOG_DIR = f"{BASE_DIR}/logs"
