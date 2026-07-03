@@ -26,8 +26,17 @@ Config keys (see qa_config.py to generate the JSON):
                               The QA is always launched; memory is monitored during the run and
                               the process is terminated if the system crosses the threshold.
                               A killed subrun is NOT marked done and will be retried next poll.
+  cpu_nice                : nice level for the QA subprocess (default: 19, lowest priority).
+                              Also runs the process at ionice idle class so DAQ I/O wins.
+                              null disables both niceing and ionice.
+  cpu_affinity            : list of CPU core ids to pin the QA subprocess to via taskset
+                              (default: null = all cores).  e.g. [2, 3, 4, 5] reserves cores
+                              0-1 for the DAQ on a 6-core box.
+  qa_threads              : cap numpy/BLAS/uproot thread pools to this many threads
+                              (default: null = derived from len(cpu_affinity), else unlimited).
 """
 
+import os
 import re
 import sys
 import json
@@ -80,6 +89,11 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
     poll_interval   = config.get('poll_interval',   10)
     stale_run_days  = config.get('stale_run_days',    4)
     memory_kill_pct = config.get('memory_kill_pct',  80)
+    cpu_nice        = config.get('cpu_nice',         19)
+    cpu_affinity    = config.get('cpu_affinity')  # list[int] or None
+    qa_threads      = config.get('qa_threads')    # int or None
+    if qa_threads is None and cpu_affinity:
+        qa_threads = len(cpu_affinity)
 
     qa_script  = ntof_x17_dir / 'ntof_daq_analysis' / 'detector_qa.py'
     qa_python  = ntof_x17_dir / '.venv' / 'bin' / 'python'
@@ -94,7 +108,11 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
         print(f"[qa_watcher] exclude_runs    : {sorted(exclude_runs)}")
     print(f"[qa_watcher] poll            : {poll_interval}s  stale_after={stale_run_days}d")
     print(f"[qa_watcher] memory_kill_pct : {memory_kill_pct}%")
-    _log('START', runs_dir=runs_dir, mode=mode, memory_kill_pct=f'{memory_kill_pct}%')
+    print(f"[qa_watcher] cpu_nice        : {cpu_nice}")
+    print(f"[qa_watcher] cpu_affinity    : {cpu_affinity if cpu_affinity else 'all cores'}")
+    print(f"[qa_watcher] qa_threads      : {qa_threads if qa_threads else 'unlimited'}")
+    _log('START', runs_dir=runs_dir, mode=mode, memory_kill_pct=f'{memory_kill_pct}%',
+         cpu_nice=cpu_nice, cpu_affinity=cpu_affinity, qa_threads=qa_threads)
 
     state_path = reset_signal_path.parent / 'qa_state.json' if reset_signal_path else None
 
@@ -184,7 +202,9 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                                  n_files=len(stable), mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
                             completed_ok = _run_qa_monitored(
                                 qa_python, qa_script, subrun_dir, run_config_path,
-                                'all', memory_kill_pct=memory_kill_pct)
+                                'all', memory_kill_pct=memory_kill_pct,
+                                cpu_nice=cpu_nice, cpu_affinity=cpu_affinity,
+                                qa_threads=qa_threads)
                             if completed_ok:
                                 seen_files[key] = current
                                 _save_state(state_path, seen_files)
@@ -202,7 +222,9 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                                      file_num=0, mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
                                 completed_ok = _run_qa_monitored(
                                     qa_python, qa_script, subrun_dir, run_config_path,
-                                    'first', memory_kill_pct=memory_kill_pct)
+                                    'first', memory_kill_pct=memory_kill_pct,
+                                    cpu_nice=cpu_nice, cpu_affinity=cpu_affinity,
+                                    qa_threads=qa_threads)
                                 if completed_ok:
                                     done_first.add(key)
                                     _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name)
@@ -220,7 +242,9 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                                  file_num=fnum, mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
                             completed_ok = _run_qa_monitored(
                                 qa_python, qa_script, subrun_dir, run_config_path,
-                                'per_file', file_num=fnum, memory_kill_pct=memory_kill_pct)
+                                'per_file', file_num=fnum, memory_kill_pct=memory_kill_pct,
+                                cpu_nice=cpu_nice, cpu_affinity=cpu_affinity,
+                                qa_threads=qa_threads)
                             if completed_ok:
                                 completed.add(fnum)
                                 _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name,
@@ -335,9 +359,35 @@ def _mem_usage_pct() -> tuple:
     return used_pct, free_mb
 
 
+def _build_qa_command(cmd: list, cpu_nice, cpu_affinity) -> list:
+    """
+    Wrap the QA command with taskset (CPU affinity) + nice/ionice (priority) so
+    the QA never starves the DAQ.  Each wrapper execs the next, so the final PID
+    is still the python process (signals from _run_qa_monitored reach it).
+    """
+    wrapped = list(cmd)
+    if cpu_affinity:
+        cores   = ','.join(str(int(c)) for c in cpu_affinity)
+        wrapped = ['taskset', '-c', cores] + wrapped
+    if cpu_nice is not None:
+        wrapped = ['nice', '-n', str(int(cpu_nice)), 'ionice', '-c', '3'] + wrapped
+    return wrapped
+
+
+def _thread_limited_env(qa_threads) -> dict:
+    """Copy os.environ and cap numpy/BLAS/uproot thread pools if qa_threads is set."""
+    env = os.environ.copy()
+    if qa_threads:
+        for var in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',
+                    'NUMEXPR_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS'):
+            env[var] = str(int(qa_threads))
+    return env
+
+
 def _run_qa_monitored(qa_python, qa_script: Path, subrun_dir: Path,
                        run_config_path: Path, mode: str, file_num: int = None,
-                       memory_kill_pct: float = 80, monitor_interval: float = 1.0) -> bool:
+                       memory_kill_pct: float = 80, monitor_interval: float = 1.0,
+                       cpu_nice=19, cpu_affinity=None, qa_threads=None) -> bool:
     """
     Launch detector_qa.py as a subprocess and monitor system RAM while it runs.
 
@@ -346,6 +396,9 @@ def _run_qa_monitored(qa_python, qa_script: Path, subrun_dir: Path,
     then SIGKILL after 5 s) and False is returned.
     Returns True if the process completed without being killed.
     A killed run is NOT marked done in the caller's state — it will be retried.
+
+    cpu_nice / cpu_affinity / qa_threads throttle CPU use so the QA yields to the
+    DAQ (see _build_qa_command and _thread_limited_env).
     """
     cmd = [str(qa_python), str(qa_script),
            '--subrun_dir', str(subrun_dir),
@@ -354,8 +407,11 @@ def _run_qa_monitored(qa_python, qa_script: Path, subrun_dir: Path,
     if file_num is not None:
         cmd += ['--file_num', str(file_num)]
 
+    cmd = _build_qa_command(cmd, cpu_nice, cpu_affinity)
+    env = _thread_limited_env(qa_threads)
+
     run_label = f"{subrun_dir.parent.name}/{subrun_dir.name}"
-    proc = subprocess.Popen(cmd)
+    proc = subprocess.Popen(cmd, env=env)
 
     while proc.poll() is None:
         time.sleep(monitor_interval)

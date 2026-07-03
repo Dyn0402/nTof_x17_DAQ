@@ -38,6 +38,12 @@ CONFIG = {
     'poll_interval':   10,  # seconds between scans
     'stale_run_days':   1,  # runs with no new combined_hits for this many days are skipped
     'memory_kill_pct': 80,  # kill the QA process if system RAM usage exceeds this % (retried next poll)
+
+    # CPU throttling — keep QA from starving the DAQ.  6-core box, DAQ uses ~1 core:
+    #   pin QA to cores 2-5 (4 cores), reserve 0-1 for the DAQ, run at lowest priority.
+    'cpu_nice':         19,          # nice level (also ionice idle class); null = no niceing
+    'cpu_affinity': [2, 3, 4, 5],    # CPU cores QA may use (taskset); null = all cores
+    'qa_threads':     None,          # numpy/BLAS thread cap; null = len(cpu_affinity) = 4
 }
 
 if __name__ == '__main__':
