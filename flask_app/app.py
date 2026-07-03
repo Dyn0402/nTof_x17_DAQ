@@ -48,6 +48,9 @@ BACKUP_CONFIG_PATH = f"{BASE_DIR}/config/backup_config.json"
 BACKUP_TMUX = "backup_watcher"
 PED_QA_CONFIG_PATH = f"{BASE_DIR}/config/pedestal_qa_config.json"
 PED_QA_TMUX = "pedestal_watcher"
+# Last run name seen in the daq_control log; persisted so "Current run" survives
+# the status line scrolling out of the tmux pane / between runs / server restarts.
+CURRENT_RUN_STATE_PATH = f"{BASE_DIR}/config/current_run_state.json"
 # ANALYSIS_DIR = "/media/dylan/data/x17"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
 ANALYSIS_DIR = f'{BASE_DATA_DIR}analysis'
@@ -88,6 +91,49 @@ def index():
     return render_template("index.html", screens=TMUX_SESSIONS, run_configs=configs)
 
 
+# --- Current run tracking (from daq_control log, with persistence) ---
+def _load_current_run():
+    """Load the last-seen run name from disk (survives server restarts)."""
+    try:
+        with open(CURRENT_RUN_STATE_PATH) as f:
+            return json.load(f).get("run_name")
+    except Exception:
+        return None
+
+
+_current_run_cache = _load_current_run()
+
+
+def _extract_daq_run(daq_info):
+    """Pull the Run value out of a get_daq_control_status() result, or None."""
+    for field in daq_info.get("fields", []):
+        if field.get("label") == "Run":
+            value = field.get("value")
+            if value and value not in ("?", "None"):
+                return value
+    return None
+
+
+def _save_current_run(run_name):
+    """Persist run_name as the current run if it changed from what we have."""
+    global _current_run_cache
+    if not run_name or run_name == _current_run_cache:
+        return
+    _current_run_cache = run_name
+    try:
+        with open(CURRENT_RUN_STATE_PATH, "w") as f:
+            json.dump({"run_name": run_name, "updated": datetime.now().isoformat()}, f)
+    except Exception as e:
+        print(f"[current_run] Failed to persist run name: {e}")
+
+
+@app.route("/get_current_run")
+def get_current_run():
+    """Current run as last seen in the daq_control log, falling back to the
+    persisted value so it doesn't blank out between runs."""
+    return jsonify({"success": True, "run_name": _current_run_cache or "None"})
+
+
 @app.route("/status")
 def status_all():
     statuses = []
@@ -101,6 +147,7 @@ def status_all():
             info = get_hv_control_status()
         elif s == "daq_control":
             info = get_daq_control_status()
+            _save_current_run(_extract_daq_run(info))  # keep Current run in sync
         elif s == "processor_watcher":
             info = get_processor_watcher_status()
         elif s == "qa_watcher":
@@ -214,6 +261,7 @@ def run_config_py():
             run_name = "Error loading run name"
 
         if result.returncode == 0:
+            _save_current_run(run_name)  # seed Current run immediately
             return jsonify({"success": True, "message": f"Run started with loaded run_config_beam.py", "run_name": run_name})
         else:
             return jsonify({"message": f"Error: {result.stderr}"}), 500
@@ -244,7 +292,7 @@ def start_processor():
     try:
         # Regenerate processor_config.json from processor_config.py
         result = subprocess.run(
-            ["python", f"{BASE_DIR}/processor_config.py"],
+            [sys.executable, f"{BASE_DIR}/processor_config.py"],
             capture_output=True, text=True
         )
         if result.returncode != 0:
@@ -252,9 +300,11 @@ def start_processor():
 
         # Kill any existing session first (ignore errors if not running)
         subprocess.run(["tmux", "kill-session", "-t", PROCESSOR_TMUX], capture_output=True)
+        # sys.executable (flask's venv python), not bare "python": the tmux
+        # login shell resets PATH and drops the venv, so "python" may not resolve.
         subprocess.Popen([
             "tmux", "new-session", "-d", "-s", PROCESSOR_TMUX,
-            "python", f"{BASE_DIR}/processor_watcher.py", PROCESSOR_CONFIG_PATH
+            sys.executable, f"{BASE_DIR}/processor_watcher.py", PROCESSOR_CONFIG_PATH
         ])
         return jsonify({"success": True, "message": "Processor watcher started"})
     except Exception as e:
@@ -274,15 +324,17 @@ def stop_processor():
 def start_qa():
     try:
         result = subprocess.run(
-            ["python", f"{BASE_DIR}/qa_config.py"],
+            [sys.executable, f"{BASE_DIR}/qa_config.py"],
             capture_output=True, text=True
         )
         if result.returncode != 0:
             return jsonify({"success": False, "message": f"Config generation failed: {result.stderr}"}), 500
         subprocess.run(["tmux", "kill-session", "-t", QA_TMUX], capture_output=True)
+        # sys.executable (flask's venv python), not bare "python": the tmux
+        # login shell resets PATH and drops the venv, so "python" may not resolve.
         subprocess.Popen([
             "tmux", "new-session", "-d", "-s", QA_TMUX,
-            "python", f"{BASE_DIR}/qa_watcher.py", QA_CONFIG_PATH
+            sys.executable, f"{BASE_DIR}/qa_watcher.py", QA_CONFIG_PATH
         ])
         return jsonify({"success": True, "message": "QA watcher started"})
     except Exception as e:
@@ -302,15 +354,17 @@ def stop_qa():
 def start_backup():
     try:
         result = subprocess.run(
-            ["python", f"{BASE_DIR}/backup_config.py"],
+            [sys.executable, f"{BASE_DIR}/backup_config.py"],
             capture_output=True, text=True
         )
         if result.returncode != 0:
             return jsonify({"success": False, "message": f"Config generation failed: {result.stderr}"}), 500
         subprocess.run(["tmux", "kill-session", "-t", BACKUP_TMUX], capture_output=True)
+        # sys.executable (flask's venv python), not bare "python": the tmux
+        # login shell resets PATH and drops the venv, so "python" may not resolve.
         subprocess.Popen([
             "tmux", "new-session", "-d", "-s", BACKUP_TMUX,
-            "python", f"{BASE_DIR}/backup_watcher.py", BACKUP_CONFIG_PATH
+            sys.executable, f"{BASE_DIR}/backup_watcher.py", BACKUP_CONFIG_PATH
         ])
         return jsonify({"success": True, "message": "Backup watcher started"})
     except Exception as e:
@@ -648,16 +702,11 @@ def get_config_py():
 @app.route("/get_run_events", methods=['GET'])
 def get_run_events():
     try:
-        result = subprocess.run(
-            ["python", f"{BASE_DIR}/get_config_py.py"],
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            return jsonify({"success": False, "message": f"Error: {result.stderr}"}), 500
-        output = result.stdout.strip()
-        config_data = json.loads(output)
-        run_name = config_data.get("run_name", "Unknown")
+        # Count events for the run daq_control is actually running (not the
+        # possibly-edited run_config_beam.py). Falls back to the persisted value.
+        run_name = _current_run_cache
+        if not run_name:
+            return jsonify({"success": True, "total_events": 0, "subrun_details": {}})
         total_events, subrun_details = get_total_events_for_run(
             run_dir=RUN_DIR,
             run_name=run_name
@@ -668,7 +717,7 @@ def get_run_events():
             "subrun_details": subrun_details
         })
     except Exception as e:
-        return jsonify({"success": False, "message": f"Error getting run name: {str(e)}"}), 500
+        return jsonify({"success": False, "message": f"Error getting run events: {str(e)}"}), 500
 
 
 @app.route("/monitor/toggle", methods=["POST"])
@@ -728,14 +777,24 @@ def system_stats():
         cpu_pcts = psutil.cpu_percent(percpu=True)
         mem = psutil.virtual_memory()
         swap = psutil.swap_memory()
-        disk = psutil.disk_usage('/')
         load = os.getloadavg()
+
+        def disk_stats(path):
+            try:
+                d = psutil.disk_usage(path)
+                return {"total": d.total, "used": d.used, "percent": d.percent}
+            except Exception:
+                return None
+
+        ssd = disk_stats('/')          # OS/system SSD
+        hdd = disk_stats('/mnt/data')  # data HDD
         return jsonify({
             "success": True,
             "cpu_cores": cpu_pcts,
             "memory": {"total": mem.total, "used": mem.used, "percent": mem.percent},
             "swap":   {"total": swap.total, "used": swap.used, "percent": swap.percent},
-            "disk":   {"total": disk.total, "used": disk.used, "percent": disk.percent},
+            "ssd":    ssd,
+            "hdd":    hdd,
             "load_avg": list(load),
         })
     except ImportError:

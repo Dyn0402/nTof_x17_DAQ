@@ -165,8 +165,7 @@ def run_watcher(config: dict):
                     for fnum in sorted(all_fnums - done_fnums):
                         all_fdf_group = [
                             raw_dir / f for f in os.listdir(raw_dir)
-                            if f.endswith('.fdf') and '_datrun_' in f
-                            and _extract_file_num(f) == fnum
+                            if _is_data_fdf(f) and _extract_file_num(f) == fnum
                         ]
                         if not all_fdf_group:
                             continue
@@ -249,7 +248,8 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
         create_dir_if_not_exist(str(hits_dir))
         source_roots = [
             f for f in decoded_dir.glob('*.root')
-            if '_datrun_' in f.name and _extract_file_num(f.name) == fnum
+            if '_datrun_' in f.name and '_pedestals_' not in f.name
+            and _extract_file_num(f.name) == fnum
         ] if decoded_dir.exists() else []
 
         tasks = []
@@ -340,10 +340,21 @@ def _resolve_pedestal_dir(raw_dir: Path, pedestal_loc: str, pedestal_base_dir: s
     return ''
 
 
+def _is_data_fdf(name: str) -> bool:
+    """True for real data datrun FDFs.
+
+    Excludes the 0-byte ``Mx17_pedestals_datrun_*.fdf`` placeholders that the DAQ
+    drops into every subrun's raw_daq_data: they share file_num 000 with the real
+    scan datruns, so if they are grouped in, the ``any(size == 0)`` guard treats
+    file_num 000 as "still being written" forever and the subrun is never decoded.
+    """
+    return name.endswith('.fdf') and '_datrun_' in name and '_pedestals_' not in name
+
+
 def _get_data_file_nums(raw_dir: Path) -> set:
     nums = set()
     for f in raw_dir.iterdir():
-        if f.suffix == '.fdf' and '_datrun_' in f.name:
+        if _is_data_fdf(f.name):
             n = _extract_file_num(f.name)
             if n is not None:
                 nums.add(n)
@@ -364,7 +375,10 @@ def _get_processed_file_nums(subrun_dir, combined_inner, hits_inner, decoded_inn
     if not check_dir.exists():
         return done
     for f in check_dir.iterdir():
-        if flag not in f.name:
+        # Skip pedestal reference outputs copied into the subrun: they carry
+        # file_num 000 and would otherwise mark the real scan's file_num 000 as
+        # "done", blocking its analyze/combine forever (mirrors _is_data_fdf).
+        if flag not in f.name or '_pedestals_' in f.name:
             continue
         n = _extract_file_num(f.name)
         if n is not None:
@@ -378,6 +392,8 @@ def _get_feu_hits_map(hits_dir: Path, fnum: int) -> dict:
     if not hits_dir.exists():
         return result
     for f in hits_dir.iterdir():
+        if '_pedestals_' in f.name:   # never combine copied-in pedestal hits
+            continue
         m = re.match(r'.*_(\d{3})_(\d{2})_hits\.root$', f.name)
         if m and int(m.group(1)) == fnum:
             result[int(m.group(2))] = str(f)

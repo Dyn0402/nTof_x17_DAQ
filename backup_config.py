@@ -9,8 +9,8 @@ The flask UI's Start Backup button reads that JSON to launch backup_watcher.py.
 import json
 import os
 
-SOURCE_DIR     = '/mnt/data/x17/beam_may/'
-EOS_DIR        = '/eos/experiment/ntof/data/x17/may_beam/'
+SOURCE_DIR     = '/mnt/data/x17/beam_july/'
+EOS_DIR        = '/eos/experiment/ntof/data/x17/july_beam/'
 CERN_PRINCIPAL = 'dneff@CERN.CH'
 GPG_PASS_FILE  = '/home/mx17/.cern_pass.gpg'
 
