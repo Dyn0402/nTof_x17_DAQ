@@ -70,7 +70,7 @@ class Config(RunConfigBase):
         self.start_time = None
         self.process_on_fly = False  # True to process fdfs on the fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
-        self.resume = False  # True to resume an existing run: skip sub-runs already marked .subrun_complete.
+        self.resume = True  # True to resume an existing run: skip sub-runs already marked .subrun_complete.
         self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
