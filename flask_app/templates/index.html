@@ -3,187 +3,233 @@
 {% block content %}
 <!-- DAQ Overview Tab -->
 <div class="tab-pane fade show active" id="overview">
-  <h2>DAQ Overview</h2>
 
-  <!-- Current run display -->
-  <div class="mt-3 mb-3">
-    <h6 class="text-white mb-1" style="font-size:1.1rem; font-weight:600;">
-      Current run:&nbsp;<span id="run-display" style="color:#fff; font-weight:700;">None</span>
-    </h6>
-    <h6 class="text-white mb-0" style="font-size:1.1rem; font-weight:600;">
-      Events this Run:&nbsp;<span id="events-display" style="color:#fff; font-weight:700;">0</span>
-    </h6>
-  </div>
-
-  <!-- Control buttons -->
-  <div class="mb-4 d-flex flex-wrap align-items-center gap-2">
-    <select id="run-select" class="form-select me-3 d-none" style="width:auto;"></select>
-    <button id="run-config-py" class="btn btn-success me-2 mb-2">Start Run</button>
-    <button id="stop-sub-run" class="btn btn-warning me-2 mb-2">Stop Sub-Run</button>
-    <button id="stop-run" class="btn btn-danger me-2 mb-2">Stop Run</button>
-    <button id="restart-all" class="btn btn-danger me-2 mb-2">Restart All</button>
-    <button id="take-pedestals" class="btn btn-secondary me-2 mb-2">Take Pedestals</button>
-    <button id="git-reset" class="btn btn-secondary me-2 mb-2">Git Reset</button>
-    <div class="w-100"></div>
-    <button id="start-processor" class="btn btn-info me-2 mb-2">Start Processor</button>
-    <button id="stop-processor" class="btn btn-secondary me-2 mb-2">Stop Processor</button>
-    <button id="start-qa" class="btn btn-info me-2 mb-2">Start QA</button>
-    <button id="stop-qa" class="btn btn-secondary me-2 mb-2">Stop QA</button>
-    <button id="rerun-qa" class="btn btn-warning me-2 mb-2">Rerun QA</button>
-    <button id="start-backup" class="btn btn-info me-2 mb-2">Start Backup</button>
-    <button id="stop-backup" class="btn btn-secondary me-2 mb-2">Stop Backup</button>
-  </div>
-
-    <!-- Monitoring panel -->
-    <div class="card bg-dark border-secondary mb-4 mt-2" id="monitor-panel">
-      <div class="card-body py-2">
-        <div class="d-flex flex-wrap align-items-center gap-3">
-          <span class="fw-bold text-white">Monitoring:</span>
-          <button id="monitor-toggle" class="btn btn-sm btn-secondary">Off</button>
-          <span id="monitor-last-check" class="text-muted small"></span>
-          <span id="monitor-active-alerts" class="text-danger small fw-bold"></span>
-          <div class="ms-auto d-flex gap-2">
-            <button id="monitor-test" class="btn btn-sm btn-outline-info">Test Alert</button>
-            <button id="monitor-setup" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#monitor-setup-collapse">Setup</button>
-          </div>
+  <!-- Top row: run control (left) + system monitor (right) -->
+  <div class="row g-3">
+    <div class="col-12 col-xl-6">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Run Control</span>
         </div>
-        <div class="collapse mt-2" id="monitor-setup-collapse">
-          <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
-            <span class="text-muted small">Chat ID:</span>
-            <span id="monitor-chat-id" class="text-white small font-monospace"></span>
-            <button id="monitor-fetch-chat-id" class="btn btn-sm btn-outline-secondary">Auto-fetch</button>
-            <span class="text-muted small ms-2">or enter manually:</span>
-            <input id="monitor-chat-id-input" type="text" class="form-control form-control-sm"
-                   style="width:160px;" placeholder="chat ID">
-            <button id="monitor-set-chat-id" class="btn btn-sm btn-outline-secondary">Set</button>
-            <span id="monitor-bot-name" class="text-muted small ms-3"></span>
+        <div class="panel-body">
+          <div class="run-stats">
+            <div class="stat">
+              <div class="stat-label">Current run</div>
+              <div class="stat-value" id="run-display">None</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Events this run</div>
+              <div class="stat-value" id="events-display">0</div>
+            </div>
           </div>
-          <p class="text-muted small mt-2 mb-0">
-            To auto-fetch: open Telegram, find the bot, send it any message, then click Auto-fetch.
-          </p>
+
+          <select id="run-select" class="form-select d-none" style="width:auto;"></select>
+
+          <div class="btn-group-block">
+            <span class="group-label">Run</span>
+            <div class="d-flex flex-wrap gap-2">
+              <button id="run-config-py" class="btn btn-success">Start Run</button>
+              <button id="stop-sub-run" class="btn btn-warning">Stop Sub-Run</button>
+              <button id="stop-run" class="btn btn-danger">Stop Run</button>
+              <button id="restart-all" class="btn btn-outline-danger">Restart All</button>
+              <button id="take-pedestals" class="btn btn-secondary">Take Pedestals</button>
+              <button id="git-reset" class="btn btn-secondary">Git Reset</button>
+            </div>
+          </div>
+
+          <div class="btn-group-block">
+            <span class="group-label">Watchers</span>
+            <div class="d-flex flex-wrap gap-2">
+              <button id="start-processor" class="btn btn-info btn-sm">Start Processor</button>
+              <button id="stop-processor" class="btn btn-outline-secondary btn-sm">Stop Processor</button>
+              <button id="start-qa" class="btn btn-info btn-sm">Start QA</button>
+              <button id="stop-qa" class="btn btn-outline-secondary btn-sm">Stop QA</button>
+              <button id="rerun-qa" class="btn btn-outline-warning btn-sm">Rerun QA</button>
+              <button id="start-backup" class="btn btn-info btn-sm">Start Backup</button>
+              <button id="stop-backup" class="btn btn-outline-secondary btn-sm">Stop Backup</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-
-    <div class="row" id="status-cards">
-        <!-- Status cards populated dynamically -->
-    </div>
-    <hr class="my-4">
-
-    <h3>HV Monitor</h3>
-    <p class="text-muted" style="color:#fff;">Latest voltage and current readings from HV control system</p>
-    <label for="hv-subrun-select" class="me-2">Subrun:</label>
-          <select id="hv-subrun-select" class="form-select me-3" style="width:auto;">
-            <option value="">(none)</option>
-          </select>
-
-    <div id="hv-voltage-plot" style="width:100%;height:400px;"></div>
-    <div id="hv-current-plot" style="width:100%;height:400px;"></div>
-
-    <script src="{{ url_for('static', filename='plotly.min.js') }}"></script>
 
     <!-- System Resource Monitor -->
-    <hr class="my-4">
-    <div id="sys-monitor" style="font-family:'Courier New',monospace;background:#0d0d0d;border:1px solid #2e2e2e;border-radius:6px;padding:14px 18px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;border-bottom:1px solid #1e1e1e;padding-bottom:7px;">
-        <span style="color:#4ec9b0;font-weight:bold;font-size:0.9em;letter-spacing:0.08em;">SYSTEM RESOURCES</span>
-        <span id="sys-load-avg" style="color:#555;font-size:0.78em;"></span>
-      </div>
-      <div id="sys-cpu-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:3px 24px;margin-bottom:10px;"></div>
-      <div style="border-top:1px solid #1e1e1e;padding-top:8px;display:flex;flex-direction:column;gap:3px;">
-        <div id="sys-mem-row"></div>
-        <div id="sys-swp-row"></div>
-        <div id="sys-dsk-row"></div>
+    <div class="col-12 col-xl-6">
+      <div class="panel h-100" id="sys-monitor">
+        <div class="panel-header">
+          <span class="panel-title">System Resources</span>
+          <span id="sys-load-avg" class="ms-auto"></span>
+        </div>
+        <div class="panel-body">
+          <div id="sys-cpu-grid"></div>
+          <div class="sys-rows">
+            <div id="sys-mem-row"></div>
+            <div id="sys-swp-row"></div>
+            <div id="sys-dsk-row"></div>
+          </div>
+        </div>
       </div>
     </div>
+  </div>
 
+  <!-- Monitoring strip -->
+  <div class="panel monitor-strip mt-3" id="monitor-panel">
+    <div class="strip-row">
+      <span class="strip-label">Monitoring</span>
+      <button id="monitor-toggle" class="btn btn-sm btn-secondary">Off</button>
+      <span id="monitor-last-check" class="text-muted small"></span>
+      <span id="monitor-active-alerts" class="text-danger small fw-bold"></span>
+      <div class="ms-auto d-flex gap-2">
+        <button id="monitor-test" class="btn btn-sm btn-outline-info">Test Alert</button>
+        <button id="monitor-setup" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#monitor-setup-collapse">Setup</button>
+      </div>
+    </div>
+    <div class="collapse" id="monitor-setup-collapse">
+      <div class="collapse-body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+          <span class="text-muted small">Chat ID:</span>
+          <span id="monitor-chat-id" class="small font-monospace"></span>
+          <button id="monitor-fetch-chat-id" class="btn btn-sm btn-outline-secondary">Auto-fetch</button>
+          <span class="text-muted small ms-2">or enter manually:</span>
+          <input id="monitor-chat-id-input" type="text" class="form-control form-control-sm"
+                 style="width:160px;" placeholder="chat ID">
+          <button id="monitor-set-chat-id" class="btn btn-sm btn-outline-secondary">Set</button>
+          <span id="monitor-bot-name" class="text-muted small ms-3"></span>
+        </div>
+        <p class="text-muted small mt-2 mb-0">
+          To auto-fetch: open Telegram, find the bot, send it any message, then click Auto-fetch.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status cards -->
+  <div class="row g-3 mt-0" id="status-cards">
+    <!-- Status cards populated dynamically -->
+  </div>
+
+  <!-- HV Monitor -->
+  <div class="panel mt-3">
+    <div class="panel-header">
+      <span class="panel-title">HV Monitor</span>
+      <span class="panel-header-note">latest voltage and current readings from HV control</span>
+      <span class="ms-auto d-flex align-items-center gap-2">
+        <label for="hv-subrun-select" class="text-muted small mb-0">Subrun</label>
+        <select id="hv-subrun-select" class="form-select form-select-sm" style="width:auto;">
+          <option value="">(none)</option>
+        </select>
+      </span>
+    </div>
+    <div class="panel-body">
+      <div class="row g-3">
+        <div class="col-12 col-xl-6">
+          <div id="hv-voltage-plot" style="width:100%;height:380px;"></div>
+        </div>
+        <div class="col-12 col-xl-6">
+          <div id="hv-current-plot" style="width:100%;height:380px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='plotly.min.js') }}"></script>
 </div>
 
 
 <!-- Online QA Viewer Tab -->
 <div class="tab-pane fade" id="png-viewer">
-  <h2>Online QA</h2>
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Online QA</span>
+      <span id="qa-last-update" class="panel-header-note ms-auto"></span>
+    </div>
+    <div class="panel-body">
+      <div class="row g-3">
+        <div class="col-12 col-sm-6 col-lg-3">
+          <label for="run-select-qa" class="form-label">Run:</label>
+          <select id="run-select-qa" class="form-select">
+            <option value="">Select run...</option>
+          </select>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-3">
+          <label for="subrun-select" class="form-label">Subrun:</label>
+          <select id="subrun-select" class="form-select" disabled>
+            <option value="">Select subrun...</option>
+          </select>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-3">
+          <label for="detector-select" class="form-label">Detector:</label>
+          <select id="detector-select" class="form-select" disabled>
+            <option value="">Select detector...</option>
+          </select>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-3" id="qa-subdir-col" style="display:none;">
+          <label for="subdir-select-qa" class="form-label">Subdirectory:</label>
+          <select id="subdir-select-qa" class="form-select">
+            <option value="">(top level)</option>
+          </select>
+        </div>
+      </div>
 
-  <div class="row g-3">
-    <div class="col-md-3">
-      <label for="run-select-qa" class="form-label">Run:</label>
-      <select id="run-select-qa" class="form-select">
-        <option value="">Select run...</option>
-      </select>
-    </div>
-    <div class="col-md-3">
-      <label for="subrun-select" class="form-label">Subrun:</label>
-      <select id="subrun-select" class="form-select" disabled>
-        <option value="">Select subrun...</option>
-      </select>
-    </div>
-    <div class="col-md-3">
-      <label for="detector-select" class="form-label">Detector:</label>
-      <select id="detector-select" class="form-select" disabled>
-        <option value="">Select detector...</option>
-      </select>
-    </div>
-    <div class="col-md-3" id="qa-subdir-col" style="display:none;">
-      <label for="subdir-select-qa" class="form-label">Subdirectory:</label>
-      <select id="subdir-select-qa" class="form-select">
-        <option value="">(top level)</option>
-      </select>
+      <div class="mt-3 d-flex flex-wrap gap-2">
+        <button id="load-pngs" class="btn btn-primary" disabled>Load Images</button>
+        <button id="refresh-qa-runs" class="btn btn-secondary">Refresh Runs</button>
+        <button id="reload-pngs" class="btn btn-outline-info" disabled>Reload Plots</button>
+      </div>
     </div>
   </div>
 
-  <div class="mt-3 d-flex gap-2">
-    <button id="load-pngs" class="btn btn-primary" disabled>Load Images</button>
-    <button id="refresh-qa-runs" class="btn btn-secondary">Refresh Runs</button>
-    <button id="reload-pngs" class="btn btn-outline-info" disabled>Reload Plots</button>
-  </div>
-  <p id="qa-last-update" class="text-muted mt-1" style="font-size:0.85em;"></p>
-
-  <div id="png-gallery" class="row mt-4"></div>
+  <div id="png-gallery" class="row g-3 mt-0"></div>
 </div>
 
 
 <!-- Pedestal QA Tab -->
 <div class="tab-pane fade" id="ped-viewer">
-  <h2>Pedestal QA</h2>
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Pedestal QA</span>
+      <span class="ms-auto d-flex align-items-center gap-2">
+        <span class="text-muted small">Watcher:</span>
+        <span id="ped-watcher-status" class="badge bg-secondary">...</span>
+        <button id="ped-watcher-toggle" class="btn btn-sm btn-outline-secondary">Start</button>
+      </span>
+    </div>
+    <div class="panel-body">
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <label for="ped-run-select" class="form-label mb-0">Pedestal run:</label>
+        <select id="ped-run-select" class="form-select" style="width:auto;">
+          <option value="">Loading...</option>
+        </select>
+        <button id="ped-reload" class="btn btn-outline-info btn-sm">Reload</button>
+        <a id="ped-pdf-link" class="btn btn-outline-light btn-sm d-none" target="_blank" href="#">PDF</a>
+      </div>
 
-  <div class="d-flex flex-wrap align-items-center gap-2 mt-3 mb-3">
-    <label for="ped-run-select" class="form-label mb-0">Pedestal run:</label>
-    <select id="ped-run-select" class="form-select" style="width:auto;">
-      <option value="">Loading...</option>
-    </select>
-    <button id="ped-reload" class="btn btn-outline-info btn-sm">Reload</button>
-    <a id="ped-pdf-link" class="btn btn-outline-light btn-sm d-none" target="_blank" href="#">PDF</a>
-    <span class="ms-auto d-flex align-items-center gap-2">
-      <span class="text-muted small">Watcher:</span>
-      <span id="ped-watcher-status" class="badge bg-secondary">...</span>
-      <button id="ped-watcher-toggle" class="btn btn-sm btn-outline-secondary">Start</button>
-    </span>
+      <div id="ped-summary" class="mt-3"></div>
+      <p id="ped-no-qa" class="text-muted d-none mb-0">No QA output for this run yet — the watcher will analyze it once the run finishes.</p>
+    </div>
   </div>
 
-  <div id="ped-summary" class="mb-3"></div>
-  <p id="ped-no-qa" class="text-muted d-none">No QA output for this run yet — the watcher will analyze it once the run finishes.</p>
-  <div id="ped-gallery" class="row mt-2"></div>
+  <div id="ped-gallery" class="row g-3 mt-0"></div>
 </div>
 
 
 <!-- Analysis Browser Tab -->
 <div class="tab-pane fade" id="analysis-browser">
-  <h2>Analysis</h2>
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Analysis</span>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb" id="ab-breadcrumb"></ol>
+      </nav>
+      <button id="ab-reload" class="btn btn-outline-info btn-sm ms-auto">Reload Plots</button>
+    </div>
+    <div class="panel-body">
+      <div id="ab-subdirs" class="d-flex flex-wrap gap-2"></div>
+      <p id="ab-no-images" class="text-muted d-none mb-0 mt-2">No images in this directory.</p>
+    </div>
+  </div>
 
-  <!-- Breadcrumb -->
-  <nav aria-label="breadcrumb" class="mt-3">
-    <ol class="breadcrumb" id="ab-breadcrumb" style="background:transparent;padding:0;">
-    </ol>
-  </nav>
-
-  <!-- Subdirectory buttons -->
-  <div id="ab-subdirs" class="mb-3 d-flex flex-wrap gap-2"></div>
-
-  <button id="ab-reload" class="btn btn-outline-info btn-sm mb-3">Reload Plots</button>
-
-  <!-- Image gallery -->
-  <p id="ab-no-images" class="text-muted d-none">No images in this directory.</p>
-  <div id="ab-gallery" class="row mt-2"></div>
+  <div id="ab-gallery" class="row g-3 mt-0"></div>
 </div>
 
 
@@ -191,22 +237,6 @@
 
 {% block scripts %}
 <script>
-// --- Live Screens JS ---
-// {% for name in screens %}
-// (function() {
-//     var term = new Terminal();
-//     term.open(document.getElementById("terminal-{{name}}"));
-//     var socket = io();
-//     socket.on("output-{{name}}", function(data) {
-//         term.write(data);
-//     });
-//     term.onData(function(data) {
-//         socket.emit("input-{{name}}", data);
-//     });
-//     socket.emit("start", {name: "{{name}}"});
-// })();
-// {% endfor %}
-
 let run = null;
 let lastSubrun = null;
 
@@ -248,53 +278,32 @@ function updateStatus() {
                 // Compact card: watchers that only need a running/not indicator
                 if (info.small) {
                     container.innerHTML += `
-                      <div class="col-6 col-md-2 mb-3">
-                        <div class="card text-white bg-${info.color} h-100">
-                          <div class="card-body py-2 px-3">
-                            <div style="font-size:0.78em;opacity:0.85;">${info.name}</div>
-                            <div style="font-weight:bold;font-size:0.95em;">${info.status}</div>
-                          </div>
+                      <div class="col-6 col-md-3 col-xl-2">
+                        <div class="status-card s-${info.color}">
+                          <div class="status-name">${info.name}</div>
+                          <div class="status-state">${info.status}</div>
                         </div>
                       </div>`;
                     return;
                 }
 
                 let details = info.fields.map(
-                    f => `<p>${f.label}: ${f.value}</p>`
+                    f => `<div class="status-field"><span>${f.label}</span><span>${f.value}</span></div>`
                 ).join("");
 
                 container.innerHTML += `
-                  <div class="col-md-4 mb-3">
-                    <div class="card text-white bg-${info.color}">
-                      <div class="card-body">
-                        <h5 class="card-title">${info.name}</h5>
-                        <p class="card-text">Status: ${info.status}</p>
-                        ${details}
+                  <div class="col-12 col-md-6 col-xl-4">
+                    <div class="status-card s-${info.color}">
+                      <div class="status-top">
+                        <span class="status-name">${info.name}</span>
+                        <span class="status-state">${info.status}</span>
                       </div>
+                      <div class="status-fields">${details}</div>
                     </div>
                   </div>`;
             });
 
             updatePedWatcherUI(data);
-
-            // let container = document.getElementById("status-cards");
-            // container.innerHTML = "";
-            // Object.entries(data).forEach(([name, info]) => {
-            //     let details = info.fields.map(
-            //         f => `<p>${f.label}: ${f.value}</p>`
-            //     ).join("");
-            //
-            //     container.innerHTML += `
-            //       <div class="col-md-4 mb-3">
-            //         <div class="card text-white bg-${info.color}">
-            //           <div class="card-body">
-            //             <h5 class="card-title">${name}</h5>
-            //             <p class="card-text">Status: ${info.status}</p>
-            //             ${details}
-            //           </div>
-            //         </div>
-            //       </div>`;
-            // });
         });
 }
 
@@ -307,9 +316,9 @@ function showPopup(message, color) {
   popup.style.transform = "translateX(-50%)";
   popup.style.background = color;
   popup.style.color = "#fff";
-  popup.style.padding = "1em 2em";
-  popup.style.borderRadius = "8px";
-  popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
+  popup.style.padding = "0.8em 1.6em";
+  popup.style.borderRadius = "10px";
+  popup.style.boxShadow = "0 4px 16px rgba(0,0,0,0.45)";
   popup.style.zIndex = "9999";
   popup.style.opacity = "1";
   popup.style.transition = "opacity 1s";
@@ -350,67 +359,6 @@ document.getElementById("stop-run").addEventListener("click", async () => {
   run = null;
 });
 
-
-// document.getElementById("stop-sub-run").addEventListener("click", async () => {
-//   const res = await fetch("/stop_sub_run", { method: "POST" });
-//   const data = await res.json();
-//
-//   // Create a fading popup
-//   const popup = document.createElement("div");
-//   popup.textContent = data.message;
-//   popup.style.position = "fixed";
-//   popup.style.top = "80px";
-//   popup.style.left = "50%";
-//   popup.style.transform = "translateX(-50%)";
-//   popup.style.background = "#dc7b35";
-//   popup.style.color = "#fff";
-//   popup.style.padding = "1em 2em";
-//   popup.style.borderRadius = "8px";
-//   popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
-//   popup.style.zIndex = "9999";
-//   popup.style.opacity = "1";
-//   popup.style.transition = "opacity 1s";
-//
-//   document.body.appendChild(popup);
-//
-//   run = null;
-//
-//   setTimeout(() => {
-//     popup.style.opacity = "0";
-//     setTimeout(() => popup.remove(), 1000);
-//   }, 2500);
-// });
-//
-//
-// document.getElementById("stop-run").addEventListener("click", async () => {
-//   const res = await fetch("/stop_run", { method: "POST" });
-//   const data = await res.json();
-//
-//   // Create a fading popup
-//   const popup = document.createElement("div");
-//   popup.textContent = data.message;
-//   popup.style.position = "fixed";
-//   popup.style.top = "80px";
-//   popup.style.left = "50%";
-//   popup.style.transform = "translateX(-50%)";
-//   popup.style.background = "#dc3545";
-//   popup.style.color = "#fff";
-//   popup.style.padding = "1em 2em";
-//   popup.style.borderRadius = "8px";
-//   popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
-//   popup.style.zIndex = "9999";
-//   popup.style.opacity = "1";
-//   popup.style.transition = "opacity 1s";
-//
-//   document.body.appendChild(popup);
-//
-//   run = null;
-//
-//   setTimeout(() => {
-//     popup.style.opacity = "0";
-//     setTimeout(() => popup.remove(), 1000);
-//   }, 2500);
-// });
 
 document.getElementById("restart-all").addEventListener("click", () => {
   if (!confirm("Are you sure you want to restart all DAQ components?")) return;
@@ -461,24 +409,37 @@ async function updateHVPlots() {
         // auto-refreshes (key unchanged) but resets the view when the subrun changes (new key).
         const uirev = `${run}/${subrun}`;
 
-        const voltageLayout = {
-            title: 'Voltage (V) vs Time',
-            xaxis: { title: 'Time' },
-            yaxis: { title: 'Voltage (V)' },
+        // Dark styling done explicitly — plotly.js does not resolve the
+        // 'plotly_dark' template name (that only works from Python).
+        // Transparent backgrounds so the plots blend into the panel.
+        const axisStyle = {
+            gridcolor: '#242e39',
+            zerolinecolor: '#38434f',
+            linecolor: '#38434f'
+        };
+        const commonLayout = {
             legend: { orientation: 'h' },
             hovermode: 'x unified',
             uirevision: uirev,
-            template: 'plotly_dark'
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#8b96a5' },
+            hoverlabel: { bgcolor: '#1b222b', bordercolor: '#38434f' },
+            margin: { t: 45, r: 20, b: 40, l: 60 }
+        };
+
+        const voltageLayout = {
+            ...commonLayout,
+            title: { text: 'Voltage (V) vs Time', font: { color: '#e2e8f0', size: 15 } },
+            xaxis: { title: 'Time', ...axisStyle },
+            yaxis: { title: 'Voltage (V)', ...axisStyle }
         };
 
         const currentLayout = {
-            title: 'Current (µA) vs Time',
-            xaxis: { title: 'Time' },
-            yaxis: { title: 'Current (µA)' },
-            legend: { orientation: 'h' },
-            hovermode: 'x unified',
-            uirevision: uirev,
-            template: 'plotly_dark'
+            ...commonLayout,
+            title: { text: 'Current (µA) vs Time', font: { color: '#e2e8f0', size: 15 } },
+            xaxis: { title: 'Time', ...axisStyle },
+            yaxis: { title: 'Current (µA)', ...axisStyle }
         };
 
         const plotConfig = { responsive: true, displaylogo: false };
@@ -538,60 +499,15 @@ loadRuns();
 document.getElementById("take-pedestals").addEventListener("click", async () => {
   const res = await fetch("/take_pedestals", { method: "POST" });
   const data = await res.json();
-
-  // Create a fading popup
-    const popup = document.createElement("div");
-    popup.textContent = data.message;
-    popup.style.position = "fixed";
-    popup.style.top = "80px";
-    popup.style.left = "50%";
-    popup.style.transform = "translateX(-50%)";
-    popup.style.background = "#17a2b8";
-    popup.style.color = "#fff";
-    popup.style.padding = "1em 2em";
-    popup.style.borderRadius = "8px";
-    popup.style.boxShadow = "0 2px 8px rgba(0,0,0.2)";
-    popup.style.zIndex = "9999";
-    popup.style.opacity = "1";
-    popup.style.transition = "opacity 1s";
-
-    document.body.appendChild(popup);
-
-    setTimeout(() => {
-      popup.style.opacity = "0";
-      setTimeout(() => popup.remove(), 1000);
-    }, 2500);
+  showPopup(data.message, "#17a2b8");
 });
 
 
 // git reset button handler
 document.getElementById("git-reset").addEventListener("click", async () => {
-  // Run git reset
   const res = await fetch("/git_reset", { method: "POST" });
   const data = await res.json();
-
-  // Create popup
-  const popup = document.createElement("div");
-  popup.textContent = data.message;
-  popup.style.position = "fixed";
-  popup.style.top = "80px";
-  popup.style.left = "50%";
-  popup.style.transform = "translateX(-50%)";
-  popup.style.background = "#17a2b8";
-  popup.style.color = "#fff";
-  popup.style.padding = "1em 2em";
-  popup.style.borderRadius = "8px";
-  popup.style.boxShadow = "0 2px 8px rgba(0,0,0.2)";
-  popup.style.zIndex = "9999";
-  popup.style.opacity = "1";
-  popup.style.transition = "opacity 1s";
-
-  document.body.appendChild(popup);
-
-  setTimeout(() => {
-    popup.style.opacity = "0";
-    setTimeout(() => popup.remove(), 1000);
-  }, 2500);
+  showPopup(data.message, "#17a2b8");
 });
 
 document.getElementById("rerun-qa").addEventListener("click", async () => {
@@ -693,25 +609,7 @@ document.getElementById("run-config-py").addEventListener("click", async functio
   const data = await res.json();
 
   // ----- STEP 5: Popup status -----
-  const popup = document.createElement("div");
-  popup.textContent = data.message;
-  popup.style.position = "fixed";
-  popup.style.top = "80px";
-  popup.style.left = "50%";
-  popup.style.transform = "translateX(-50%)";
-  popup.style.background = data.success ? "#28a745" : "#dc3545";
-  popup.style.color = "#fff";
-  popup.style.padding = "1em 2em";
-  popup.style.borderRadius = "8px";
-  popup.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
-  popup.style.zIndex = "9999";
-  popup.style.opacity = "1";
-  popup.style.transition = "opacity 1s";
-  document.body.appendChild(popup);
-  setTimeout(() => {
-    popup.style.opacity = "0";
-    setTimeout(() => popup.remove(), 1000);
-  }, 2500);
+  showPopup(data.message, data.success ? "#28a745" : "#dc3545");
 
   // ----- STEP 6: Update displayed info -----
   if (data.success) {
@@ -942,12 +840,10 @@ async function loadPNGs() {
 
     data.images.forEach(imgUrl => {
         const col = document.createElement("div");
-        col.className = "col-md-3 mb-3";
+        col.className = "col-6 col-md-4 col-xl-3";
         col.innerHTML = `
-            <div class="card bg-dark text-white border-0">
-                <img src="${imgUrl}" class="card-img-top"
-                     style="object-fit:contain;max-height:200px;cursor:pointer;"
-                     alt="PNG image">
+            <div class="plot-card">
+                <img src="${imgUrl}" style="max-height:200px;" alt="PNG image">
             </div>
         `;
         gallery.appendChild(col);
@@ -1074,6 +970,7 @@ function renderPedSummary(s) {
         <span class="text-muted">Pedestals: ${s.pedestal_ts || "?"}</span>
         <span class="text-muted small">analyzed ${s.generated}</span>
       </div>
+      <div style="overflow-x:auto;">
       <table class="table table-dark table-sm table-bordered" style="width:auto;font-size:0.9em;">
         <thead><tr>
           <th>FEU</th><th>Events</th><th>OK</th><th>Noisy/Float</th>
@@ -1093,7 +990,7 @@ function renderPedSummary(s) {
           <td>${f.med_cns_rms ?? "N/A"}</td><td>${badDreams}</td>
         </tr>`;
     });
-    div.innerHTML = html + "</tbody></table>";
+    div.innerHTML = html + "</tbody></table></div>";
 }
 
 async function loadPedQA(bustCache = false, data = null) {
@@ -1138,12 +1035,10 @@ async function loadPedQA(bustCache = false, data = null) {
         // Overview plots (channel map, summary table) get double width
         const wide = /00_channel_map|01_summary_table/.test(decodeURIComponent(imgUrl));
         const col = document.createElement("div");
-        col.className = wide ? "col-md-6 mb-3" : "col-md-3 mb-3";
+        col.className = wide ? "col-12 col-md-8 col-xl-6" : "col-6 col-md-4 col-xl-3";
         col.innerHTML = `
-            <div class="card bg-dark text-white border-0">
-                <img src="${src}" class="card-img-top"
-                     style="object-fit:contain;max-height:${wide ? 320 : 200}px;cursor:pointer;"
-                     alt="pedestal QA plot">
+            <div class="plot-card">
+                <img src="${src}" style="max-height:${wide ? 320 : 200}px;" alt="pedestal QA plot">
             </div>`;
         gallery.appendChild(col);
         col.querySelector("img").addEventListener("click", () => openFullscreenImage(src));
@@ -1295,7 +1190,6 @@ function abRenderBreadcrumb(path) {
     const rootA = document.createElement("a");
     rootA.href = "#";
     rootA.textContent = "Analysis";
-    rootA.style.color = "#adb5bd";
     rootA.addEventListener("click", e => { e.preventDefault(); abBrowse(""); });
     rootLi.appendChild(rootA);
     ol.appendChild(rootLi);
@@ -1306,14 +1200,13 @@ function abRenderBreadcrumb(path) {
             const li = document.createElement("li");
             const partPath = parts.slice(0, i + 1).join("/");
             if (i === parts.length - 1) {
-                li.className = "breadcrumb-item active text-white";
+                li.className = "breadcrumb-item active";
                 li.textContent = part;
             } else {
                 li.className = "breadcrumb-item";
                 const a = document.createElement("a");
                 a.href = "#";
                 a.textContent = part;
-                a.style.color = "#adb5bd";
                 a.addEventListener("click", e => { e.preventDefault(); abBrowse(partPath); });
                 li.appendChild(a);
             }
@@ -1328,7 +1221,7 @@ function abRenderSubdirs(subdirs, currentPath) {
 
     if (currentPath) {
         const upBtn = document.createElement("button");
-        upBtn.className = "btn btn-outline-secondary btn-sm me-1 mb-1";
+        upBtn.className = "btn btn-outline-secondary btn-sm";
         upBtn.textContent = "⬆ ..";
         const parentPath = currentPath.includes("/")
             ? currentPath.substring(0, currentPath.lastIndexOf("/"))
@@ -1339,7 +1232,7 @@ function abRenderSubdirs(subdirs, currentPath) {
 
     subdirs.forEach(d => {
         const btn = document.createElement("button");
-        btn.className = "btn btn-outline-light btn-sm me-1 mb-1";
+        btn.className = "btn btn-outline-light btn-sm";
         btn.textContent = "📁 " + d;
         const childPath = currentPath ? `${currentPath}/${d}` : d;
         btn.addEventListener("click", () => abBrowse(childPath));
@@ -1362,12 +1255,10 @@ function abRenderGallery(images, bustCache = false) {
     images.forEach(imgUrl => {
         const src = imgUrl + suffix;
         const col = document.createElement("div");
-        col.className = "col-md-3 mb-3";
+        col.className = "col-6 col-md-4 col-xl-3";
         col.innerHTML = `
-            <div class="card bg-dark text-white border-0">
-                <img src="${src}" class="card-img-top"
-                     style="object-fit:contain;max-height:200px;cursor:pointer;"
-                     alt="plot">
+            <div class="plot-card">
+                <img src="${src}" style="max-height:200px;" alt="plot">
             </div>`;
         gallery.appendChild(col);
         col.querySelector("img").addEventListener("click", () => openFullscreenImage(src));
@@ -1404,16 +1295,13 @@ function sysFormatBytes(b) {
 function sysMakeBar(label, pct, rightLabel) {
     const color = sysBarColor(pct);
     const w = Math.max(0, Math.min(100, pct));
-    const extra = rightLabel ? `<span style="color:#555;margin-left:6px;">${rightLabel}</span>` : '';
-    return `<div style="display:flex;align-items:center;gap:0;font-size:0.78em;line-height:18px;">
-      <span style="color:#555;width:52px;text-align:right;padding-right:5px;flex-shrink:0;">${label}</span>
-      <span style="color:#333;flex-shrink:0;">[</span>
-      <div style="flex:1;background:#1a1a1a;height:12px;position:relative;min-width:60px;">
-        <div style="position:absolute;inset:0;width:${w}%;background:${color};transition:width 0.6s ease;"></div>
-        <div style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent,transparent 9px,rgba(0,0,0,0.15) 9px,rgba(0,0,0,0.15) 10px);pointer-events:none;"></div>
+    const extra = rightLabel ? `<span class="sys-bar-extra">${rightLabel}</span>` : '';
+    return `<div class="sys-bar-row">
+      <span class="sys-bar-label">${label}</span>
+      <div class="sys-bar-track">
+        <div class="sys-bar-fill" style="width:${w}%;background:${color};"></div>
       </div>
-      <span style="color:#333;flex-shrink:0;">]</span>
-      <span style="color:#888;margin-left:6px;min-width:42px;flex-shrink:0;">${pct.toFixed(1)}%</span>
+      <span class="sys-bar-pct">${pct.toFixed(1)}%</span>
       ${extra}
     </div>`;
 }
