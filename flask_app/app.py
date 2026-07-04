@@ -203,15 +203,18 @@ def stop_sub_run():
 @app.route("/stop_run", methods=["POST"])
 def stop_run():
     try:
+        # Always stop the WHOLE run. stop_run.sh drops the .stop_run flag that
+        # daq_control honors at its next checkpoint (before the next sub-run, or
+        # before (re)starting the DAQ), so the run ends and HV powers off even when
+        # we're mid HV-ramp / file-copy / between sub-runs — states where the DAQ
+        # isn't "running". stop_dream.sh safely no-ops if RunCtrl isn't running.
+        # (Previously this fell back to stop_sub_run.sh when the DAQ wasn't actively
+        # taking data, which only stopped the current sub-run and let the run go on.)
         dream_running = is_dream_daq_running()
-        if dream_running:
-            log_event('STOP_RUN', 'flask_button', remote_addr=request.remote_addr, dream_running=True)
-            subprocess.Popen([f"{BASH_DIR}/stop_run.sh"])
-            return jsonify({"success": True, "message": "DAQ Running, Stopping Run"})
-        else:
-            log_event('STOP_RUN', 'flask_button', remote_addr=request.remote_addr, dream_running=False)
-            subprocess.Popen([f"{BASH_DIR}/stop_sub_run.sh"])  # Only 1 ctrl-c needed if not running
-            return jsonify({"success": True, "message": "No DAQ Running, Stopping Run"})
+        log_event('STOP_RUN', 'flask_button', remote_addr=request.remote_addr,
+                  dream_running=dream_running)
+        subprocess.Popen([f"{BASH_DIR}/stop_run.sh"])
+        return jsonify({"success": True, "message": "Stopping Run"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
