@@ -142,6 +142,8 @@ def get_daq_control_status():
         ("Daq control session started", "WAITING", "secondary"),
         ("Run complete", "Run Complete", "info"),
         ("donzo", "Run Complete", "info"),
+        ("[pause] Paused after sub-run", "Paused", "info"),
+        ("[pause] Post-sub-run pause: waiting", "Paused", "info"),
         ("Finished with sub run ", "Finished Sub Run", "warning"),
         ("Dream DAQ taking pedestals", "Prepping DAQs", "warning"),
         ("Prepping DAQs for ", "Prepping DAQs", "warning"),

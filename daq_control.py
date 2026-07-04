@@ -28,6 +28,10 @@ RUNCONFIG_REL_PATH = "config/json_run_configs/"
 # via stop_dream.sh. Paths must match those scripts (repo root = this file's dir).
 STOP_RUN_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.stop_run')
 STOP_SUBRUN_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.stop_subrun')
+# Post-sub-run pause flag (set/cleared by the flask "Pause after subrun" button).
+# When present, daq_control waits at the next sub-run boundary until it's cleared
+# (Resume). One-shot: clearing it lets the run continue without re-pausing.
+PAUSE_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.pause_run')
 
 
 def _remove_flag(path):
@@ -35,6 +39,15 @@ def _remove_flag(path):
         os.remove(path)
     except FileNotFoundError:
         pass
+
+
+def _sleep_unless_stop(seconds):
+    """Sleep in 1 s steps, returning early if a stop-run is requested so Stop Run
+    stays responsive through a configured post-sub-run pause."""
+    waited = 0
+    while waited < seconds and not os.path.exists(STOP_RUN_FLAG):
+        sleep(1)
+        waited += 1
 
 
 def main():
@@ -93,11 +106,23 @@ def main():
         sleep(2)  # Wait for all clients to do what they need to do (specifically, create directories)
         _remove_flag(STOP_RUN_FLAG)  # clear any stale stop requests from a previous run
         _remove_flag(STOP_SUBRUN_FLAG)
+        _remove_flag(PAUSE_FLAG)     # never start a run already paused
         try:
             for sub_run in config.sub_runs:
                 if os.path.exists(STOP_RUN_FLAG):
                     print('[stop] Stop-run requested — ending run before next sub-run.')
                     break
+                # Post-sub-run pause: if armed, wait here before ramping the next
+                # sub-run. HV stays at its current setpoint. Interruptible by Stop Run;
+                # clearing the flag (Resume) continues the run (one-shot).
+                if os.path.exists(PAUSE_FLAG):
+                    print('[pause] Paused after sub-run — waiting for Resume...')
+                    while os.path.exists(PAUSE_FLAG) and not os.path.exists(STOP_RUN_FLAG):
+                        sleep(1)
+                    if os.path.exists(STOP_RUN_FLAG):
+                        print('[stop] Stop-run requested during pause — ending run.')
+                        break
+                    print('[pause] Resumed.')
                 sub_run_name = sub_run['sub_run_name']
                 # sub_run_dir = f'{config.dream_daq_info["run_directory"]}{sub_run_name}/'
                 # create_dir_if_not_exist(sub_run_dir)  # Means DAQ runs on Dream CPU! Can fix, need config template in dream_daq control!
@@ -162,6 +187,14 @@ def main():
 
                     print(f'Finished with sub run {sub_run_name}, waiting 10 seconds before next run')
                     sleep(10)
+
+                    # Optional configured post-sub-run pause (seconds, from the run
+                    # config). HV stays at its current setpoint; Stop Run interrupts it.
+                    post_pause_s = sub_run.get('post_pause_s', 0) or 0
+                    if post_pause_s > 0 and not os.path.exists(STOP_RUN_FLAG):
+                        print(f'[pause] Post-sub-run pause: waiting {post_pause_s}s after {sub_run_name}...')
+                        _sleep_unless_stop(post_pause_s)
+                        print('[pause] Post-sub-run pause: done')
         except KeyboardInterrupt as e:
             print(f'Run stoppping.')
 

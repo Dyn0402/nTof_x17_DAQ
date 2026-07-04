@@ -51,6 +51,9 @@ PED_QA_TMUX = "pedestal_watcher"
 # Last run name seen in the daq_control log; persisted so "Current run" survives
 # the status line scrolling out of the tmux pane / between runs / server restarts.
 CURRENT_RUN_STATE_PATH = f"{BASE_DIR}/config/current_run_state.json"
+# Post-sub-run pause flag; presence tells daq_control to wait at the next sub-run
+# boundary. Path must match PAUSE_FLAG in daq_control.py (repo root).
+PAUSE_FLAG_PATH = f"{BASE_DIR}/.pause_run"
 # ANALYSIS_DIR = "/media/dylan/data/x17"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
 ANALYSIS_DIR = f'{BASE_DATA_DIR}analysis'
@@ -261,6 +264,11 @@ def status_all():
         if _current_run_cache:
             dream["run_events"] = _ondisk_run_events(_current_run_cache) + _live_events_from(dream)
 
+    # Surface whether a post-sub-run pause is armed so the button reflects it.
+    daq = by_name.get("daq_control")
+    if daq is not None:
+        daq["pause_armed"] = os.path.exists(PAUSE_FLAG_PATH)
+
     return jsonify(statuses)
 
 
@@ -315,6 +323,25 @@ def stop_run():
                   dream_running=dream_running)
         subprocess.Popen([f"{BASH_DIR}/stop_run.sh"])
         return jsonify({"success": True, "message": "Stopping Run"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/toggle_pause_run", methods=["POST"])
+def toggle_pause_run():
+    """Arm/clear the post-sub-run pause. Presence of the flag file tells daq_control
+    to wait at the next sub-run boundary; removing it resumes (one-shot)."""
+    try:
+        if os.path.exists(PAUSE_FLAG_PATH):
+            os.remove(PAUSE_FLAG_PATH)
+            log_event('RESUME_RUN', 'flask_button', remote_addr=request.remote_addr)
+            return jsonify({"success": True, "paused": False,
+                            "message": "Pause cleared — run continues"})
+        else:
+            open(PAUSE_FLAG_PATH, "w").close()
+            log_event('PAUSE_RUN', 'flask_button', remote_addr=request.remote_addr)
+            return jsonify({"success": True, "paused": True,
+                            "message": "Will pause after the current sub-run"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

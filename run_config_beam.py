@@ -24,6 +24,7 @@ BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
 # ---------------------------------------------------------------------------
 N_SUBRUNS    = 20     # number of identical sub-runs
 SUBRUN_MIN   = 20     # run time per sub-run (minutes)
+POST_SUBRUN_PAUSE_MIN = 0   # optional pause AFTER each sub-run (minutes); 0 = no pause
 OVERHEAD_MIN = 1      # per-subrun ramp poll + DAQ prep + 10 s inter-subrun wait
 DRIFT_V      = 700    # all four drifts held here, V
 
@@ -152,6 +153,7 @@ class Config(RunConfigBase):
             self.sub_runs.append({
                 'sub_run_name': f'maxresist_drift{DRIFT_V}_{i:02d}',
                 'run_time': SUBRUN_MIN,  # Minutes
+                'post_pause_s': int(round(POST_SUBRUN_PAUSE_MIN * 60)),  # pause after this sub-run (seconds); 0 = none
                 'hvs': {
                     '5': dict(RESIST_MAX),  # Positive Resists (mx17_A/B/C/D on channels 1-4)
                     '9': {'0': DRIFT_V, '1': DRIFT_V, '2': DRIFT_V, '3': DRIFT_V},  # Negative Drifts

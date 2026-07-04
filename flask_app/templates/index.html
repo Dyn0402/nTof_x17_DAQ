@@ -30,6 +30,7 @@
             <div class="d-flex flex-wrap gap-2">
               <button id="run-toggle" class="btn btn-success">Start Run</button>
               <button id="stop-sub-run" class="btn btn-warning">Stop Sub-Run</button>
+              <button id="pause-toggle" class="btn btn-outline-warning">Pause After Subrun</button>
               <button id="restart-all" class="btn btn-outline-danger">Restart All</button>
               <button id="take-pedestals" class="btn btn-secondary">Take Pedestals</button>
               <button id="git-reset" class="btn btn-secondary">Git Reset</button>
@@ -305,6 +306,7 @@ function updateStatus() {
 
             updateWatcherToggles(data);
             updateRunToggle(data);
+            updatePauseToggle(data);
         });
 }
 
@@ -642,6 +644,36 @@ function updateRunToggle(statuses) {
 
 document.getElementById("run-toggle").addEventListener("click", () => {
   if (runActive) stopRun(); else startRun();
+});
+
+// Post-sub-run pause (one-shot). daq.pause_armed = flag set; status "Paused" = the
+// DAQ is actually waiting at a boundary. One click toggles the flag (arm / cancel /
+// resume). Only meaningful during a run, so disable it when idle.
+function updatePauseToggle(statuses) {
+  const daq = statuses.find(s => s.name === "daq_control");
+  if (!daq) return;
+  const btn = document.getElementById("pause-toggle");
+  const armed  = !!daq.pause_armed;         // manual pause flag set
+  const paused = daq.status === "Paused";   // DAQ actually waiting (manual OR timed)
+  btn.disabled = !runActive && !armed;
+  if (armed && paused) {
+    btn.textContent = "Resume";             // manual pause is holding the run
+    btn.className = "btn btn-success";
+  } else if (armed) {
+    btn.textContent = "Cancel Pause";       // manual pause armed, not yet at a boundary
+    btn.className = "btn btn-warning";
+  } else {
+    // Not manually armed. During a config timed pause you can still arm a manual
+    // hold here to extend it past the timer.
+    btn.textContent = "Pause After Subrun";
+    btn.className = "btn btn-outline-warning";
+  }
+}
+
+document.getElementById("pause-toggle").addEventListener("click", async () => {
+  const res = await fetch("/toggle_pause_run", { method: "POST" });
+  const d = await res.json();
+  showPopup(d.message, d.success ? "#f0c040" : "#dc3545");
 });
 
 
