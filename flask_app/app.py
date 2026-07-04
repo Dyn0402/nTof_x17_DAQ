@@ -699,6 +699,27 @@ def get_config_py():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+def _live_dream_events():
+    """Live per-FEU event count of the in-progress subrun, read from the dream_daq
+    pane (the 'Events' field = nb_of_events, which counts triggers ≈ the per-FEU
+    physics count). Only while actively taking data (status RUNNING); 0 otherwise.
+
+    The in-progress subrun has no RunCtrl log yet, so get_total_events_for_run()
+    excludes it; adding this keeps 'Events this run' live during acquisition without
+    double-counting — once the subrun finishes, status leaves RUNNING (drops this)
+    and the completed count appears on disk instead."""
+    try:
+        dream = get_dream_daq_status()
+        if dream.get("status") != "RUNNING":
+            return 0
+        for f in dream.get("fields", []):
+            if f.get("label") == "Events":
+                return int(str(f.get("value", "0")).strip())
+    except Exception:
+        pass
+    return 0
+
+
 @app.route("/get_run_events", methods=['GET'])
 def get_run_events():
     try:
@@ -706,14 +727,19 @@ def get_run_events():
         # possibly-edited run_config_beam.py). Falls back to the persisted value.
         run_name = _current_run_cache
         if not run_name:
-            return jsonify({"success": True, "total_events": 0, "subrun_details": {}})
+            return jsonify({"success": True, "total_events": 0,
+                            "live_events": 0, "subrun_details": {}})
         total_events, subrun_details = get_total_events_for_run(
             run_dir=RUN_DIR,
             run_name=run_name
         )
+        # Add the in-progress subrun's live events (not yet on disk) so the total
+        # reflects the live count shown in the dream_daq card.
+        live_events = _live_dream_events()
         return jsonify({
             "success": True,
-            "total_events": total_events,
+            "total_events": total_events + live_events,
+            "live_events": live_events,
             "subrun_details": subrun_details
         })
     except Exception as e:
