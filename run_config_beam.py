@@ -18,23 +18,17 @@ PROJECT       = 'beam_july'
 BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
 
 # ---------------------------------------------------------------------------
-# Quick HV scan schedule (Ar/CF4/Iso 88/10/2)
-#   All four drifts held at DRIFT_V. Each resist starts at its per-channel max
-#   and steps down together by RESIST_STEP, SUBRUN_MIN per point, until every
-#   channel reaches RESIST_FLOOR (each channel clamps at the floor once there).
-#   This will be stopped early, so resume is off.
+# Statistics run schedule (Ar/CF4/Iso 88/10/2)
+#   N_SUBRUNS identical sub-runs of SUBRUN_MIN each, all at the per-channel
+#   maximum resist voltages and all four drifts held at DRIFT_V.
 # ---------------------------------------------------------------------------
-SUBRUN_MIN   = 5      # run time per resist point (minutes)
+N_SUBRUNS    = 20     # number of identical sub-runs
+SUBRUN_MIN   = 20     # run time per sub-run (minutes)
 OVERHEAD_MIN = 1      # per-subrun ramp poll + DAQ prep + 10 s inter-subrun wait
-RESIST_STEP  = -10    # V per resist step (all four resists move together)
-RESIST_FLOOR = 100    # lowest resist to scan down to, V
 DRIFT_V      = 700    # all four drifts held here, V
 
-# Per-channel resist starting (max) voltages, channel on card 5. mx17 A/B/C/D.
+# Per-channel maximum resist voltages, channel on card 5. mx17 A/B/C/D.
 RESIST_MAX = {'1': 540, '2': 535, '3': 535, '4': 515}
-
-# Steps so the highest-starting channel reaches the floor (others clamp there).
-N_RESIST_STEPS = (max(RESIST_MAX.values()) - RESIST_FLOOR + (-RESIST_STEP) - 1) // (-RESIST_STEP) + 1
 
 
 class Config(RunConfigBase):
@@ -149,20 +143,17 @@ class Config(RunConfigBase):
             self.hv_info['username'] = lines[0].strip()
             self.hv_info['password'] = lines[1].strip()
 
-        # ----- Quick HV scan schedule (built from module constants above) -----
+        # ----- Statistics run schedule (built from module constants above) -----
         self.sub_runs = []
 
-        # Drifts held at DRIFT_V; step the four resists down together from their
-        # per-channel maxima in RESIST_STEP increments, SUBRUN_MIN per point, each
-        # channel clamping at RESIST_FLOOR once it reaches it.
-        for step in range(N_RESIST_STEPS):
-            resists = {ch: max(RESIST_FLOOR, v + RESIST_STEP * step) for ch, v in RESIST_MAX.items()}
-            drop = -RESIST_STEP * step  # V below max, used in the subrun name
+        # N_SUBRUNS identical sub-runs at the per-channel maximum resists, all four
+        # drifts held at DRIFT_V.
+        for i in range(N_SUBRUNS):
             self.sub_runs.append({
-                'sub_run_name': f'scan_drift{DRIFT_V}_resistdrop{drop}',
+                'sub_run_name': f'maxresist_drift{DRIFT_V}_{i:02d}',
                 'run_time': SUBRUN_MIN,  # Minutes
                 'hvs': {
-                    '5': resists,  # Positive Resists (mx17_A/B/C/D on channels 1-4)
+                    '5': dict(RESIST_MAX),  # Positive Resists (mx17_A/B/C/D on channels 1-4)
                     '9': {'0': DRIFT_V, '1': DRIFT_V, '2': DRIFT_V, '3': DRIFT_V},  # Negative Drifts
                 },
             })
@@ -173,7 +164,6 @@ class Config(RunConfigBase):
         }
 
         self.included_detectors = ['mx17_A', 'mx17_B', 'mx17_C', 'mx17_D']
-        # self.included_detectors = ['mx17_A', 'mx17_B', 'mx17_C', 'mx17_D']
 
         self.detectors = [
             {
@@ -581,19 +571,18 @@ if __name__ == '__main__':
 
     config.write_to_file(f'{out_run_dir}{config_name}')
 
-    # Schedule summary — sanity-check timing and how deep the resist scan reaches.
+    # Schedule summary — sanity-check timing and the fixed HV setpoints.
     run_min = sum(sr['run_time'] for sr in config.sub_runs)
     n_sub = len(config.sub_runs)
     overhead_min = n_sub * OVERHEAD_MIN
     total_h = (run_min + overhead_min) / 60
-    lowest_drop = -RESIST_STEP * (N_RESIST_STEPS - 1)
     print(f'Gas: {config.gas}')
     print(f'Drift (all four): {DRIFT_V} V')
-    print(f'Resist steps: {N_RESIST_STEPS}  ({RESIST_STEP} V/step, floor {RESIST_FLOOR} V)')
+    print('Resists (max, all sub-runs):')
     for ch, v in RESIST_MAX.items():
-        print(f'  resist ch {ch}: {v} -> {max(RESIST_FLOOR, v - lowest_drop)} V')
-    print(f'Sub-runs: {n_sub}')
+        print(f'  resist ch {ch}: {v} V')
+    print(f'Sub-runs: {n_sub} x {SUBRUN_MIN} min (identical)')
     print(f'Run time: {run_min} min + ~{overhead_min} min overhead '
-          f'= ~{total_h:.2f} h (will be stopped early)')
+          f'= ~{total_h:.2f} h')
 
     print('donzo')
