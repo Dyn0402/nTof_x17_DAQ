@@ -369,6 +369,22 @@ async function fetchHVData() {
     return data;
 }
 
+// One hue per detector (validated dark categorical palette, slots 1-4: blue/aqua/
+// yellow/green); within a detector the drift line is a lighter blend of the same hue
+// so identity = colour and electrode = shade.
+const HV_DET_COLOR = { A: "#3987e5", B: "#199e70", C: "#c98500", D: "#008300" };
+function _hvLighten(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const mix = c => Math.round(c + (255 - c) * amt);
+    return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
+}
+function hvTraceColor(name) {
+    const [det, electrode] = name.split("_");
+    const base = HV_DET_COLOR[det] || "#8b96a5";
+    return (electrode || "").toLowerCase() === "drift" ? _hvLighten(base, 0.42) : base;
+}
+
 async function updateHVPlots() {
     try {
         const data = await fetchHVData();
@@ -384,14 +400,16 @@ async function updateHVPlots() {
             x: time,
             y: values,
             mode: 'lines',
-            name: key
+            name: key,
+            line: { color: hvTraceColor(key), width: 2 }
         }));
 
         const currentTraces = Object.entries(data.current).map(([key, values]) => ({
             x: time,
             y: values,
             mode: 'lines',
-            name: key
+            name: key,
+            line: { color: hvTraceColor(key), width: 2 }
         }));
 
         // uirevision keyed to run/subrun: Plotly preserves zoom/pan/legend state across
@@ -406,6 +424,9 @@ async function updateHVPlots() {
             zerolinecolor: '#38434f',
             linecolor: '#38434f'
         };
+        // Bigger, lighter y-axis title; the y label alone names each plot (no chart
+        // title, no "Time" x label — the time ticks are self-evident).
+        const yTitleFont = { size: 17, color: '#cbd5e1' };
         const commonLayout = {
             legend: { orientation: 'h' },
             hovermode: 'x unified',
@@ -414,21 +435,19 @@ async function updateHVPlots() {
             plot_bgcolor: 'rgba(0,0,0,0)',
             font: { color: '#8b96a5' },
             hoverlabel: { bgcolor: '#1b222b', bordercolor: '#38434f' },
-            margin: { t: 45, r: 20, b: 40, l: 60 }
+            margin: { t: 20, r: 20, b: 30, l: 60 }
         };
 
         const voltageLayout = {
             ...commonLayout,
-            title: { text: 'Voltage (V) vs Time', font: { color: '#e2e8f0', size: 15 } },
-            xaxis: { title: 'Time', ...axisStyle },
-            yaxis: { title: 'Voltage (V)', ...axisStyle }
+            xaxis: { ...axisStyle },
+            yaxis: { title: { text: 'Voltage (V)', font: yTitleFont }, ...axisStyle }
         };
 
         const currentLayout = {
             ...commonLayout,
-            title: { text: 'Current (µA) vs Time', font: { color: '#e2e8f0', size: 15 } },
-            xaxis: { title: 'Time', ...axisStyle },
-            yaxis: { title: 'Current (µA)', ...axisStyle }
+            xaxis: { ...axisStyle },
+            yaxis: { title: { text: 'Current (µA)', font: yTitleFont }, ...axisStyle }
         };
 
         const plotConfig = { responsive: true, displaylogo: false };
@@ -455,10 +474,12 @@ async function loadRuns() {
   loadSubruns();
 }
 
+let hvNewestSubrun = null;   // most-recent subrun last seen, to detect new ones
+
 async function loadSubruns() {
   const runName = document.getElementById("run-select").value;
   const res = await fetch(`/get_subruns?run=${encodeURIComponent(runName)}`);
-  const subruns = await res.json();
+  const subruns = await res.json();   // newest first
   const subrunSelect = document.getElementById("hv-subrun-select");
   const prev = subrunSelect.value;
   subrunSelect.innerHTML = "";
@@ -468,10 +489,18 @@ async function loadSubruns() {
     opt.textContent = s;
     subrunSelect.appendChild(opt);
   });
-  if (subruns.includes(prev)) {
-    subrunSelect.value = prev; // preserve selection
-  } else if (subruns.length > 0) {
-    subrunSelect.value = subruns[subruns.length - 1]; // default to latest
+  if (subruns.length === 0) { hvNewestSubrun = null; return; }
+
+  const newest = subruns[0];
+  if (newest !== hvNewestSubrun) {
+    // First load, or a new subrun was just created -> jump to it and refresh now.
+    subrunSelect.value = newest;
+    hvNewestSubrun = newest;
+    updateHVPlots();
+  } else if (subruns.includes(prev)) {
+    subrunSelect.value = prev;   // no new subrun -> keep the user's selection
+  } else {
+    subrunSelect.value = newest;
   }
 }
 
@@ -480,6 +509,9 @@ setInterval(loadSubruns, 5000);
 
 // reload subruns when run changes
 document.getElementById("run-select").addEventListener("change", loadSubruns);
+
+// redraw immediately when the user picks a subrun (don't wait for the 5s poll)
+document.getElementById("hv-subrun-select").addEventListener("change", updateHVPlots);
 
 // initial load
 loadRuns();

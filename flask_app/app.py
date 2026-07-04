@@ -618,6 +618,36 @@ def get_runs():
             runs.append(f)
     return jsonify(runs)
 
+def _run_has_hv_data(run_dir, hv_file="hv_monitor.csv"):
+    """True if any subrun directory under run_dir has an HV monitor CSV."""
+    if not run_dir or not os.path.isdir(run_dir):
+        return False
+    for sub in os.listdir(run_dir):
+        if os.path.isfile(os.path.join(run_dir, sub, hv_file)):
+            return True
+    return False
+
+
+def _hv_run_dir(cfg, hv_file="hv_monitor.csv"):
+    """Run directory the HV plot should read: normally the config's run_out_dir, but
+    when that run has no HV data yet (a run just started, or between runs while the
+    config already points at the next one) fall back to the most recent run under
+    RUN_DIR that does — so the plot shows the previous run instead of going blank at
+    run boundaries. None if nothing has HV data."""
+    primary = cfg.get("run_out_dir")
+    if _run_has_hv_data(primary, hv_file):
+        return primary
+    try:
+        candidates = sorted((os.path.join(RUN_DIR, d) for d in os.listdir(RUN_DIR)),
+                            key=os.path.getmtime, reverse=True)
+    except OSError:
+        candidates = []
+    for d in candidates:
+        if _run_has_hv_data(d, hv_file):
+            return d
+    return primary if (primary and os.path.isdir(primary)) else None
+
+
 @app.route("/get_subruns")
 def get_subruns():
     run_name = request.args.get("run")
@@ -631,21 +661,17 @@ def get_subruns():
     try:
         with open(config_path) as f:
             cfg = json.load(f)
-        output_dir = cfg.get("run_out_dir")
-        if not output_dir or not os.path.isdir(output_dir):
+        run_dir = _hv_run_dir(cfg)
+        if not run_dir:
             return jsonify([])
 
-        subruns = sorted(
-            os.listdir(output_dir),
-            key=lambda f: os.path.getmtime(os.path.join(output_dir, f)),
-            reverse=True
-        )
-
-        # Ensure it matches item in cfg['subruns'][i]['sub_run_name'] if that key exists
-        if "sub_runs" in cfg:
-            valid_subruns = {sr.get("sub_run_name") for sr in cfg["sub_runs"] if "sub_run_name" in sr}
-            subruns = [sr for sr in subruns if sr in valid_subruns]
-
+        # Only offer subruns that actually have an HV monitor CSV, so the selector
+        # never lands on an empty subrun (what blanks the plot at run boundaries).
+        # This replaces the old cfg['sub_runs'] name match, which returned nothing
+        # when run_out_dir and sub_runs briefly disagreed during a run transition.
+        subruns = [d for d in os.listdir(run_dir)
+                   if os.path.isfile(os.path.join(run_dir, d, "hv_monitor.csv"))]
+        subruns.sort(key=lambda f: os.path.getmtime(os.path.join(run_dir, f)), reverse=True)
         return jsonify(subruns)
     except Exception as e:
         print("Error reading subruns:", e)
@@ -670,6 +696,23 @@ def get_run_name():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+def _hv_channel_labels(cfg):
+    """{'slot:channel' -> 'A_Drift'} from a run config's detectors[].hv_channels.
+    Detector label = the name suffix after the last '_' (mx17_A -> A); electrode
+    capitalized (drift -> Drift, resist -> Resist, bias -> Bias)."""
+    labels = {}
+    for det in cfg.get("detectors", []):
+        name  = str(det.get("name", ""))
+        short = name.rsplit("_", 1)[-1] or name
+        for electrode, ch in (det.get("hv_channels") or {}).items():
+            try:
+                slot, channel = ch
+            except (TypeError, ValueError):
+                continue
+            labels[f"{slot}:{channel}"] = f"{short}_{str(electrode).title()}"
+    return labels
+
+
 @app.route("/hv_data")
 def hv_data():
     try:
@@ -683,7 +726,11 @@ def hv_data():
 
         with open(config_path) as f:
             cfg = json.load(f)
-        output_dir = cfg.get("run_out_dir")
+        # Resolve the same run dir as /get_subruns (with the previous-run fallback),
+        # so the subrun the selector offers is found here too.
+        output_dir = _hv_run_dir(cfg, hv_file_name)
+        if not output_dir:
+            return jsonify([])
         hv_csv_path = os.path.join(output_dir, subrun_name, hv_file_name)
 
         df = pd.read_csv(hv_csv_path)
@@ -692,6 +739,12 @@ def hv_data():
         # Extract timestamps
         time = df["timestamp"].astype(str).tolist()
 
+        # Map "slot:channel" -> detector label (e.g. "A_Drift") from the run config's
+        # detectors[].hv_channels. Label = detector name suffix (mx17_A -> A) + the
+        # capitalized electrode (drift -> Drift). Channels absent from the config keep
+        # their raw "slot:channel" name.
+        chan_label = _hv_channel_labels(cfg)
+
         voltage_data = {}
         current_data = {}
 
@@ -699,10 +752,14 @@ def hv_data():
         for col in df.columns:
             if "vmon" in col:
                 key = col.replace(" vmon", "")
-                voltage_data[key] = df[col].tolist()
+                voltage_data[chan_label.get(key, key)] = df[col].tolist()
             elif "imon" in col:
                 key = col.replace(" imon", "")
-                current_data[key] = df[col].tolist()
+                current_data[chan_label.get(key, key)] = df[col].tolist()
+
+        # Sort by label so each detector's traces group together (A_Drift, A_Resist, …)
+        voltage_data = dict(sorted(voltage_data.items()))
+        current_data = dict(sorted(current_data.items()))
 
         return jsonify({
             "success": True,
