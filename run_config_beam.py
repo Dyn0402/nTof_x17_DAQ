@@ -28,10 +28,10 @@ SUBRUN_MIN   = 5      # run time per resist point (minutes)
 OVERHEAD_MIN = 1      # per-subrun ramp poll + DAQ prep + 10 s inter-subrun wait
 RESIST_STEP  = -10    # V per resist step (all four resists move together)
 RESIST_FLOOR = 100    # lowest resist to scan down to, V
-DRIFT_V      = 800    # all four drifts held here, V
+DRIFT_V      = 700    # all four drifts held here, V
 
 # Per-channel resist starting (max) voltages, channel on card 5. mx17 A/B/C/D.
-RESIST_MAX = {'1': 535, '2': 530, '3': 530, '4': 510}
+RESIST_MAX = {'1': 540, '2': 535, '3': 535, '4': 515}
 
 # Steps so the highest-starting channel reaches the floor (others clamp there).
 N_RESIST_STEPS = (max(RESIST_MAX.values()) - RESIST_FLOOR + (-RESIST_STEP) - 1) // (-RESIST_STEP) + 1
