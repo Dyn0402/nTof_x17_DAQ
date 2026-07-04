@@ -18,37 +18,23 @@ PROJECT       = 'beam_july'
 BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
 
 # ---------------------------------------------------------------------------
-# Overnight HV scan schedule
-#   1. Electronic background: all resists and drifts at 0 V for BACKGROUND_MIN.
-#   2. Drift + resist grid scan: for each drift setting (all four drifts set to
-#      the same value), ramp the four resists from their nominal values down in
-#      RESIST_STEP steps, SUBRUN_MIN per step. Drift settings step by DRIFT_STEP
-#      from DRIFT_START down to DRIFT_FLOOR, then a final scan at DRIFT_FINAL.
-# The number of resist steps is solved to fill TARGET_HOURS of running so that
-# each drift scan reaches as deep in resist as the budget allows.
+# Quick HV scan schedule (Ar/CF4/Iso 88/10/2)
+#   All four drifts held at DRIFT_V. Each resist starts at its per-channel max
+#   and steps down together by RESIST_STEP, SUBRUN_MIN per point, until every
+#   channel reaches RESIST_FLOOR (each channel clamps at the floor once there).
+#   This will be stopped early, so resume is off.
 # ---------------------------------------------------------------------------
-TARGET_HOURS   = 11     # total wall-clock target for the whole schedule
-BACKGROUND_MIN = 30     # electronic-background subrun length
-SUBRUN_MIN     = 5      # run time per resist point
-OVERHEAD_MIN   = 1      # per-subrun ramp poll + DAQ prep + 10 s inter-subrun wait
-RESIST_STEP    = -10    # V per resist step (all four resists move together)
+SUBRUN_MIN   = 5      # run time per resist point (minutes)
+OVERHEAD_MIN = 1      # per-subrun ramp poll + DAQ prep + 10 s inter-subrun wait
+RESIST_STEP  = -10    # V per resist step (all four resists move together)
+RESIST_FLOOR = 100    # lowest resist to scan down to, V
+DRIFT_V      = 800    # all four drifts held here, V
 
-DRIFT_START = 1000      # nominal / top drift, V (all four drifts)
-DRIFT_STEP  = -300      # V per drift step
-DRIFT_FLOOR = 100       # lowest drift in the step-scan (>= 0)
-DRIFT_FINAL = 1200      # extra scan with all drifts raised, run last
+# Per-channel resist starting (max) voltages, channel on card 5. mx17 A/B/C/D.
+RESIST_MAX = {'1': 535, '2': 530, '3': 530, '4': 510}
 
-# All drift settings visited, in order. Step down from DRIFT_START to DRIFT_FLOOR,
-# then the raised DRIFT_FINAL scan.
-DRIFT_SETTINGS = list(range(DRIFT_START, DRIFT_FLOOR - 1, DRIFT_STEP)) + [DRIFT_FINAL]
-
-# Nominal resist starting voltages (top of every resist scan), per channel on card 5.
-RESIST_NOMINAL = {'1': 790, '2': 780, '3': 760, '4': 690}  # mx17_A / B / C / D
-
-# Solve for the number of resist steps that fills the time budget.
-_SCAN_BUDGET_MIN = TARGET_HOURS * 60 - (BACKGROUND_MIN + OVERHEAD_MIN)
-_PER_SUBRUN_MIN  = SUBRUN_MIN + OVERHEAD_MIN
-N_RESIST_STEPS   = int(_SCAN_BUDGET_MIN // (len(DRIFT_SETTINGS) * _PER_SUBRUN_MIN))
+# Steps so the highest-starting channel reaches the floor (others clamp there).
+N_RESIST_STEPS = (max(RESIST_MAX.values()) - RESIST_FLOOR + (-RESIST_STEP) - 1) // (-RESIST_STEP) + 1
 
 
 class Config(RunConfigBase):
@@ -74,8 +60,8 @@ class Config(RunConfigBase):
         self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
-        self.gas = 'Ar/CO2 70/30'  # Gas type for run
-        # self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
+        # self.gas = 'Ar/CO2 70/30'  # Gas type for run
+        self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         # self.gas = 'Ne/Iso 95/5'  # Gas type for run
         # self.beam_type = 'cosmics'
@@ -163,34 +149,23 @@ class Config(RunConfigBase):
             self.hv_info['username'] = lines[0].strip()
             self.hv_info['password'] = lines[1].strip()
 
-        # ----- Overnight HV scan schedule (built from module constants above) -----
+        # ----- Quick HV scan schedule (built from module constants above) -----
         self.sub_runs = []
 
-        # 1. Electronic background — all resists and drifts at 0 V.
-        self.sub_runs.append({
-            'sub_run_name': 'background_0V',
-            'run_time': BACKGROUND_MIN,  # Minutes
-            'hvs': {
-                '5': {ch: 0 for ch in RESIST_NOMINAL},  # Positive Resists
-                '9': {'0': 0, '1': 0, '2': 0, '3': 0},  # Negative Drifts
-            },
-        })
-
-        # 2. Drift + resist grid scan. For each drift setting (all four drifts at
-        #    the same value), step the four resists down together from their
-        #    nominal values in RESIST_STEP increments, SUBRUN_MIN per point.
-        for drift_v in DRIFT_SETTINGS:
-            for step in range(N_RESIST_STEPS):
-                resists = {ch: v + RESIST_STEP * step for ch, v in RESIST_NOMINAL.items()}
-                drop = -RESIST_STEP * step  # V below nominal, used in the subrun name
-                self.sub_runs.append({
-                    'sub_run_name': f'scan_drift{drift_v}_resistdrop{drop}',
-                    'run_time': SUBRUN_MIN,  # Minutes
-                    'hvs': {
-                        '5': resists,  # Positive Resists (mx17_A/B/C/D on channels 1-4)
-                        '9': {'0': drift_v, '1': drift_v, '2': drift_v, '3': drift_v},  # Negative Drifts
-                    },
-                })
+        # Drifts held at DRIFT_V; step the four resists down together from their
+        # per-channel maxima in RESIST_STEP increments, SUBRUN_MIN per point, each
+        # channel clamping at RESIST_FLOOR once it reaches it.
+        for step in range(N_RESIST_STEPS):
+            resists = {ch: max(RESIST_FLOOR, v + RESIST_STEP * step) for ch, v in RESIST_MAX.items()}
+            drop = -RESIST_STEP * step  # V below max, used in the subrun name
+            self.sub_runs.append({
+                'sub_run_name': f'scan_drift{DRIFT_V}_resistdrop{drop}',
+                'run_time': SUBRUN_MIN,  # Minutes
+                'hvs': {
+                    '5': resists,  # Positive Resists (mx17_A/B/C/D on channels 1-4)
+                    '9': {'0': DRIFT_V, '1': DRIFT_V, '2': DRIFT_V, '3': DRIFT_V},  # Negative Drifts
+                },
+            })
 
 
         self.bench_geometry = {
@@ -612,14 +587,13 @@ if __name__ == '__main__':
     overhead_min = n_sub * OVERHEAD_MIN
     total_h = (run_min + overhead_min) / 60
     lowest_drop = -RESIST_STEP * (N_RESIST_STEPS - 1)
-    print(f'Drift settings ({len(DRIFT_SETTINGS)}): {DRIFT_SETTINGS} V')
-    print(f'Resist steps per scan: {N_RESIST_STEPS}  '
-          f'(nominal down to nominal-{lowest_drop} V, {RESIST_STEP} V/step)')
-    for ch, v in RESIST_NOMINAL.items():
-        print(f'  resist ch {ch}: {v} -> {v - lowest_drop} V')
-    print(f'Sub-runs: {n_sub}  (1 background + '
-          f'{len(DRIFT_SETTINGS)} x {N_RESIST_STEPS} scan points)')
+    print(f'Gas: {config.gas}')
+    print(f'Drift (all four): {DRIFT_V} V')
+    print(f'Resist steps: {N_RESIST_STEPS}  ({RESIST_STEP} V/step, floor {RESIST_FLOOR} V)')
+    for ch, v in RESIST_MAX.items():
+        print(f'  resist ch {ch}: {v} -> {max(RESIST_FLOOR, v - lowest_drop)} V')
+    print(f'Sub-runs: {n_sub}')
     print(f'Run time: {run_min} min + ~{overhead_min} min overhead '
-          f'= ~{total_h:.2f} h (target {TARGET_HOURS} h)')
+          f'= ~{total_h:.2f} h (will be stopped early)')
 
     print('donzo')
