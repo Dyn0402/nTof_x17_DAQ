@@ -28,9 +28,8 @@
           <div class="btn-group-block">
             <span class="group-label">Run</span>
             <div class="d-flex flex-wrap gap-2">
-              <button id="run-config-py" class="btn btn-success">Start Run</button>
+              <button id="run-toggle" class="btn btn-success">Start Run</button>
               <button id="stop-sub-run" class="btn btn-warning">Stop Sub-Run</button>
-              <button id="stop-run" class="btn btn-danger">Stop Run</button>
               <button id="restart-all" class="btn btn-outline-danger">Restart All</button>
               <button id="take-pedestals" class="btn btn-secondary">Take Pedestals</button>
               <button id="git-reset" class="btn btn-secondary">Git Reset</button>
@@ -40,13 +39,11 @@
           <div class="btn-group-block">
             <span class="group-label">Watchers</span>
             <div class="d-flex flex-wrap gap-2">
-              <button id="start-processor" class="btn btn-info btn-sm">Start Processor</button>
-              <button id="stop-processor" class="btn btn-outline-secondary btn-sm">Stop Processor</button>
-              <button id="start-qa" class="btn btn-info btn-sm">Start QA</button>
-              <button id="stop-qa" class="btn btn-outline-secondary btn-sm">Stop QA</button>
-              <button id="rerun-qa" class="btn btn-outline-warning btn-sm">Rerun QA</button>
-              <button id="start-backup" class="btn btn-info btn-sm">Start Backup</button>
-              <button id="stop-backup" class="btn btn-outline-secondary btn-sm">Stop Backup</button>
+              <button id="processor-toggle" class="btn btn-info btn-sm">Start Processor</button>
+              <button id="qa-toggle" class="btn btn-info btn-sm">Start QA</button>
+              <button id="pedestal-toggle" class="btn btn-info btn-sm">Start Pedestal QA</button>
+              <button id="backup-toggle" class="btn btn-info btn-sm">Start Backup</button>
+              <button id="rerun-qa" class="btn btn-outline-warning btn-sm ms-auto">Rerun QA</button>
             </div>
           </div>
         </div>
@@ -189,11 +186,6 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">Pedestal QA</span>
-      <span class="ms-auto d-flex align-items-center gap-2">
-        <span class="text-muted small">Watcher:</span>
-        <span id="ped-watcher-status" class="badge bg-secondary">...</span>
-        <button id="ped-watcher-toggle" class="btn btn-sm btn-outline-secondary">Start</button>
-      </span>
     </div>
     <div class="panel-body">
       <div class="d-flex flex-wrap align-items-center gap-2">
@@ -304,7 +296,15 @@ function updateStatus() {
                   </div>`;
             });
 
-            updatePedWatcherUI(data);
+            // "Events this run" is folded into the dream_daq card by /status, so it
+            // refreshes in lockstep with that card (1s) rather than a separate timer.
+            const dd = data.find(s => s.name === "dream_daq");
+            if (dd && dd.run_events != null) {
+                document.getElementById("events-display").textContent = dd.run_events;
+            }
+
+            updateWatcherToggles(data);
+            updateRunToggle(data);
         });
 }
 
@@ -347,19 +347,7 @@ document.getElementById("stop-sub-run").addEventListener("click", async () => {
 });
 
 
-// STOP RUN button
-document.getElementById("stop-run").addEventListener("click", async () => {
-  const ok = confirm("Are you sure you want to STOP the run?");
-  if (!ok) return;   // <-- Cancel → do nothing
-
-  const res = await fetch("/stop_run", { method: "POST" });
-  const data = await res.json();
-
-  showPopup(data.message, "#dc3545");
-
-  run = null;
-});
-
+// (Stop Run is now the run-toggle button; wiring lives with startRun/stopRun.)
 
 document.getElementById("restart-all").addEventListener("click", () => {
   if (!confirm("Are you sure you want to restart all DAQ components?")) return;
@@ -529,46 +517,10 @@ document.getElementById("rerun-qa").addEventListener("click", async () => {
   showPopup(rerunData.message, rerunData.success ? "#fd7e14" : "#dc3545");
 });
 
-document.getElementById("start-qa").addEventListener("click", async () => {
-  const res = await fetch("/start_qa", { method: "POST" });
-  const data = await res.json();
-  showPopup(data.message, data.success ? "#17a2b8" : "#dc3545");
-});
+// Processor / QA / Backup watchers use single toggle buttons (Start when stopped,
+// Stop when running); wiring + state tracking lives with WATCHER_TOGGLES below.
 
-document.getElementById("stop-qa").addEventListener("click", async () => {
-  if (!confirm("Stop the QA watcher?")) return;
-  const res = await fetch("/stop_qa", { method: "POST" });
-  const data = await res.json();
-  showPopup(data.message, "#6c757d");
-});
-
-document.getElementById("start-backup").addEventListener("click", async () => {
-  const res = await fetch("/start_backup", { method: "POST" });
-  const data = await res.json();
-  showPopup(data.message, data.success ? "#17a2b8" : "#dc3545");
-});
-
-document.getElementById("stop-backup").addEventListener("click", async () => {
-  if (!confirm("Stop the backup watcher?")) return;
-  const res = await fetch("/stop_backup", { method: "POST" });
-  const data = await res.json();
-  showPopup(data.message, "#6c757d");
-});
-
-document.getElementById("start-processor").addEventListener("click", async () => {
-  const res = await fetch("/start_processor", { method: "POST" });
-  const data = await res.json();
-  showPopup(data.message, data.success ? "#17a2b8" : "#dc3545");
-});
-
-document.getElementById("stop-processor").addEventListener("click", async () => {
-  if (!confirm("Stop the processor watcher?")) return;
-  const res = await fetch("/stop_processor", { method: "POST" });
-  const data = await res.json();
-  showPopup(data.message, "#6c757d");
-});
-
-document.getElementById("run-config-py").addEventListener("click", async function runConfigHandler() {
+async function startRun() {
 
   // ----- STEP 1: Update run config -----
   const updateRes = await fetch("/update_run_config_py", {
@@ -624,6 +576,40 @@ document.getElementById("run-config-py").addEventListener("click", async functio
     await loadSubruns();
     updateHVPlots();
   }
+}
+
+// Run toggle: one button that is "Start Run" (green) when idle and "Stop Run"
+// (red) while a run is in progress — including HV-ramp / copy / between-subrun
+// gaps, so it never flips back to "Start Run" mid-run. "Stop Sub-Run" stays
+// separate. runActive is refreshed from daq_control's state each /status poll.
+let runActive = false;
+const RUN_IDLE_STATES = ["WAITING", "Run Complete", "ERROR"];
+
+async function stopRun() {
+  if (!confirm("Are you sure you want to STOP the run?")) return;
+  const res = await fetch("/stop_run", { method: "POST" });
+  const data = await res.json();
+  showPopup(data.message, "#dc3545");
+  run = null;
+}
+
+function updateRunToggle(statuses) {
+  const daq = statuses.find(s => s.name === "daq_control");
+  if (!daq) return;
+  runActive = !RUN_IDLE_STATES.includes(daq.status);
+  const btn = document.getElementById("run-toggle");
+  btn.textContent = runActive ? "Stop Run" : "Start Run";
+  btn.className = runActive ? "btn btn-danger" : "btn btn-success";
+  // Colour the top stats: green while a run is live, blue when complete/idle.
+  ["run-display", "events-display"].forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.toggle("run-live", runActive);
+    el.classList.toggle("run-done", !runActive);
+  });
+}
+
+document.getElementById("run-toggle").addEventListener("click", () => {
+  if (runActive) stopRun(); else startRun();
 });
 
 
@@ -651,23 +637,9 @@ setInterval(updateRunDisplay, 5000);
 updateRunDisplay();
 
 
-async function updateRunEventsDisplay() {
-    try {
-        const res = await fetch("/get_run_events", { method: "GET" });
-        const data = await res.json();
-
-        if (!data.success) return;
-
-        document.getElementById("events-display").textContent = data.total_events;
-    } catch (err) {
-        console.error("Error updating run events display:", err);
-    }
-}
-
-// update every 5 seconds
-setInterval(updateRunEventsDisplay, 5000);
-
-updateRunEventsDisplay();
+// "Events this run" (#events-display) is now updated from the dream_daq card in
+// updateStatus() so it stays in sync with that card. (/get_run_events still exists
+// for other callers.)
 
 // --- PNG Viewer JS ---
 async function fetchDirs(subdir = "") {
@@ -902,33 +874,48 @@ function osJoin(...parts) {
 // ---------------------------------------------------------------------------
 
 let pedLastGenerated = null;   // summary.json "generated" stamp currently shown
-let pedWatcherStopped = true;  // tracked from /status for the toggle button
 
-function updatePedWatcherUI(statuses) {
-    const info = statuses.find(s => s.name === "pedestal_watcher");
-    if (!info) return;
-    pedWatcherStopped = info.status === "STOPPED";
-    const badge = document.getElementById("ped-watcher-status");
-    badge.textContent = info.status;
-    badge.className = `badge bg-${info.color}`;
-    const btn = document.getElementById("ped-watcher-toggle");
-    btn.textContent = pedWatcherStopped ? "Start" : "Stop";
-    btn.className = pedWatcherStopped
-        ? "btn btn-sm btn-outline-info"
-        : "btn btn-sm btn-outline-secondary";
+// Processor / QA / Pedestal QA / Backup single toggle buttons (moved to Run Control).
+// A watcher's status is "STOPPED" when its tmux session isn't running; the button
+// text/action follow that state, refreshed each /status poll via updateWatcherToggles().
+const WATCHER_TOGGLES = [
+    { name: "processor_watcher", btn: "processor-toggle", label: "Processor",
+      start: "/start_processor", stop: "/stop_processor", confirm: "Stop the processor watcher?" },
+    { name: "qa_watcher", btn: "qa-toggle", label: "QA",
+      start: "/start_qa", stop: "/stop_qa", confirm: "Stop the QA watcher?" },
+    { name: "pedestal_watcher", btn: "pedestal-toggle", label: "Pedestal QA",
+      start: "/start_ped_qa", stop: "/stop_ped_qa", confirm: "Stop the pedestal QA watcher?" },
+    { name: "backup_watcher", btn: "backup-toggle", label: "Backup",
+      start: "/start_backup", stop: "/stop_backup", confirm: "Stop the backup watcher?" },
+];
+const watcherStopped = {};  // name -> bool, tracked from /status
+
+function updateWatcherToggles(statuses) {
+    WATCHER_TOGGLES.forEach(cfg => {
+        const info = statuses.find(s => s.name === cfg.name);
+        if (!info) return;
+        const stopped = info.status === "STOPPED";
+        watcherStopped[cfg.name] = stopped;
+        const btn = document.getElementById(cfg.btn);
+        if (!btn) return;
+        btn.textContent = (stopped ? "Start " : "Stop ") + cfg.label;
+        btn.className = stopped ? "btn btn-info btn-sm" : "btn btn-outline-secondary btn-sm";
+    });
 }
 
-document.getElementById("ped-watcher-toggle").addEventListener("click", async () => {
-    if (pedWatcherStopped) {
-        const res = await fetch("/start_ped_qa", { method: "POST" });
-        const d = await res.json();
-        showPopup(d.message, d.success ? "#17a2b8" : "#dc3545");
-    } else {
-        if (!confirm("Stop the pedestal QA watcher?")) return;
-        const res = await fetch("/stop_ped_qa", { method: "POST" });
-        const d = await res.json();
-        showPopup(d.message, "#6c757d");
-    }
+WATCHER_TOGGLES.forEach(cfg => {
+    document.getElementById(cfg.btn).addEventListener("click", async () => {
+        if (watcherStopped[cfg.name] !== false) {   // stopped (or unknown) → start
+            const res = await fetch(cfg.start, { method: "POST" });
+            const d = await res.json();
+            showPopup(d.message, d.success ? "#17a2b8" : "#dc3545");
+        } else {
+            if (!confirm(cfg.confirm)) return;
+            const res = await fetch(cfg.stop, { method: "POST" });
+            const d = await res.json();
+            showPopup(d.message, "#6c757d");
+        }
+    });
 });
 
 async function loadPedRuns() {

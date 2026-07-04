@@ -134,13 +134,93 @@ def get_current_run():
     return jsonify({"success": True, "run_name": _current_run_cache or "None"})
 
 
+def _status_field(info, label):
+    """Value of a named field in a get_*_status() result, or None."""
+    for f in (info or {}).get("fields", []):
+        if f.get("label") == label:
+            return f.get("value")
+    return None
+
+
+def _hms_to_min(s):
+    """'0h 1m 47s' -> minutes (float). Missing/garbage -> 0.0."""
+    if not s:
+        return 0.0
+    m = re.search(r'(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?', s)
+    if not m:
+        return 0.0
+    h, mm, ss = (int(g) if g else 0 for g in m.groups())
+    return h * 60 + mm + ss / 60.0
+
+
+def _fmt_min(minutes):
+    """Minutes -> '50m' or '3h45m'."""
+    t = int(round(minutes))
+    h, m = divmod(t, 60)
+    return f"{h}h{m:02d}m" if h else f"{m}m"
+
+
+# On-disk event total only changes when a subrun completes, so cache it briefly:
+# /status is polled every 1s and get_total_events_for_run walks every subrun's logs.
+_events_cache = {"run": None, "t": 0.0, "total": 0}
+
+
+def _ondisk_run_events(run_name):
+    now = time.time()
+    c = _events_cache
+    if c["run"] == run_name and now - c["t"] < 4.0:
+        return c["total"]
+    try:
+        total, _ = get_total_events_for_run(run_dir=RUN_DIR, run_name=run_name)
+    except Exception:
+        total = 0
+    c.update(run=run_name, t=now, total=total)
+    return total
+
+
+def _live_events_from(dream_info):
+    """Live nb_of_events from an already-fetched dream_daq status (no re-capture)."""
+    if (dream_info or {}).get("status") != "RUNNING":
+        return 0
+    try:
+        return int(str(_status_field(dream_info, "Subrun Events")).strip())
+    except (TypeError, ValueError):
+        return 0
+
+
+def _run_progress(daq_info, dream_info):
+    """{subrun_idx, subrun_total, elapsed_min, total_min} for the current run, from
+    its run_config.json sub_runs + the live subrun name/elapsed. {} if unavailable.
+    Elapsed = completed subruns' planned time + the current subrun's elapsed (capped
+    at its planned length), so it pairs with the subrun index and never exceeds total."""
+    run_name = _current_run_cache
+    if not run_name:
+        return {}
+    try:
+        with open(os.path.join(RUN_DIR, run_name, "run_config.json")) as f:
+            subs = json.load(f).get("sub_runs", [])
+    except Exception:
+        return {}
+    if not subs:
+        return {}
+    names = [s.get("sub_run_name") for s in subs]
+    durs  = [float(s.get("run_time", 0) or 0) for s in subs]  # minutes
+    prog  = {"subrun_total": len(subs), "total_min": sum(durs)}
+    subrun = _status_field(daq_info, "Subrun")
+    if subrun in names:
+        i = names.index(subrun)
+        cur = min(_hms_to_min(_status_field(dream_info, "Run Time")), durs[i])
+        prog["subrun_idx"]  = i + 1
+        prog["elapsed_min"] = sum(durs[:i]) + cur
+    return prog
+
+
 @app.route("/status")
 def status_all():
     statuses = []
+    by_name = {}
 
-    ordered_sessions = TMUX_SESSIONS  # Fix ordering
-
-    for s in ordered_sessions:
+    for s in TMUX_SESSIONS:
         if s == "dream_daq":
             info = get_dream_daq_status()
         elif s == "hv_control":
@@ -159,7 +239,27 @@ def status_all():
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 
-        statuses.append({"name": s, **info})
+        entry = {"name": s, **info}
+        statuses.append(entry)
+        by_name[s] = entry
+
+    # Enrich the dream_daq card with run progress (subrun x/N, elapsed/total time)
+    # and the live "Events this run" total, so both refresh with the 1s /status poll
+    # (instead of a separate slower timer).
+    dream = by_name.get("dream_daq")
+    if dream is not None:
+        prog = _run_progress(by_name.get("daq_control"), dream)
+        if prog.get("subrun_idx"):
+            dream.setdefault("fields", []).append(
+                {"label": "Subrun", "value": f'{prog["subrun_idx"]}/{prog["subrun_total"]}'})
+            dream["fields"].append(
+                {"label": "Progress",
+                 "value": f'{_fmt_min(prog["elapsed_min"])} / {_fmt_min(prog["total_min"])}'})
+        elif prog.get("subrun_total"):
+            dream.setdefault("fields", []).append(
+                {"label": "Subrun", "value": f'–/{prog["subrun_total"]}'})
+        if _current_run_cache:
+            dream["run_events"] = _ondisk_run_events(_current_run_cache) + _live_events_from(dream)
 
     return jsonify(statuses)
 
@@ -703,24 +803,12 @@ def get_config_py():
 
 
 def _live_dream_events():
-    """Live per-FEU event count of the in-progress subrun, read from the dream_daq
-    pane (the 'Events' field = nb_of_events, which counts triggers ≈ the per-FEU
-    physics count). Only while actively taking data (status RUNNING); 0 otherwise.
-
-    The in-progress subrun has no RunCtrl log yet, so get_total_events_for_run()
-    excludes it; adding this keeps 'Events this run' live during acquisition without
-    double-counting — once the subrun finishes, status leaves RUNNING (drops this)
-    and the completed count appears on disk instead."""
-    try:
-        dream = get_dream_daq_status()
-        if dream.get("status") != "RUNNING":
-            return 0
-        for f in dream.get("fields", []):
-            if f.get("label") == "Events":
-                return int(str(f.get("value", "0")).strip())
-    except Exception:
-        pass
-    return 0
+    """Live per-FEU event count of the in-progress subrun (nb_of_events ≈ the per-FEU
+    physics count), captured fresh from the dream_daq pane. Only while RUNNING; 0
+    otherwise. The in-progress subrun has no RunCtrl log yet, so get_total_events_for_run()
+    excludes it; adding this keeps 'Events this run' live without double-counting —
+    once the subrun finishes, status leaves RUNNING and the count appears on disk."""
+    return _live_events_from(get_dream_daq_status())
 
 
 @app.route("/get_run_events", methods=['GET'])

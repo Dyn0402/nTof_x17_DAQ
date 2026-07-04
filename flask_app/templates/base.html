@@ -144,6 +144,9 @@
             line-height: 1.25;
             word-break: break-all;
         }
+        /* Current run / Events this run: green while a run is live, blue when complete. */
+        .stat-value.run-live { color: var(--ok); }
+        .stat-value.run-done { color: var(--info); }
 
         /* ---------- Status cards ---------- */
         .status-card {

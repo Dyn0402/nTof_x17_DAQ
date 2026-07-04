@@ -52,8 +52,10 @@ def get_dream_daq_status():
         m_ir = re.search(r"IntRate=\s*([\d.]+\s*[A-Za-z]+)", output)
         if m_ir: fields.append({"label": "Int Rate", "value": m_ir.group(1)})
 
+        # Live per-subrun event count (nb_of_events). Labeled "Subrun Events" to
+        # distinguish it from the cumulative "Events this run" total shown up top.
         m_ev = re.search(r"nb_of_events=(\d+)", output)
-        if m_ev: fields.append({"label": "Events", "value": m_ev.group(1)})
+        if m_ev: fields.append({"label": "Subrun Events", "value": m_ev.group(1)})
 
         # m_wait = re.search(
         #     r"wait for\s*((?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?)", output
