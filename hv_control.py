@@ -15,6 +15,7 @@ import csv
 
 from Server import Server
 from caen_hv_py.CAENHVController import CAENHVController
+from caen_hv_py.exceptions import CAENHVError
 
 # from run_config import Config
 
@@ -35,7 +36,13 @@ def main():
                 password = hv_info['password']
                 caen_lock = threading.Lock()
 
-                with CAENHVController(ip_address, username, password) as caen_hv:
+                # keepalive_s pings the CAEN every 10 s so the session never hits
+                # the ~15 s idle drop that used to wedge HV at scan-boundary pauses
+                # (monitor stopped + boundary pause > 15 s). auto_reconnect is a
+                # backstop: if the handle is lost anyway, calls transparently
+                # re-login and retry instead of hanging on a -1/"CFE server down".
+                with CAENHVController(ip_address, username, password,
+                                      keepalive_s=10, auto_reconnect=True) as caen_hv:
                     print('HV Connected')
                     res = server.receive()
                     while 'Finished' not in res:
@@ -84,11 +91,11 @@ def set_hvs(hv_info, hvs, caen_hv, caen_lock):
                     continue
                 power = caen_hv.get_ch_power(int(slot), int(channel))
                 if v0 == 0:  # If 0 V, turn off channel without setting voltage
-                    if power:
+                    if power == 1:
                         caen_hv.set_ch_pw(int(slot), int(channel), 0)
                 else:
                     caen_hv.set_ch_v0(int(slot), int(channel), v0)
-                    if not power:
+                    if power != 1:
                         caen_hv.set_ch_pw(int(slot), int(channel), 1)
 
     all_ramped = False
@@ -151,9 +158,16 @@ def monitor_hvs(hv_info, hvs, sub_run_name, stop_event, print_event, caen_hv, ca
                     print(f"Monitoring HV \n{time.strftime('%H:%M:%S', time.strptime(row[0], '%Y-%m-%d %H:%M:%S'))}")
                 for slot, channel_v0s in hvs.items():
                     for channel, v0 in channel_v0s.items():
-                        power = caen_hv.get_ch_power(int(slot), int(channel))
-                        vmon = caen_hv.get_ch_vmon(int(slot), int(channel))
-                        imon = caen_hv.get_ch_imon(int(slot), int(channel))
+                        try:
+                            power = caen_hv.get_ch_power(int(slot), int(channel))
+                            vmon = caen_hv.get_ch_vmon(int(slot), int(channel))
+                            imon = caen_hv.get_ch_imon(int(slot), int(channel))
+                        except CAENHVError as e:
+                            # Don't let a hard HV read failure kill the monitor
+                            # thread — log a blank row and keep going. Transient
+                            # session drops are auto-healed inside the controller.
+                            print(f"HV monitor read failed for {slot}:{channel}: {e}")
+                            power, vmon, imon = '', float('nan'), float('nan')
 
                         row.extend([power, v0, vmon, imon])  # Append to row
 
