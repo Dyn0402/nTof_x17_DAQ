@@ -1,0 +1,22 @@
+{
+  "_comment": "N1081B .243 Section B module config per HV scan, keyed by scan tag (the first '_'-delimited token of each sub-run name in run_config_beam.py / the active run_config_beam.json). The watcher (n1081b/n1081b_scan_watcher.py) applies 'delay' to both input channels and 'output_status' to both output channels, preserving every other field (gate, monostable width, inversion) read live from the board. 'delay' is the raw N1081B input-delay field; baseline (current) = 1000, treated as ns; values are baseline 1000 +/- the requested ns shift.",
+  "board": "192.168.10.243",
+  "section": "SEC_B",
+  "channels": [0, 1],
+  "password": "password",
+  "baseline": {"delay": 1000, "output_status": true, "input_status": true, "_note": "current config; restored on run completion"},
+  "scans": {
+    "ctrl":   {"delay": 1000, "output_status": true,  "input_status": false, "_note": "no-trigger baseline: output ON, input OFF (holds trigger line at its normal 3V idle, no pulses). Inserted 2026-07-05 as the cleaner replacement for scan01's output-OFF control."},
+    "scan01": {"delay": 1000, "output_status": false, "_note": "baseline: outputs OFF"},
+    "scan02": {"delay": 1000, "output_status": true,  "_note": "current config"},
+    "scan03": {"delay": 850,  "output_status": true,  "_note": "delay -150 ns (1000-150)"},
+    "scan04": {"delay": 1150, "output_status": true,  "_note": "delay +150 ns (1000+150)"},
+    "scan05": {"delay": 700,  "output_status": true,  "_note": "delay -300 ns (1000-300)"},
+    "scan06": {"delay": 550,  "output_status": true,  "_note": "delay -450 ns (1000-450)"},
+    "scan07": {"delay": 400,  "output_status": true,  "_note": "delay -600 ns (1000-600)"},
+    "scan08": {"delay": 1300, "output_status": true,  "_note": "delay +300 ns (1000+300)"},
+    "scan09": {"delay": 1000, "output_status": true,  "_note": "current config, drift 400 V"},
+    "scan10": {"delay": 100,  "output_status": true,  "_note": "delay -900 ns (1000-900)"},
+    "scan11": {"delay": 1500, "output_status": true,  "_note": "delay +500 ns (1000+500)"}
+  }
+}

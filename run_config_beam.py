@@ -18,18 +18,73 @@ PROJECT       = 'beam_july'
 BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
 
 # ---------------------------------------------------------------------------
-# Statistics run schedule (Ar/CF4/Iso 88/10/2)
-#   N_SUBRUNS identical sub-runs of SUBRUN_MIN each, all at the per-channel
-#   maximum resist voltages and all four drifts held at DRIFT_V.
+# N1081B-synchronised HV scan schedule (Ar/CF4/Iso 88/10/2)
+#   A sequence of SCANS. Each scan is a full resist HV scan (identical set of
+#   resist steps) at that scan's drift voltage. The N1081B .243 Section B module
+#   config for each scan is applied by the standalone watcher
+#   (n1081b/n1081b_scan_watcher.py) using the scan tag in each sub-run name;
+#   the watcher holds the DAQ at each scan boundary (.pause_run) while it swaps
+#   the module config. This file only sets the DAQ/HV side (drift + resist steps).
 # ---------------------------------------------------------------------------
-N_SUBRUNS    = 20     # number of identical sub-runs
-SUBRUN_MIN   = 20     # run time per sub-run (minutes)
-POST_SUBRUN_PAUSE_MIN = 0   # optional pause AFTER each sub-run (minutes); 0 = no pause
+SUBRUN_MIN   = 5      # run time per sub-run (minutes)
 OVERHEAD_MIN = 1      # per-subrun ramp poll + DAQ prep + 10 s inter-subrun wait
-DRIFT_V      = 700    # all four drifts held here, V
+BOUNDARY_PAUSE_MIN = 1  # safety-floor pause AFTER the last sub-run of each scan
+                        # (minutes). The watcher extends this via .pause_run while it
+                        # swaps the module config, so even if the watcher is down the
+                        # DAQ pauses rather than running a scan with the wrong config.
 
-# Per-channel maximum resist voltages, channel on card 5. mx17 A/B/C/D.
+# Per-channel maximum resist voltages, card 5 channels 1-4 = detectors A/B/C/D.
+# Every scan starts each detector at its own max and steps down from there.
 RESIST_MAX = {'1': 540, '2': 535, '3': 535, '4': 515}
+
+# FULL-precision resist-step pattern below each detector's own max (tuned on Det A;
+# B/C/D follow the same shape so all four stay in lock-step, same # of steps).
+# List of (step_V, until_offset_below_max): -10 V down to max-30, then -5 V down
+# to max-50, then -10 V down to max-190.  -> 22 steps/scan, Det A 540 -> 350 V.
+# Used for the delay=1000 reference scans (baseline, current, drift-change).
+RESIST_STEP_PLAN = [(-10, 30), (-5, 50), (-10, 190)]
+
+# REDUCED pattern for the delay-shifted scans: uniform -10 V, offset 5..145 below
+# each detector's max (Det A 535 -> 395), 15 steps. Coarser/shorter to fit more scans.
+REDUCED_OFFSETS = list(range(5, 146, 10))  # [5, 15, 25, ..., 145]
+
+# Ordered scans: (scan_tag, drift_V, reduced?). The scan_tag is the first
+# '_'-delimited token of every sub-run name in that scan and is the key the watcher
+# schedule (config/n1081b_scan_schedule.json) uses to look up the N1081B module
+# config (input delay ch1&2 + output enable ch1&2). scan01..scan11 run in this
+# order; tags are position-based, so this list and the schedule JSON must agree.
+# Front (scan01-07) by increasing |delay shift|; tail (per user): +300, drift
+# change, -900, +500:
+#   scan01 baseline OFF | scan02 current | scan03-07 -150/+150/-300/-450/-600 ns
+#   scan08 +300 ns | scan09 current @ drift 400 V | scan10 -900 ns | scan11 +500 ns
+SCANS = [
+    ('scan01', 800, False),  # baseline, outputs OFF (delay 1000)
+    ('scan02', 800, False),  # current           (delay 1000)
+    ('scan03', 800, True),   # delay 850   (-150 ns)
+    ('scan04', 800, True),   # delay 1150  (+150 ns)
+    ('scan05', 800, True),   # delay 700   (-300 ns)
+    ('scan06', 800, True),   # delay 550   (-450 ns)
+    ('scan07', 800, True),   # delay 400   (-600 ns)
+    ('scan08', 800, True),   # delay 1300  (+300 ns)
+    ('scan09', 400, False),  # current, drift 400 V (delay 1000) — drift change
+    ('scan10', 800, True),   # delay 100   (-900 ns)
+    ('scan11', 800, True),   # delay 1500  (+500 ns)
+]
+
+
+def build_resist_offsets(reduced=False):
+    """Offsets (V below each detector's max) for the resist steps of one scan.
+    reduced=True -> the coarse uniform -10 V pattern; else the full-precision pattern."""
+    if reduced:
+        return list(REDUCED_OFFSETS)
+    offsets = [0]
+    cur = 0
+    for step_v, until in RESIST_STEP_PLAN:
+        inc = -step_v  # step_v is negative; inc is the positive offset increment
+        while cur < until:
+            cur += inc
+            offsets.append(cur)
+    return offsets
 
 
 class Config(RunConfigBase):
@@ -40,7 +95,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_1'
+        self.run_name = 'run_9'
         self.base_out_dir = BASE_DATA_DIR
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -51,7 +106,7 @@ class Config(RunConfigBase):
         self.start_time = None
         self.process_on_fly = False  # True to process fdfs on the fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
-        self.resume = False  # True to resume an existing run: skip sub-runs already marked .subrun_complete.
+        self.resume = True  # True to resume an existing run: skip sub-runs already marked .subrun_complete.
         self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
@@ -144,21 +199,66 @@ class Config(RunConfigBase):
             self.hv_info['username'] = lines[0].strip()
             self.hv_info['password'] = lines[1].strip()
 
-        # ----- Statistics run schedule (built from module constants above) -----
+        # ----- N1081B-synchronised scan schedule (built from constants above) -----
         self.sub_runs = []
 
-        # N_SUBRUNS identical sub-runs at the per-channel maximum resists, all four
-        # drifts held at DRIFT_V.
-        for i in range(N_SUBRUNS):
-            self.sub_runs.append({
-                'sub_run_name': f'maxresist_drift{DRIFT_V}_{i:02d}',
-                'run_time': SUBRUN_MIN,  # Minutes
-                'post_pause_s': int(round(POST_SUBRUN_PAUSE_MIN * 60)),  # pause after this sub-run (seconds); 0 = none
+        # Each scan = the same set of resist steps (from each detector's max down
+        # the RESIST_STEP_PLAN) at that scan's drift. The last sub-run of every scan
+        # (except the final scan) carries a BOUNDARY_PAUSE_MIN safety-floor pause;
+        # the watcher swaps the N1081B module config during that boundary.
+        boundary_pause_s = int(round(BOUNDARY_PAUSE_MIN * 60))
+        for s_idx, (tag, drift, reduced) in enumerate(SCANS):
+            is_last_scan = (s_idx == len(SCANS) - 1)
+            offsets = build_resist_offsets(reduced=reduced)
+            last_step = len(offsets) - 1
+            for k, off in enumerate(offsets):
+                resists = {ch: v - off for ch, v in RESIST_MAX.items()}
+                is_boundary = (k == last_step) and not is_last_scan
+                self.sub_runs.append({
+                    # tag MUST stay the first '_'-delimited token (watcher parses it).
+                    'sub_run_name': f'{tag}_dr{drift}_A{resists["1"]}_{k:02d}',
+                    'run_time': SUBRUN_MIN,  # Minutes
+                    'post_pause_s': boundary_pause_s if is_boundary else 0,  # seconds; 0 = none
+                    'hvs': {
+                        '5': resists,  # Positive Resists (mx17_A/B/C/D on channels 1-4)
+                        '9': {'0': drift, '1': drift, '2': drift, '3': drift},  # Negative Drifts
+                    },
+                })
+
+        # ----- One-off no-trigger baseline control (inserted 2026-07-05) -----
+        # A full resist scan at drift 800, max resists walking down in uniform -10 V steps
+        # to max-190 (20 steps, 5 min each), run with the N1081B .243 SecB output ENABLED
+        # but its input DISABLED ('ctrl' tag -> config/n1081b_scan_schedule.json). That
+        # holds the DREAM trigger line at its normal ~3 V idle with no pulses — the clean
+        # replacement for scan01's output-OFF control (which dropped the line to 0 V and
+        # glitched an edge at each boundary). Inserted directly before the sub-run that was
+        # running when we paused to add it (scan10 last step), so on a resume run it runs
+        # first, then the interrupted scan10 step, then scan11. Remove this block (and the
+        # 'ctrl' schedule entry) once the control run is done.
+        CTRL_DRIFT = 800
+        CTRL_OFFSETS = list(range(0, 191, 10))  # 0,10,...,190 -> Det A 540->350, 20 steps
+        CTRL_BEFORE = 'scan10_dr800_A395_14'    # currently-running sub-run to precede
+        ctrl_subs = []
+        ctrl_last = len(CTRL_OFFSETS) - 1
+        for k, off in enumerate(CTRL_OFFSETS):
+            resists = {ch: v - off for ch, v in RESIST_MAX.items()}
+            ctrl_subs.append({
+                'sub_run_name': f'ctrl_dr{CTRL_DRIFT}_A{resists["1"]}_{k:02d}',
+                'run_time': SUBRUN_MIN,  # 5 min
+                # Watcher swaps SecB back (input ON) at the ctrl->scan10 boundary; pause is
+                # the safety floor. Only the last ctrl sub-run is a boundary.
+                'post_pause_s': boundary_pause_s if k == ctrl_last else 0,
                 'hvs': {
-                    '5': dict(RESIST_MAX),  # Positive Resists (mx17_A/B/C/D on channels 1-4)
-                    '9': {'0': DRIFT_V, '1': DRIFT_V, '2': DRIFT_V, '3': DRIFT_V},  # Negative Drifts
+                    '5': resists,
+                    '9': {'0': CTRL_DRIFT, '1': CTRL_DRIFT, '2': CTRL_DRIFT, '3': CTRL_DRIFT},
                 },
             })
+        _ctrl_idx = next((i for i, sr in enumerate(self.sub_runs)
+                          if sr['sub_run_name'] == CTRL_BEFORE), None)
+        if _ctrl_idx is None:
+            raise RuntimeError(f'CTRL_BEFORE sub-run {CTRL_BEFORE!r} not found; '
+                               f'update it to the sub-run the ctrl scan should precede.')
+        self.sub_runs[_ctrl_idx:_ctrl_idx] = ctrl_subs
 
 
         self.bench_geometry = {
@@ -573,18 +673,23 @@ if __name__ == '__main__':
 
     config.write_to_file(f'{out_run_dir}{config_name}')
 
-    # Schedule summary — sanity-check timing and the fixed HV setpoints.
+    # Schedule summary — sanity-check timing and the per-scan HV setpoints.
     run_min = sum(sr['run_time'] for sr in config.sub_runs)
     n_sub = len(config.sub_runs)
+    n_full = len(build_resist_offsets(reduced=False))
+    n_red = len(build_resist_offsets(reduced=True))
     overhead_min = n_sub * OVERHEAD_MIN
-    total_h = (run_min + overhead_min) / 60
+    pause_min = sum(sr['post_pause_s'] for sr in config.sub_runs) / 60
+    total_h = (run_min + overhead_min + pause_min) / 60
+    a = RESIST_MAX['1']
     print(f'Gas: {config.gas}')
-    print(f'Drift (all four): {DRIFT_V} V')
-    print('Resists (max, all sub-runs):')
-    for ch, v in RESIST_MAX.items():
-        print(f'  resist ch {ch}: {v} V')
-    print(f'Sub-runs: {n_sub} x {SUBRUN_MIN} min (identical)')
-    print(f'Run time: {run_min} min + ~{overhead_min} min overhead '
+    print(f'Scans: {len(SCANS)}  (N1081B cfg per scan via watcher / config/n1081b_scan_schedule.json)')
+    for tag, drift, reduced in SCANS:
+        kind = f'reduced {n_red}st ({a - build_resist_offsets(True)[0]}->{a - build_resist_offsets(True)[-1]}V)' \
+               if reduced else f'full {n_full}st ({a}->{a - build_resist_offsets(False)[-1]}V)'
+        print(f'  {tag}: drift {drift} V, {kind}')
+    print(f'Sub-runs: {n_sub}, {SUBRUN_MIN} min each  (Det A shown; B/C/D offset-matched from own max)')
+    print(f'Run time: {run_min} min run + ~{overhead_min} min overhead + {pause_min:.0f} min boundary pauses '
           f'= ~{total_h:.2f} h')
 
     print('donzo')
