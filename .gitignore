@@ -7,6 +7,9 @@ config/backup_config.json
 config/backup_state.json
 config/backup_state.may.bak
 config/current_run_state.json
+config/gas_state.json
+config/gas_command.json
+config/pressure_state.json
 config/pedestal_qa_config.json
 config/pedestal_qa_state.json
 config/processor_config.json
@@ -232,3 +235,6 @@ pressure_reader/gpib_build/
 
 # Gas mixer CSV data logs (per-day flow logs)
 gas_mixer_control/logs/
+
+# Pressure gauge CSV data logs (per-day pressure logs)
+pressure_reader/logs/

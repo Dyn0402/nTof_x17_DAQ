@@ -8,8 +8,17 @@ Created as Cosmic_Bench_DAQ_Control/daq_status.py
 @author: Dylan Neff, Dylan
 """
 
-import subprocess
+import os
 import re
+import json
+import subprocess
+from datetime import datetime
+
+# Gas watcher publishes its state here (see gas_mixer_control/flow_controller.py).
+_REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+GAS_STATE_FILE = os.path.join(_REPO_DIR, "config", "gas_state.json")
+# Pressure watcher publishes its state here (see pressure_reader/pressure_controller.py).
+PRESSURE_STATE_FILE = os.path.join(_REPO_DIR, "config", "pressure_state.json")
 
 
 """ Colors:
@@ -426,3 +435,67 @@ def get_decoder_status():
                 return {"status": status, "color": color, "fields": []}
 
     return {"status": "UNKNOWN STATE", "color": "danger", "fields": []}
+
+
+def get_gas_watcher_status():
+    """Compact card for the gas-mixer watcher (the separate process that owns the
+    FLOW-BUS). Derived from tmux session existence + the state file the watcher
+    publishes (connection + freshness), rendered as a small status-only card."""
+    def small(status, color):
+        return {"status": status, "color": color, "small": True, "fields": []}
+
+    # No tmux session -> the watcher isn't running (logging + gas control are down).
+    alive = subprocess.run(["tmux", "has-session", "-t", "gas_watcher"],
+                           capture_output=True).returncode == 0
+    if not alive:
+        return small("STOPPED", "secondary")
+
+    try:
+        with open(GAS_STATE_FILE) as f:
+            st = json.load(f)
+    except Exception:
+        return small("Starting", "info")   # session up, no state published yet
+
+    if not st.get("connected"):
+        return small("No Gas", "warning")   # bus up but controllers not found
+
+    # Session + connection OK: flag a stale card if the state file isn't being updated.
+    try:
+        age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
+    except Exception:
+        age = None
+    if age is not None and age > 15:
+        return small("Stale", "warning")
+    return small("Logging", "success")
+
+
+def get_pressure_watcher_status():
+    """Compact card for the pressure-gauge watcher (the separate process that owns the
+    Keithley 2000 GPIB link). Derived from tmux session existence + the state file the
+    watcher publishes (connection + freshness), rendered as a small status-only card."""
+    def small(status, color):
+        return {"status": status, "color": color, "small": True, "fields": []}
+
+    # No tmux session -> the watcher isn't running (pressure logging is down).
+    alive = subprocess.run(["tmux", "has-session", "-t", "pressure_watcher"],
+                           capture_output=True).returncode == 0
+    if not alive:
+        return small("STOPPED", "secondary")
+
+    try:
+        with open(PRESSURE_STATE_FILE) as f:
+            st = json.load(f)
+    except Exception:
+        return small("Starting", "info")   # session up, no state published yet
+
+    if not st.get("connected"):
+        return small("No Gauge", "warning")   # GPIB link up but Keithley not found
+
+    # Session + connection OK: flag a stale card if the state file isn't being updated.
+    try:
+        age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
+    except Exception:
+        age = None
+    if age is not None and age > 15:
+        return small("Stale", "warning")
+    return small("Logging", "success")

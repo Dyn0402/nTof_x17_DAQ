@@ -29,6 +29,10 @@
               <div class="stat-label">Isobutane %</div>
               <div class="stat-value" id="run-gas-iso" style="font-size:1.1rem;">—</div>
             </div>
+            <div class="stat">
+              <div class="stat-label">Pressure</div>
+              <div class="stat-value" id="run-pressure" style="font-size:1.1rem;">—</div>
+            </div>
           </div>
 
           <select id="run-select" class="form-select d-none" style="width:auto;"></select>
@@ -53,6 +57,8 @@
               <button id="pedestal-toggle" class="btn btn-info btn-sm">Start Pedestal QA</button>
               <button id="backup-toggle" class="btn btn-info btn-sm">Start Backup</button>
               <button id="n1081b-toggle" class="btn btn-primary btn-sm">Start N1081B</button>
+              <button id="gas-watcher-toggle" class="btn btn-info btn-sm">Start Gas Watcher</button>
+              <button id="pressure-watcher-toggle" class="btn btn-info btn-sm">Start Pressure Watcher</button>
               <button id="rerun-qa" class="btn btn-outline-warning btn-sm ms-auto">Rerun QA</button>
             </div>
           </div>
@@ -356,6 +362,51 @@
         </div>
         <div class="col-12 col-xl-6">
           <div id="gas-plot-flows" style="width:100%;height:340px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Pressure Tab -->
+<div class="tab-pane fade" id="pressure">
+  <div class="row g-3">
+    <!-- Current reading -->
+    <div class="col-12 col-xl-4">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Gas Pressure</span>
+          <span id="pressure-conn" class="ms-auto panel-header-note">…</span>
+        </div>
+        <div class="panel-body">
+          <div class="run-stats mb-0">
+            <div class="stat">
+              <div class="stat-label">Pressure</div>
+              <div class="stat-value" id="pressure-now" style="font-size:1.6rem;">—</div>
+            </div>
+          </div>
+          <p class="text-muted small mb-0 mt-3">
+            Read from a Keithley 2000 over GPIB and converted from the gauge's DC
+            output voltage as <span class="font-monospace">P = (V − 1) · 400 bar</span>.
+            Logged to <span class="font-monospace" id="pressure-csv-path">—</span>.
+          </p>
+          <p class="text-muted small mb-0 mt-2">
+            <span id="pressure-updated"></span>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trend -->
+    <div class="col-12 col-xl-8">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Pressure Trend</span>
+          <span class="panel-header-note">pressure (bar) — last 6 h from the log</span>
+        </div>
+        <div class="panel-body">
+          <div id="pressure-plot" style="width:100%;height:380px;"></div>
         </div>
       </div>
     </div>
@@ -1091,6 +1142,12 @@ const WATCHER_TOGGLES = [
     { name: "n1081b_watcher", btn: "n1081b-toggle", label: "N1081B",
       start: "/start_n1081b_watcher", stop: "/stop_n1081b_watcher",
       confirm: "Stop the N1081B watcher? (restores the SecB baseline)" },
+    { name: "gas_watcher", btn: "gas-watcher-toggle", label: "Gas Watcher",
+      start: "/start_gas_watcher", stop: "/stop_gas_watcher",
+      confirm: "Stop the gas watcher? (logging + gas control pause; gas keeps flowing at its current setpoint)" },
+    { name: "pressure_watcher", btn: "pressure-watcher-toggle", label: "Pressure Watcher",
+      start: "/start_pressure_watcher", stop: "/stop_pressure_watcher",
+      confirm: "Stop the pressure watcher? (pressure logging pauses)" },
 ];
 const watcherStopped = {};  // name -> bool, tracked from /status
 
@@ -1868,5 +1925,72 @@ setInterval(() => {
 gasUpdateStatus();
 setInterval(gasUpdateStatus, 2000);
 gasRenderPlot();   // initial draw (Overview is the default-active tab at load)
+
+// ---------------------------------------------------------------------------
+// Gas-system pressure  (Keithley 2000 over GPIB, read-only)
+// P = (V - 1) * 400 bar; the pressure_watcher process owns the bus and logs the CSV.
+// ---------------------------------------------------------------------------
+function presNum(x, d = 3) { return (x == null || isNaN(x)) ? "—" : Number(x).toFixed(d); }
+
+async function pressureUpdateStatus() {
+  let d;
+  try { d = await (await fetch("/pressure/status")).json(); } catch (e) { return; }
+
+  const conn = document.getElementById("pressure-conn");
+  const unit = d.unit || "bar";
+  document.getElementById("pressure-csv-path").textContent = d.csv_path || "—";
+
+  if (!d.connected) {
+    conn.textContent = "disconnected" + (d.last_error ? ` — ${d.last_error}` : "");
+    conn.style.color = "var(--bad)";
+    document.getElementById("pressure-now").textContent = "—";
+    document.getElementById("pressure-updated").textContent = "";
+    document.getElementById("run-pressure").textContent = "—";
+    return;
+  }
+  conn.textContent = "connected";
+  conn.style.color = "var(--ok)";
+
+  document.getElementById("pressure-now").textContent = `${presNum(d.pressure, 3)} ${unit}`;
+  document.getElementById("pressure-updated").textContent =
+    d.timestamp ? `updated ${d.timestamp.split("T")[1] || ""}` : "";
+
+  // Mirror the live pressure into the Run Control header (Overview tab).
+  document.getElementById("run-pressure").textContent = `${presNum(d.pressure, 2)} ${unit}`;
+  // The plot is CSV-driven (see pressureRenderPlot); it refreshes on tab-show + a timer.
+}
+
+async function pressureRenderPlot() {
+  if (typeof Plotly === "undefined") return;
+  if (!document.getElementById("pressure-plot")) return;
+  let h;
+  try { h = await (await fetch("/pressure/history?hours=6")).json(); } catch (e) { return; }
+  if (!h || !h.success) return;
+  const unit = h.unit || "bar";
+  const axis = { gridcolor: '#242e39', zerolinecolor: '#38434f', linecolor: '#38434f' };
+  const layout = {
+    hovermode: "x unified", uirevision: "pressure",
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: "#8b96a5" }, hoverlabel: { bgcolor: "#1b222b", bordercolor: "#38434f" },
+    margin: { t: 20, r: 20, b: 30, l: 60 }, xaxis: { ...axis },
+    yaxis: { title: { text: `Pressure (${unit})`, font: { size: 14, color: "#4dabe8" } }, ...axis },
+  };
+  const traces = [{ x: h.time, y: h.pressure, name: "Pressure", mode: "lines",
+                    line: { color: "#4dabe8", width: 2 } }];
+  Plotly.react("pressure-plot", traces, layout, { responsive: true, displaylogo: false });
+}
+
+// Plotly can't size a plot while its tab is hidden (display:none -> 0 width), so
+// (re)render when the Pressure tab is shown — the container then has real dimensions.
+document.querySelector('a[href="#pressure"]')
+  .addEventListener("shown.bs.tab", pressureRenderPlot);
+
+// Refresh the history plot on a timer, but only while the Pressure tab is visible.
+setInterval(() => {
+  if (document.getElementById("pressure").classList.contains("active")) pressureRenderPlot();
+}, 10000);
+
+pressureUpdateStatus();
+setInterval(pressureUpdateStatus, 2000);
 </script>
 {% endblock %}

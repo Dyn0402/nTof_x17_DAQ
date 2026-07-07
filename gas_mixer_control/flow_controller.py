@@ -36,7 +36,9 @@ readings are converted to ln/h from its reported "Capacity Unit".
 import os
 import csv
 import glob
+import json
 import time
+import signal
 import threading
 from datetime import datetime
 
@@ -44,6 +46,16 @@ try:
     import propar
 except ImportError:  # keep import-safe so the Flask app still boots without the lib
     propar = None
+
+# Shared file paths for the watcher/Flask split. The gas_watcher process is the sole
+# owner of the serial bus: it writes GAS_STATE_PATH (readback the Flask app serves) and
+# applies setpoint commands the Flask app drops in GAS_COMMAND_PATH. GAS_LOG_DIR holds
+# the per-day CSVs. Paths are resolved relative to the repo so watcher + Flask agree.
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_DIR = os.path.dirname(_MODULE_DIR)
+GAS_LOG_DIR = os.path.join(_MODULE_DIR, "logs")
+GAS_STATE_PATH = os.path.join(_REPO_DIR, "config", "gas_state.json")
+GAS_COMMAND_PATH = os.path.join(_REPO_DIR, "config", "gas_command.json")
 
 # --- propar parameter numbers (DDE) we read/write ---
 DDE_SETPOINT   = 9    # int 0..32000  (0..100% of capacity)
@@ -140,15 +152,18 @@ class FlowController:
     """Owns the two MFCs, the polling/logging thread, and the mixing math."""
 
     def __init__(self, port=None, log_dir=None, poll_s=2.0, log_s=2.0,
-                 argon_limit_lnh=ARGON_MAX_LNH, argon_limit_note=ARGON_LIMIT_NOTE):
+                 argon_limit_lnh=ARGON_MAX_LNH, argon_limit_note=ARGON_LIMIT_NOTE,
+                 state_path=GAS_STATE_PATH, command_path=GAS_COMMAND_PATH):
         self.port = port                      # None -> autodiscover
         self.poll_s = poll_s
         self.log_s = log_s
         # Temporary argon flow cap (ln/h); None = no cap (use device full scale).
         self.argon_limit_lnh = argon_limit_lnh
         self.argon_limit_note = argon_limit_note
-        base = os.path.dirname(os.path.abspath(__file__))
-        self.log_dir = log_dir or os.path.join(base, "logs")
+        self.log_dir = log_dir or GAS_LOG_DIR
+        # Watcher IPC: state published here, setpoint commands read from here.
+        self.state_path = state_path
+        self.command_path = command_path
 
         self._lock = threading.Lock()         # guards ALL serial access
         self.argon = None                     # _Device or None
@@ -159,6 +174,8 @@ class FlowController:
         self._state = {}                      # latest readback (served to the UI)
         self._state_lock = threading.Lock()   # guards _state only (not serial)
         self._last_log_t = 0.0
+        self._last_command_id = None          # dedupe applied commands by id
+        self._last_command_result = None      # ack recorded back into the state file
         self._stop = threading.Event()
         self._thread = None
 
@@ -383,6 +400,8 @@ class FlowController:
                 "note": self.argon_limit_note,
                 "effective_max_lnh": self.effective_argon_max(),
             }
+        if self._last_command_result is not None:
+            state["last_command"] = self._last_command_result
         return state
 
     # ---------------- CSV logging ----------------
@@ -426,21 +445,78 @@ class FlowController:
         except Exception as e:
             print(f"[flow_controller] CSV log failed: {e}")
 
-    # ---------------- background thread ----------------
+    # ---------------- watcher IPC (state file + command file) ----------------
+
+    def log(self, msg):
+        """Timestamped, prefixed line for the gas_watcher tmux pane (and its logs)."""
+        print(f"{datetime.now().strftime('%H:%M:%S')} [gas_watcher] {msg}", flush=True)
+
+    def _write_state(self, state):
+        """Atomically publish the current state for the Flask app to read."""
+        try:
+            os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+            tmp = self.state_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(state, f)
+            os.replace(tmp, self.state_path)   # atomic: readers never see a partial file
+        except Exception as e:
+            print(f"[flow_controller] state write failed: {e}")
+
+    def prime_command_id(self):
+        """Adopt the id currently in the command file WITHOUT applying it, so a watcher
+        restart doesn't re-fire the last command (the setpoint is already in hardware)."""
+        try:
+            with open(self.command_path) as f:
+                self._last_command_id = json.load(f).get("id")
+        except Exception:
+            self._last_command_id = None
+
+    def _process_command(self):
+        """Apply a newly-written setpoint command from the command file (id-deduped so
+        each command runs once). Records the result back into the state file as an ack."""
+        try:
+            with open(self.command_path) as f:
+                cmd = json.load(f)
+        except (FileNotFoundError, ValueError, OSError):
+            return
+        cid = cmd.get("id")
+        if cid is None or cid == self._last_command_id:
+            return
+        self._last_command_id = cid
+        action = cmd.get("cmd")
+        if action == "apply":
+            res = self.apply_mix(cmd.get("argon_lnh"), cmd.get("iso_percent"))
+        elif action == "zero":
+            res = self.zero_all()
+        else:
+            res = {"success": False, "message": f"unknown command {action!r}"}
+        res["id"] = cid
+        self._last_command_result = res
+        self.log(f"command {action}: success={res.get('success')} "
+                 f"{res.get('warnings') or res.get('message') or ''}")
+        self._write_state(self.get_state())   # publish ack immediately (fast Flask reply)
+
+    # ---------------- poll loop ----------------
 
     def _run(self):
         while not self._stop.is_set():
             if not self.connected:
                 with self._lock:
                     self._connect()
-                if not self.connected:
-                    # Publish a disconnected snapshot so the UI can show why.
+                if self.connected:
+                    self.log(f"connected: argon node {self.argon.node}, iso node {self.iso.node}")
+                else:
                     with self._state_lock:
                         self._state = {"connected": False, "last_error": self.last_error}
+                    self._write_state(self.get_state())
+                    self._process_command()   # records "not connected" for any pending cmd
                     self._stop.wait(min(5.0, max(self.poll_s, 2.0)))
                     continue
+            # Apply any queued setpoint command, then read + publish + log.
+            self._process_command()
             try:
                 state = self._poll_once()
+                self._write_state(self.get_state())
                 now = time.time()
                 # Half-poll tolerance so log_s == poll_s reliably logs every sample
                 # (timer jitter would otherwise make an exact >= comparison skip one).
@@ -462,6 +538,17 @@ class FlowController:
 
     def stop(self):
         self._stop.set()
+
+    def run_blocking(self):
+        """Run the poll/log/command loop in the current thread until SIGINT/SIGTERM.
+        Used by gas_watcher.py. Does NOT zero setpoints on exit — the controllers hold
+        their setpoints in hardware, so gas keeps flowing across a watcher restart."""
+        signal.signal(signal.SIGINT, lambda *a: self._stop.set())
+        signal.signal(signal.SIGTERM, lambda *a: self._stop.set())
+        self.prime_command_id()
+        self.log(f"gas watcher starting (poll {self.poll_s}s, log {self.log_s}s)")
+        self._run()
+        self.log("gas watcher stopped (setpoints left as-is in hardware)")
 
 
 # Module-level singleton so the Flask app shares one controller/logger.

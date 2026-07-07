@@ -127,15 +127,39 @@ venv avoids that. `matplotlib` must also be in the env for the live plot.)
 
 ## Step 6 — Configure the board (`/etc/gpib.conf`)
 
-Create `/etc/gpib.conf` — board type for the GPIB-USB-HS is `ni_usb_b`:
+Create `/etc/gpib.conf` — board type for the GPIB-USB-HS is `ni_usb_b`. **Parameters
+must be newline-separated** (libgpib 4.3.7's parser rejects the semicolon one-liner
+form with `parameter error on line 0` and then `gpib_config` can't configure the board):
 
 ```
-interface { minor = 0; board_type = "ni_usb_b"; name = "ni_gpib"; pad = 0; master = yes; }
-device    { minor = 0; name = "keithley2000"; pad = 16; }
+interface {
+	minor = 0
+	board_type = "ni_usb_b"
+	name = "ni_gpib"
+	pad = 0
+	sad = 0
+	timeout = T3s
+	eos = 0x0a
+	set-reos = yes
+	set-bin = no
+	set-xeos = no
+	set-eot = yes
+	master = yes
+}
+
+device {
+	minor = 0
+	name = "keithley2000"
+	pad = 16
+}
 ```
 
 Stage it with the `Write` tool then have the user copy it:
 `! sudo cp <staged>/gpib.conf /etc/gpib.conf`
+
+Sanity-check it parses (no "failed to parse configuration file" lines): open the bus
+from Python — `Gpib.Gpib(0, 15, 0, gpib.T3s)` — and confirm the only error is a missing
+board (`iberr 17`) rather than a config parse error.
 
 ## Step 7 — Permissions for /dev/gpib0
 

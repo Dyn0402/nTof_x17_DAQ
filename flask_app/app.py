@@ -26,13 +26,16 @@ from flask_socketio import SocketIO, emit
 from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_daq_control_status, get_processor_watcher_status,
                         get_qa_watcher_status, get_backup_watcher_status,
-                        get_pedestal_watcher_status, get_n1081b_watcher_status)
+                        get_pedestal_watcher_status, get_n1081b_watcher_status,
+                        get_gas_watcher_status, get_pressure_watcher_status)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
 from run_config_beam import Config, BASE_DATA_DIR
 from get_run_events import get_total_events_for_run
 from monitor import DaqMonitor, fetch_chat_id, get_bot_username
-from gas_mixer_control.flow_controller import get_controller
+from gas_mixer_control.flow_controller import GAS_LOG_DIR, GAS_STATE_PATH, GAS_COMMAND_PATH
+from pressure_reader.pressure_controller import (PRESSURE_LOG_DIR, PRESSURE_STATE_PATH,
+                                                 PRESS_UNIT)
 
 # BASE_DIR = "/home/dylan/PycharmProjects/nTof_x17_DAQ"
 BASE_DIR = "/home/mx17/PycharmProjects/nTof_x17_DAQ"
@@ -68,11 +71,11 @@ LOG_FILE = f"{LOG_DIR}/daq_events.log"
 MONITOR_CONFIG_PATH = f"{BASE_DIR}/config/monitor_config.json"
 monitor = DaqMonitor(MONITOR_CONFIG_PATH)
 
-# Gas mixer: one shared controller owns the two Bronkhorst MFCs, polls them, and
-# logs to a per-day CSV in gas_mixer_control/logs/. Starts its own background
-# thread on first access; safe if the hardware is absent (it just reports
-# disconnected and keeps retrying discovery).
-gas_ctrl = get_controller()
+# Gas mixer: the serial bus is owned by a SEPARATE process (gas_watcher.py / the
+# gas_watcher tmux session), not by Flask. Flask reads the watcher's published state
+# from GAS_STATE_PATH and sends setpoint commands by writing GAS_COMMAND_PATH; the
+# watcher applies them within one poll (~2 s). This keeps a single owner on the bus
+# and lets logging survive Flask restarts. See gas_mixer_control/README.md.
 
 
 def log_event(event, source, **details):
@@ -92,7 +95,7 @@ app = Flask(__name__)
 socketio = SocketIO(app)
 
 TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
-                 "pedestal_watcher", "n1081b_watcher"]
+                 "pedestal_watcher", "n1081b_watcher", "gas_watcher", "pressure_watcher"]
 # TEMPORARY: N1081B scan watcher (syncs .243 SecB module config to the HV scans).
 N1081B_WATCHER_TMUX = "n1081b_watcher"
 N1081B_WATCHER_SCRIPT = f"{BASE_DIR}/n1081b/n1081b_scan_watcher.py"
@@ -251,6 +254,10 @@ def status_all():
             info = get_pedestal_watcher_status()
         elif s == "n1081b_watcher":
             info = get_n1081b_watcher_status()
+        elif s == "gas_watcher":
+            info = get_gas_watcher_status()
+        elif s == "pressure_watcher":
+            info = get_pressure_watcher_status()
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 
@@ -492,6 +499,63 @@ def stop_n1081b_watcher():
         time.sleep(1.5)
         subprocess.run(["tmux", "kill-session", "-t", N1081B_WATCHER_TMUX], capture_output=True)
         return jsonify({"success": True, "message": "N1081B watcher stopped (baseline restored)"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/start_gas_watcher", methods=["POST"])
+def start_gas_watcher():
+    """Start the gas-mixer watcher (sole owner of the FLOW-BUS: reads, logs, and applies
+    setpoints). Normally auto-started at boot by start_servers.sh; this button is for
+    restarting it from the GUI."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", "gas_watcher"], capture_output=True)
+        # sys.executable = flask's venv python, so the propar lib resolves in the new
+        # tmux session (a bare "python" would drop the venv).
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", "gas_watcher",
+            sys.executable, f"{BASE_DIR}/gas_watcher.py"
+        ])
+        return jsonify({"success": True, "message": "Gas watcher started"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stop_gas_watcher", methods=["POST"])
+def stop_gas_watcher():
+    """Stop the gas watcher. Gas keeps flowing at its current setpoint (the controllers
+    hold it in hardware); logging and new setpoint commands pause until it restarts."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", "gas_watcher"], capture_output=True)
+        return jsonify({"success": True, "message": "Gas watcher stopped (gas still flowing)"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/start_pressure_watcher", methods=["POST"])
+def start_pressure_watcher():
+    """Start the pressure-gauge watcher (sole owner of the Keithley 2000 GPIB link: reads,
+    converts, and logs pressure). Normally auto-started at boot by start_servers.sh; this
+    button is for restarting it from the GUI."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", "pressure_watcher"], capture_output=True)
+        # sys.executable = flask's venv python, so the linux-gpib binding resolves in the
+        # new tmux session (a bare "python" would drop the venv).
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", "pressure_watcher",
+            sys.executable, f"{BASE_DIR}/pressure_watcher.py"
+        ])
+        return jsonify({"success": True, "message": "Pressure watcher started"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stop_pressure_watcher", methods=["POST"])
+def stop_pressure_watcher():
+    """Stop the pressure watcher. Pressure logging pauses until it restarts."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", "pressure_watcher"], capture_output=True)
+        return jsonify({"success": True, "message": "Pressure watcher stopped"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
@@ -1103,14 +1167,45 @@ def system_stats():
 
 
 # --- Gas mixer (Bronkhorst MFC) control ---
-# All flows are in ln/h. Argon flow is set directly; isobutane is set as a
-# percentage of the *total* mixture. The controller layer works in ln/h too.
+# The serial bus is owned by the separate gas_watcher process (see the note by the
+# imports). Flask reads the watcher's published state and sends commands via files;
+# it never touches the bus. All flows in ln/h; isobutane is a % of the total mixture.
+
+def _gas_read_state():
+    """The watcher's latest published state, or a disconnected stub if it isn't
+    running yet / hasn't written the file."""
+    try:
+        with open(GAS_STATE_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {"connected": False, "last_error": "gas watcher not running"}
+
+
+def _gas_send_command(cmd):
+    """Write a setpoint command for the watcher and wait briefly for its ack (the
+    watcher records the result back into the state file, keyed by a unique id). Returns
+    (result_dict, http_code). Falls back to 'queued' if the watcher doesn't confirm."""
+    cid = time.time()
+    try:
+        with open(GAS_COMMAND_PATH, "w") as f:
+            json.dump({**cmd, "id": cid}, f)
+    except Exception as e:
+        return {"success": False, "message": f"could not queue command: {e}"}, 500
+    # The watcher applies within one poll (~2 s); poll the state file for the matching ack.
+    deadline = time.time() + 3.0
+    while time.time() < deadline:
+        lc = _gas_read_state().get("last_command")
+        if lc and lc.get("id") == cid:
+            return lc, (200 if lc.get("success") else 500)
+        time.sleep(0.15)
+    return ({"success": True, "queued": True,
+             "message": "queued — gas_watcher did not confirm (is it running?)"}, 202)
+
 
 @app.route("/gas/status")
 def gas_status():
-    """Latest cached readback for both controllers (served from the poll cache;
-    never hits the serial bus directly). All flows in ln/h."""
-    return jsonify(gas_ctrl.get_state())
+    """Latest readback published by the gas_watcher process. All flows in ln/h."""
+    return jsonify(_gas_read_state())
 
 
 @app.route("/gas/apply", methods=["POST"])
@@ -1125,27 +1220,35 @@ def gas_apply():
     if argon_lnh < 0 or not (0 <= iso_percent < 100):
         return jsonify({"success": False, "message": "argon_lnh >= 0 and 0 <= iso_percent < 100"}), 400
 
-    result = gas_ctrl.apply_mix(argon_lnh, iso_percent)
+    result, code = _gas_send_command({"cmd": "apply", "argon_lnh": argon_lnh,
+                                      "iso_percent": iso_percent})
     log_event('GAS_SET', 'flask_button', remote_addr=request.remote_addr,
               argon_lnh=argon_lnh, iso_percent=iso_percent, ok=result.get("success"))
-    code = 200 if result.get("success") else 500
+    return jsonify(result), code
+
+
+@app.route("/gas/zero", methods=["POST"])
+def gas_zero():
+    """Emergency stop: drive both controllers to zero flow."""
+    result, code = _gas_send_command({"cmd": "zero"})
+    log_event('GAS_ZERO', 'flask_button', remote_addr=request.remote_addr,
+              ok=result.get("success"))
     return jsonify(result), code
 
 
 @app.route("/gas/history")
 def gas_history():
     """Logged flow history from the per-day CSV(s) for the plot. `hours` trims to a
-    recent window; the result is downsampled to keep the payload light. Reads the CSV
-    the poll thread is already writing, so this is real persisted history (not the
-    browser's since-load buffer)."""
+    recent window; the result is downsampled to keep the payload light. Reads the CSVs
+    the gas_watcher writes, so this is real persisted history."""
     import glob
     hours = request.args.get("hours", default=6.0, type=float)
     max_points = request.args.get("max_points", default=1500, type=int)
     try:
-        files = sorted(glob.glob(os.path.join(gas_ctrl.log_dir, "gas_flow_*.csv")))
+        files = sorted(glob.glob(os.path.join(GAS_LOG_DIR, "gas_flow_*.csv")))
         if not files:
             return jsonify({"success": True, "time": [], "argon_flow": [],
-                            "iso_flow": [], "iso_pct": []})
+                            "iso_flow": [], "total_flow": [], "iso_pct": []})
         # Read the last couple of day-files so a window spanning midnight still works.
         df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
@@ -1167,14 +1270,57 @@ def gas_history():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route("/gas/zero", methods=["POST"])
-def gas_zero():
-    """Emergency stop: drive both controllers to zero flow."""
-    result = gas_ctrl.zero_all()
-    log_event('GAS_ZERO', 'flask_button', remote_addr=request.remote_addr,
-              ok=result.get("success"))
-    code = 200 if result.get("success") else 500
-    return jsonify(result), code
+# --- Gas-system pressure gauge (Keithley 2000 over GPIB) ---
+# The GPIB link is owned by the separate pressure_watcher process (see
+# pressure_reader/pressure_controller.py). Flask only reads the watcher's published
+# state and CSV history; it never touches the bus. Pressure is in bar (PRESS_UNIT).
+
+def _pressure_read_state():
+    """The watcher's latest published state, or a disconnected stub if it isn't running
+    yet / hasn't written the file."""
+    try:
+        with open(PRESSURE_STATE_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {"connected": False, "last_error": "pressure watcher not running",
+                "unit": PRESS_UNIT}
+
+
+@app.route("/pressure/status")
+def pressure_status():
+    """Latest pressure reading published by the pressure_watcher process (in bar)."""
+    return jsonify(_pressure_read_state())
+
+
+@app.route("/pressure/history")
+def pressure_history():
+    """Logged pressure history from the per-day CSV(s) for the plot. `hours` trims to a
+    recent window; the result is downsampled to keep the payload light. Reads the CSVs
+    the pressure_watcher writes, so this is real persisted history."""
+    import glob
+    hours = request.args.get("hours", default=6.0, type=float)
+    max_points = request.args.get("max_points", default=1500, type=int)
+    try:
+        files = sorted(glob.glob(os.path.join(PRESSURE_LOG_DIR, "pressure_*.csv")))
+        if not files:
+            return jsonify({"success": True, "time": [], "pressure": [], "unit": PRESS_UNIT})
+        # Read the last couple of day-files so a window spanning midnight still works.
+        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        if hours and hours > 0:
+            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
+        # Downsample by striding so the trace stays light but keeps its shape.
+        if len(df) > max_points:
+            df = df.iloc[:: (len(df) // max_points) + 1]
+        return jsonify({
+            "success": True,
+            "time": df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "pressure": df["pressure_bar"].round(5).tolist(),
+            "unit": PRESS_UNIT,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 def is_dream_daq_running():
