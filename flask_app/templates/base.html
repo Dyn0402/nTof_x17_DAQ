@@ -186,19 +186,46 @@
         #sys-load-avg { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
         #sys-cpu-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 3px 18px;
-            margin-bottom: 0.6rem;
+            /* 2 columns (3 rows for 6 cores). minmax(0,1fr) removes the
+               min-content floor so cells can't push into the next column. */
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 3px 14px;
             font-family: var(--mono);
         }
+        .sys-cols {
+            display: grid;
+            /* min(220px, 100%) lets a single column shrink below 220px on
+               narrow phones instead of overflowing the panel. */
+            grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+            gap: 0.8rem 1.8rem;
+        }
+        .sys-col-title {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 0.45rem;
+        }
+        .sys-col-title-sub { margin-top: 0.7rem; }
         .sys-rows {
-            border-top: 1px solid var(--border);
-            padding-top: 0.5rem;
             display: flex;
             flex-direction: column;
             gap: 3px;
             font-family: var(--mono);
         }
+        /* Network / disk I/O: device name on the left, two stacked direction bars */
+        .sys-io-list { font-family: var(--mono); }
+        .sys-io-block { display: flex; align-items: center; }
+        .sys-io-block + .sys-io-block { margin-top: 5px; }
+        #sys-diskio-rows { margin-top: 5px; }   /* net -> disk group boundary */
+        .sys-io-name {
+            width: 52px; flex-shrink: 0; padding-right: 6px;
+            font-size: 0.72rem; color: var(--fg); opacity: 0.85;
+        }
+        .sys-io-bars { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        .sys-io-dir { width: 16px; text-align: left; padding-right: 0; }
+        .sys-io-val { min-width: 56px; }
         .sys-bar-row { display: flex; align-items: center; font-size: 0.75rem; line-height: 18px; }
         .sys-bar-label { color: var(--muted); width: 44px; text-align: right; padding-right: 6px; flex-shrink: 0; }
         .sys-bar-track {
@@ -208,7 +235,7 @@
             border-radius: 2px;
             height: 11px;
             position: relative;
-            min-width: 50px;
+            min-width: 28px;
             overflow: hidden;
         }
         .sys-bar-fill { position: absolute; inset: 0; transition: width 0.6s ease; }

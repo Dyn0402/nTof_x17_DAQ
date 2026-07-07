@@ -1,5 +1,23 @@
 # Credentials / local config with secrets
 config/monitor_config.json
+hv_creds.txt
+
+# Runtime/local state (not versioned)
+config/backup_config.json
+config/backup_state.json
+config/backup_state.may.bak
+config/current_run_state.json
+config/pedestal_qa_config.json
+config/pedestal_qa_state.json
+config/processor_config.json
+config/qa_config.json
+config/qa_state.json
+config/json_run_configs/
+run_config_beam.py.beam_backup
+runctrl_test/
+
+# PyCharm
+.idea/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

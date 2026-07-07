@@ -76,6 +76,8 @@ def main():
                         effective_zs_type = effective_info.get('zs_type', None)
                         effective_zs_check_sample = effective_info.get('zs_check_sample', None)
                         effective_latency = effective_info.get('latency', None)
+                        effective_sample_period = effective_info.get('sample_period', None)
+                        effective_daq_run_events = effective_info.get('daq_run_events', None)
                         effective_included_feus = effective_info.get('included_feus', None)
                         effective_feu_connectors = effective_info.get('feu_connectors', None)
                         effective_trigger_feu = effective_info.get('trigger_feu', None)
@@ -102,7 +104,8 @@ def main():
                             effective_zs_type, effective_zs_check_sample, effective_latency,
                             effective_included_feus, effective_feu_connectors, effective_trigger_feu,
                             do_pedestal_threshold_run=effective_do_pedestal_threshold_run,
-                            do_data_run=effective_do_data_run)
+                            do_data_run=effective_do_data_run, sample_period=effective_sample_period,
+                            daq_run_events=effective_daq_run_events)
                         shutil.copy(cfg_run_path, sub_run_out_raw_inner_dir)
 
                         if effective_pedestals_dir is not None:
@@ -488,11 +491,22 @@ def _to_zs_typ(val):
     raise ValueError(f"Cannot convert {val!r} to ZsTyp (0=tracker, 1=tpc)")
 
 
+# Hardware sample period (ns) -> DREAM SCA clock dividers (RdClk_Div, WrClk_Div). The 100 MHz
+# trigger clock is divided by WrClk_Div to set the SCA write (sampling) period: 2.0 -> 20 ns,
+# 6.0 -> 60 ns. RdClk_Div sets the readout clock and is paired with WrClk_Div per the cfg presets.
+# Only these two sample periods are supported; anything else raises (see make_config_from_template).
+SAMPLE_PERIOD_CLOCK_DIVS = {
+    20: ('4.0', '2.0'),
+    60: ('6.0', '6.0'),
+}
+
+
 def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time, zero_suppress_mode=False,
                               samples_per_waveform=None, pedestal_subtraction=None,
                               common_noise_subtraction=None, zs_type=None, zs_check_sample=None,
                               latency=None, included_feus=None, feu_connectors=None, trigger_feu=None,
-                              do_pedestal_threshold_run=None, do_data_run=None):
+                              do_pedestal_threshold_run=None, do_data_run=None, sample_period=None,
+                              daq_run_events=None):
     print('Making config file from template...')
     dest = run_dir
     cfg_file_name = os.path.basename(cfg_template_file_path)
@@ -525,6 +539,18 @@ def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time
         updates["Feu * Feu_RunCtrl_ZsChkSmp"] = val
     if latency is not None:
         updates["Feu * Dream * 12"] = f'0x{int(latency):04X}'
+    if sample_period is not None:
+        try:
+            rd_div, wr_div = SAMPLE_PERIOD_CLOCK_DIVS[int(sample_period)]
+        except (KeyError, ValueError, TypeError):
+            raise ValueError(
+                f"sample_period must be one of {sorted(SAMPLE_PERIOD_CLOCK_DIVS)} ns, got {sample_period!r}")
+        updates["Feu * DrmClk RdClk_Div"] = rd_div
+        updates["Feu * DrmClk WrClk_Div"] = wr_div
+    if daq_run_events is not None:
+        # Per-FEU event cap. RunCtrl stops the data run at whichever comes FIRST: this many
+        # events/FEU or Sys DaqRun Time (RunCtrlMain.c TestFun_TakeData). 0 = infinite.
+        updates["Sys DaqRun Events"] = int(daq_run_events)
     if do_pedestal_threshold_run is not None:
         updates["Sys Action PedThrRun"] = _to_bit(do_pedestal_threshold_run)
     if do_data_run is not None:

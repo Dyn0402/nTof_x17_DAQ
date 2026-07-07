@@ -44,6 +44,7 @@
               <button id="qa-toggle" class="btn btn-info btn-sm">Start QA</button>
               <button id="pedestal-toggle" class="btn btn-info btn-sm">Start Pedestal QA</button>
               <button id="backup-toggle" class="btn btn-info btn-sm">Start Backup</button>
+              <button id="n1081b-toggle" class="btn btn-primary btn-sm">Start N1081B</button>
               <button id="rerun-qa" class="btn btn-outline-warning btn-sm ms-auto">Rerun QA</button>
             </div>
           </div>
@@ -51,52 +52,32 @@
       </div>
     </div>
 
-    <!-- System Resource Monitor + Monitoring strip stacked -->
-    <div class="col-12 col-xl-6 d-flex flex-column gap-3">
-      <div class="panel flex-grow-1" id="sys-monitor">
+    <!-- System Resource Monitor (monitoring strip lives at page bottom) -->
+    <div class="col-12 col-xl-6">
+      <div class="panel h-100" id="sys-monitor">
         <div class="panel-header">
           <span class="panel-title">System Resources</span>
           <span id="sys-load-avg" class="ms-auto"></span>
         </div>
         <div class="panel-body">
-          <div id="sys-cpu-grid"></div>
-          <div class="sys-rows">
-            <div id="sys-mem-row"></div>
-            <div id="sys-swp-row"></div>
-            <div id="sys-ssd-row"></div>
-            <div id="sys-hdd-row"></div>
+          <div class="sys-cols">
+            <div class="sys-col">
+              <div class="sys-col-title">CPU</div>
+              <div id="sys-cpu-grid"></div>
+              <div class="sys-col-title sys-col-title-sub">Memory &amp; Disk</div>
+              <div class="sys-rows">
+                <div id="sys-mem-row"></div>
+                <div id="sys-swp-row"></div>
+                <div id="sys-ssd-row"></div>
+                <div id="sys-hdd-row"></div>
+              </div>
+            </div>
+            <div class="sys-col">
+              <div class="sys-col-title">Network &amp; Disk I/O</div>
+              <div class="sys-io-list" id="sys-net-rows"></div>
+              <div class="sys-io-list" id="sys-diskio-rows"></div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      <!-- Monitoring strip -->
-      <div class="panel monitor-strip" id="monitor-panel">
-        <div class="strip-row">
-      <span class="strip-label">Monitoring</span>
-      <button id="monitor-toggle" class="btn btn-sm btn-secondary">Off</button>
-      <span id="monitor-last-check" class="text-muted small"></span>
-      <span id="monitor-active-alerts" class="text-danger small fw-bold"></span>
-      <div class="ms-auto d-flex gap-2">
-        <button id="monitor-test" class="btn btn-sm btn-outline-info">Test Alert</button>
-        <button id="monitor-setup" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#monitor-setup-collapse">Setup</button>
-      </div>
-    </div>
-    <div class="collapse" id="monitor-setup-collapse">
-      <div class="collapse-body">
-        <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
-          <span class="text-muted small">Chat ID:</span>
-          <span id="monitor-chat-id" class="small font-monospace"></span>
-          <button id="monitor-fetch-chat-id" class="btn btn-sm btn-outline-secondary">Auto-fetch</button>
-          <span class="text-muted small ms-2">or enter manually:</span>
-          <input id="monitor-chat-id-input" type="text" class="form-control form-control-sm"
-                 style="width:160px;" placeholder="chat ID">
-          <button id="monitor-set-chat-id" class="btn btn-sm btn-outline-secondary">Set</button>
-          <span id="monitor-bot-name" class="text-muted small ms-3"></span>
-        </div>
-        <p class="text-muted small mt-2 mb-0">
-          To auto-fetch: open Telegram, find the bot, send it any message, then click Auto-fetch.
-        </p>
-      </div>
         </div>
       </div>
     </div>
@@ -127,6 +108,37 @@
         <div class="col-12 col-xl-6">
           <div id="hv-current-plot" style="width:100%;height:380px;"></div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monitoring strip (page bottom) -->
+  <div class="panel mt-3 monitor-strip" id="monitor-panel">
+    <div class="strip-row">
+      <span class="strip-label">Monitoring</span>
+      <button id="monitor-toggle" class="btn btn-sm btn-secondary">Off</button>
+      <span id="monitor-last-check" class="text-muted small"></span>
+      <span id="monitor-active-alerts" class="text-danger small fw-bold"></span>
+      <div class="ms-auto d-flex gap-2">
+        <button id="monitor-test" class="btn btn-sm btn-outline-info">Test Alert</button>
+        <button id="monitor-setup" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#monitor-setup-collapse">Setup</button>
+      </div>
+    </div>
+    <div class="collapse" id="monitor-setup-collapse">
+      <div class="collapse-body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+          <span class="text-muted small">Chat ID:</span>
+          <span id="monitor-chat-id" class="small font-monospace"></span>
+          <button id="monitor-fetch-chat-id" class="btn btn-sm btn-outline-secondary">Auto-fetch</button>
+          <span class="text-muted small ms-2">or enter manually:</span>
+          <input id="monitor-chat-id-input" type="text" class="form-control form-control-sm"
+                 style="width:160px;" placeholder="chat ID">
+          <button id="monitor-set-chat-id" class="btn btn-sm btn-outline-secondary">Set</button>
+          <span id="monitor-bot-name" class="text-muted small ms-3"></span>
+        </div>
+        <p class="text-muted small mt-2 mb-0">
+          To auto-fetch: open Telegram, find the bot, send it any message, then click Auto-fetch.
+        </p>
       </div>
     </div>
   </div>
@@ -951,6 +963,10 @@ const WATCHER_TOGGLES = [
       start: "/start_ped_qa", stop: "/stop_ped_qa", confirm: "Stop the pedestal QA watcher?" },
     { name: "backup_watcher", btn: "backup-toggle", label: "Backup",
       start: "/start_backup", stop: "/stop_backup", confirm: "Stop the backup watcher?" },
+    // TEMPORARY: N1081B scan watcher (syncs .243 SecB module config to the HV scans).
+    { name: "n1081b_watcher", btn: "n1081b-toggle", label: "N1081B",
+      start: "/start_n1081b_watcher", stop: "/stop_n1081b_watcher",
+      confirm: "Stop the N1081B watcher? (restores the SecB baseline)" },
 ];
 const watcherStopped = {};  // name -> bool, tracked from /status
 
@@ -1346,6 +1362,34 @@ function sysFormatBytes(b) {
     return (b / 1e3).toFixed(0) + 'K';
 }
 
+function sysFormatRate(bps) {
+    return sysFormatBytes(bps) + '/s';
+}
+
+// A single direction's rate bar, scaled against a soft reference max.
+function sysIOBar(dirTag, rate, refMax) {
+    const pct = Math.min(100, (rate / refMax) * 100);
+    const color = sysBarColor(pct);
+    return `<div class="sys-bar-row">
+      <span class="sys-bar-label sys-io-dir">${dirTag}</span>
+      <div class="sys-bar-track">
+        <div class="sys-bar-fill" style="width:${pct}%;background:${color};"></div>
+      </div>
+      <span class="sys-bar-pct sys-io-val">${sysFormatRate(rate)}</span>
+    </div>`;
+}
+
+// One device: a name on the left, two stacked direction bars (in/out or read/write).
+function sysMakeIOBlock(name, aTag, aRate, bTag, bRate, refMax) {
+    return `<div class="sys-io-block">
+      <span class="sys-io-name">${name}</span>
+      <div class="sys-io-bars">
+        ${sysIOBar(aTag, aRate, refMax)}
+        ${sysIOBar(bTag, bRate, refMax)}
+      </div>
+    </div>`;
+}
+
 function sysMakeBar(label, pct, rightLabel) {
     const color = sysBarColor(pct);
     const w = Math.max(0, Math.min(100, pct));
@@ -1390,6 +1434,26 @@ async function updateSysStats() {
         };
         sysDiskRow('sys-ssd-row', 'SSD', d.ssd);
         sysDiskRow('sys-hdd-row', 'HDD', d.hdd);
+
+        // Network I/O (bytes/sec per interface). 125 MB/s ~ saturated 1 GbE.
+        const NET_REF = 125e6;
+        const net = d.net || {};
+        document.getElementById('sys-net-rows').innerHTML =
+            Object.keys(net).map(name => {
+                const n = net[name];
+                return n
+                    ? sysMakeIOBlock(name, '↓', n.rx, '↑', n.tx, NET_REF)
+                    : sysMakeIOBlock(name, '↓', 0, '↑', 0, NET_REF);
+            }).join('');
+
+        // Disk I/O (bytes/sec per physical device).
+        const dio = d.disk_io || {};
+        const diskIORow = (label, io, refMax) => io
+            ? sysMakeIOBlock(label, 'R', io.read, 'W', io.write, refMax)
+            : sysMakeIOBlock(label, 'R', 0, 'W', 0, refMax);
+        document.getElementById('sys-diskio-rows').innerHTML =
+            diskIORow('SSD', dio.ssd, 550e6) +   // SATA SSD ~ 550 MB/s
+            diskIORow('HDD', dio.hdd, 200e6);    // spinning HDD ~ 200 MB/s
     } catch (e) { /* silent */ }
 }
 
