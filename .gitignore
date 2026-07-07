@@ -229,3 +229,6 @@ __marimo__/
 
 # linux-gpib build tree (see pressure_reader/KEITHLEY2000_GPIB_SETUP.md)
 pressure_reader/gpib_build/
+
+# Gas mixer CSV data logs (per-day flow logs)
+gas_mixer_control/logs/
