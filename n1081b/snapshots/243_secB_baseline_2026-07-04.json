@@ -1,0 +1,19 @@
+{
+  "_comment": "Restore baseline for .243 Section B ch1&2 (SDK ch0&1), captured 2026-07-04 before delay/output-enable test. Restore with the two SDK setters, preserving all other fields.",
+  "board": "192.168.10.243",
+  "section": "SEC_B",
+  "section_value": 1,
+  "captured": "2026-07-04",
+  "channels": {
+    "0": {
+      "panel": 1,
+      "input":  {"status": true, "enable_gd": true, "gate": 200, "delay": 1000, "invert": false},
+      "output": {"status": true, "enable_mono": true, "mono_value": 500, "invert": true}
+    },
+    "1": {
+      "panel": 2,
+      "input":  {"status": true, "enable_gd": true, "gate": 200, "delay": 1000, "invert": false},
+      "output": {"status": true, "enable_mono": true, "mono_value": 1000, "invert": true}
+    }
+  }
+}

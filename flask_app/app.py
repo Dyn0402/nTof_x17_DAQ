@@ -26,7 +26,7 @@ from flask_socketio import SocketIO, emit
 from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_daq_control_status, get_processor_watcher_status,
                         get_qa_watcher_status, get_backup_watcher_status,
-                        get_pedestal_watcher_status)
+                        get_pedestal_watcher_status, get_n1081b_watcher_status)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
 from run_config_beam import Config, BASE_DATA_DIR
@@ -85,7 +85,10 @@ app = Flask(__name__)
 socketio = SocketIO(app)
 
 TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
-                 "pedestal_watcher"]
+                 "pedestal_watcher", "n1081b_watcher"]
+# TEMPORARY: N1081B scan watcher (syncs .243 SecB module config to the HV scans).
+N1081B_WATCHER_TMUX = "n1081b_watcher"
+N1081B_WATCHER_SCRIPT = f"{BASE_DIR}/n1081b/n1081b_scan_watcher.py"
 sessions = {}
 
 @app.route("/")
@@ -239,6 +242,8 @@ def status_all():
             info = get_backup_watcher_status()
         elif s == "pedestal_watcher":
             info = get_pedestal_watcher_status()
+        elif s == "n1081b_watcher":
+            info = get_n1081b_watcher_status()
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 
@@ -446,6 +451,40 @@ def stop_processor():
     try:
         subprocess.run(["tmux", "kill-session", "-t", PROCESSOR_TMUX], capture_output=True)
         return jsonify({"success": True, "message": "Processor watcher stopped"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/start_n1081b_watcher", methods=["POST"])
+def start_n1081b_watcher():
+    """TEMPORARY: launch the N1081B scan watcher in its own tmux session. Start this
+    BEFORE the DAQ run — it applies the first scan's module config (scan01 baseline,
+    outputs OFF) and then swaps config at each scan boundary."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", N1081B_WATCHER_TMUX], capture_output=True)
+        # sys.executable = flask's venv python (has n1081b_sdk); a bare "python" in a
+        # fresh tmux login shell would drop the venv.
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", N1081B_WATCHER_TMUX,
+            sys.executable, N1081B_WATCHER_SCRIPT
+        ])
+        return jsonify({"success": True, "message": "N1081B watcher started (applies scan01 baseline)"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stop_n1081b_watcher", methods=["POST"])
+def stop_n1081b_watcher():
+    """TEMPORARY: stop the N1081B scan watcher. Killing the tmux session sends SIGTERM,
+    so the watcher restores the SecB baseline (delay 1000 / outputs on) on the way out."""
+    try:
+        # Send the run the SIGTERM path (restore baseline) rather than a hard kill:
+        # signal the pane's process, then drop the session.
+        subprocess.run(["tmux", "send-keys", "-t", f"{N1081B_WATCHER_TMUX}:0.0", "C-c"],
+                       capture_output=True)
+        time.sleep(1.5)
+        subprocess.run(["tmux", "kill-session", "-t", N1081B_WATCHER_TMUX], capture_output=True)
+        return jsonify({"success": True, "message": "N1081B watcher stopped (baseline restored)"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
@@ -971,6 +1010,15 @@ def monitor_bot_info():
     return jsonify({"success": True, "username": username})
 
 
+# Network interfaces and physical disks to report I/O rates for.
+# NICs are labelled by interface name; disks map to the SSD/HDD usage bars.
+_NET_IFACES = ["enp4s0", "eno1"]
+_DISK_DEVS = {"ssd": "sdb", "hdd": "sda"}  # sdb2 -> /, sda4 -> /mnt/data
+
+# Previous I/O counter sample, kept between /system_stats calls to derive rates.
+_io_prev = {"t": None, "net": None, "disk": None}
+
+
 @app.route("/system_stats")
 def system_stats():
     try:
@@ -989,6 +1037,47 @@ def system_stats():
 
         ssd = disk_stats('/')          # OS/system SSD
         hdd = disk_stats('/mnt/data')  # data HDD
+
+        # ---- I/O rates (bytes/sec) derived from the previous sample ----
+        now = time.monotonic()
+        net_ctr = psutil.net_io_counters(pernic=True)
+        disk_ctr = psutil.disk_io_counters(perdisk=True)
+        prev = _io_prev
+        dt = (now - prev["t"]) if prev["t"] else None
+
+        def rate(cur, prev_val):
+            if dt and dt > 0 and prev_val is not None:
+                return max(0.0, (cur - prev_val) / dt)
+            return 0.0
+
+        net_rates = {}
+        for name in _NET_IFACES:
+            cur = net_ctr.get(name)
+            p = (prev["net"] or {}).get(name)
+            if cur:
+                net_rates[name] = {
+                    "rx": rate(cur.bytes_recv, p.bytes_recv if p else None),
+                    "tx": rate(cur.bytes_sent, p.bytes_sent if p else None),
+                }
+            else:
+                net_rates[name] = None
+
+        disk_rates = {}
+        for key, dev in _DISK_DEVS.items():
+            cur = disk_ctr.get(dev)
+            p = (prev["disk"] or {}).get(dev)
+            if cur:
+                disk_rates[key] = {
+                    "read":  rate(cur.read_bytes,  p.read_bytes if p else None),
+                    "write": rate(cur.write_bytes, p.write_bytes if p else None),
+                }
+            else:
+                disk_rates[key] = None
+
+        _io_prev["t"] = now
+        _io_prev["net"] = net_ctr
+        _io_prev["disk"] = disk_ctr
+
         return jsonify({
             "success": True,
             "cpu_cores": cpu_pcts,
@@ -996,6 +1085,8 @@ def system_stats():
             "swap":   {"total": swap.total, "used": swap.used, "percent": swap.percent},
             "ssd":    ssd,
             "hdd":    hdd,
+            "net":    net_rates,
+            "disk_io": disk_rates,
             "load_avg": list(load),
         })
     except ImportError:
