@@ -226,3 +226,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Gas mixer CSV data logs (per-day flow logs)
+gas_mixer_control/logs/

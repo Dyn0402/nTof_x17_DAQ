@@ -17,7 +17,7 @@ import select
 import threading
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 from urllib.parse import quote
 from flask import Flask, render_template, jsonify, request, send_from_directory, abort
@@ -32,6 +32,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 
 from run_config_beam import Config, BASE_DATA_DIR
 from get_run_events import get_total_events_for_run
 from monitor import DaqMonitor, fetch_chat_id, get_bot_username
+from gas_mixer_control.flow_controller import get_controller
 
 # BASE_DIR = "/home/dylan/PycharmProjects/nTof_x17_DAQ"
 BASE_DIR = "/home/mx17/PycharmProjects/nTof_x17_DAQ"
@@ -66,6 +67,12 @@ LOG_FILE = f"{LOG_DIR}/daq_events.log"
 
 MONITOR_CONFIG_PATH = f"{BASE_DIR}/config/monitor_config.json"
 monitor = DaqMonitor(MONITOR_CONFIG_PATH)
+
+# Gas mixer: one shared controller owns the two Bronkhorst MFCs, polls them, and
+# logs to a per-day CSV in gas_mixer_control/logs/. Starts its own background
+# thread on first access; safe if the hardware is absent (it just reports
+# disconnected and keeps retrying discovery).
+gas_ctrl = get_controller()
 
 
 def log_event(event, source, **details):
@@ -1093,6 +1100,81 @@ def system_stats():
         return jsonify({"success": False, "message": "psutil not installed"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
+
+
+# --- Gas mixer (Bronkhorst MFC) control ---
+# All flows are in ln/h. Argon flow is set directly; isobutane is set as a
+# percentage of the *total* mixture. The controller layer works in ln/h too.
+
+@app.route("/gas/status")
+def gas_status():
+    """Latest cached readback for both controllers (served from the poll cache;
+    never hits the serial bus directly). All flows in ln/h."""
+    return jsonify(gas_ctrl.get_state())
+
+
+@app.route("/gas/apply", methods=["POST"])
+def gas_apply():
+    """Command a mixture: argon flow (ln/h) + isobutane percent of total."""
+    data = request.get_json(silent=True) or {}
+    try:
+        argon_lnh = float(data.get("argon_lnh"))
+        iso_percent = float(data.get("iso_percent"))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "argon_lnh and iso_percent required"}), 400
+    if argon_lnh < 0 or not (0 <= iso_percent < 100):
+        return jsonify({"success": False, "message": "argon_lnh >= 0 and 0 <= iso_percent < 100"}), 400
+
+    result = gas_ctrl.apply_mix(argon_lnh, iso_percent)
+    log_event('GAS_SET', 'flask_button', remote_addr=request.remote_addr,
+              argon_lnh=argon_lnh, iso_percent=iso_percent, ok=result.get("success"))
+    code = 200 if result.get("success") else 500
+    return jsonify(result), code
+
+
+@app.route("/gas/history")
+def gas_history():
+    """Logged flow history from the per-day CSV(s) for the plot. `hours` trims to a
+    recent window; the result is downsampled to keep the payload light. Reads the CSV
+    the poll thread is already writing, so this is real persisted history (not the
+    browser's since-load buffer)."""
+    import glob
+    hours = request.args.get("hours", default=6.0, type=float)
+    max_points = request.args.get("max_points", default=1500, type=int)
+    try:
+        files = sorted(glob.glob(os.path.join(gas_ctrl.log_dir, "gas_flow_*.csv")))
+        if not files:
+            return jsonify({"success": True, "time": [], "argon_flow": [],
+                            "iso_flow": [], "iso_pct": []})
+        # Read the last couple of day-files so a window spanning midnight still works.
+        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        if hours and hours > 0:
+            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
+        # Downsample by striding so the trace stays light but keeps its shape.
+        if len(df) > max_points:
+            df = df.iloc[:: (len(df) // max_points) + 1]
+        return jsonify({
+            "success": True,
+            "time": df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "argon_flow": df["argon_flow_lnh"].round(4).tolist(),
+            "iso_flow": df["iso_flow_lnh"].round(4).tolist(),
+            "total_flow": df["total_flow_lnh"].round(4).tolist(),
+            "iso_pct": df["iso_pct_meas"].round(3).tolist(),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/gas/zero", methods=["POST"])
+def gas_zero():
+    """Emergency stop: drive both controllers to zero flow."""
+    result = gas_ctrl.zero_all()
+    log_event('GAS_ZERO', 'flask_button', remote_addr=request.remote_addr,
+              ok=result.get("success"))
+    code = 200 if result.get("success") else 500
+    return jsonify(result), code
 
 
 def is_dream_daq_running():

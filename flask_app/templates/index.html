@@ -21,6 +21,14 @@
               <div class="stat-label">Events this run</div>
               <div class="stat-value" id="events-display">0</div>
             </div>
+            <div class="stat">
+              <div class="stat-label">Total flow</div>
+              <div class="stat-value" id="run-gas-total" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Isobutane %</div>
+              <div class="stat-value" id="run-gas-iso" style="font-size:1.1rem;">—</div>
+            </div>
           </div>
 
           <select id="run-select" class="form-select d-none" style="width:auto;"></select>
@@ -107,6 +115,24 @@
         </div>
         <div class="col-12 col-xl-6">
           <div id="hv-current-plot" style="width:100%;height:380px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gas mixer summary (mirrors the Gas Mixer tab plots) -->
+  <div class="panel mt-3">
+    <div class="panel-header">
+      <span class="panel-title">Gas Mixer</span>
+      <span class="panel-header-note">total flow &amp; isobutane %, and individual argon/isobutane flows — last 6 h from the log</span>
+    </div>
+    <div class="panel-body">
+      <div class="row g-3">
+        <div class="col-12 col-xl-6">
+          <div id="gas-plot-overview" style="width:100%;height:340px;"></div>
+        </div>
+        <div class="col-12 col-xl-6">
+          <div id="gas-plot-overview-flows" style="width:100%;height:340px;"></div>
         </div>
       </div>
     </div>
@@ -240,6 +266,100 @@
   </div>
 
   <div id="ab-gallery" class="row g-3 mt-0"></div>
+</div>
+
+
+<!-- Gas Mixer Tab -->
+<div class="tab-pane fade" id="gas-mixer">
+  <div class="row g-3">
+    <!-- Control -->
+    <div class="col-12 col-xl-5">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Mixer Control</span>
+          <span id="gas-conn" class="ms-auto panel-header-note">…</span>
+        </div>
+        <div class="panel-body">
+          <div class="row g-2 align-items-end">
+            <div class="col-6">
+              <label for="gas-argon-lnh" class="form-label mb-1">Argon flow (ln/h)</label>
+              <input id="gas-argon-lnh" type="number" step="0.01" min="0" class="form-control" placeholder="0.00">
+              <div class="text-muted small mt-1" id="gas-argon-max">max —</div>
+            </div>
+            <div class="col-6">
+              <label for="gas-iso-pct" class="form-label mb-1">Isobutane (% of total)</label>
+              <input id="gas-iso-pct" type="number" step="0.1" min="0" max="99" class="form-control" placeholder="0.0">
+              <div class="text-muted small mt-1" id="gas-iso-derived">iso —</div>
+            </div>
+          </div>
+
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <button id="gas-apply" class="btn btn-success">Apply Mixture</button>
+            <button id="gas-max-argon" class="btn btn-outline-info">Max Argon</button>
+            <button id="gas-fill" class="btn btn-outline-secondary btn-sm">Use current setpoint</button>
+            <button id="gas-zero" class="btn btn-danger ms-auto">Emergency Zero</button>
+          </div>
+          <p class="text-muted small mb-0 mt-3">
+            Isobutane is set as a fraction of the total mixture:
+            <span class="font-monospace">iso = argon · p/(100−p)</span>.
+            Setpoints are held by the controllers and logged to
+            <span class="font-monospace" id="gas-csv-path">—</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Readback cards -->
+    <div class="col-12 col-xl-7">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Readback</span>
+          <span id="gas-updated" class="ms-auto panel-header-note"></span>
+        </div>
+        <div class="panel-body">
+          <div class="row g-3" id="gas-cards"></div>
+          <div class="run-stats mt-3 mb-0">
+            <div class="stat">
+              <div class="stat-label">Total flow</div>
+              <div class="stat-value" id="gas-total-flow" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Isobutane % (measured)</div>
+              <div class="stat-value" id="gas-iso-meas" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Isobutane % (setpoint)</div>
+              <div class="stat-value" id="gas-iso-set" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <p class="text-muted small mb-0 mt-2">
+            “Calib. P in/out” is the inlet/outlet pressure each controller was
+            calibrated for (the target supply pressure to reach full scale) — it is
+            a stored reference, <strong>not</strong> a live reading. These thermal
+            MFCs have no pressure sensor; read actual supply pressure off the regulator.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live trend -->
+  <div class="panel mt-3">
+    <div class="panel-header">
+      <span class="panel-title">Live Flow</span>
+      <span class="panel-header-note">measured flow (ln/h) &amp; isobutane fraction — last 6 h from the log</span>
+    </div>
+    <div class="panel-body">
+      <div class="row g-3">
+        <div class="col-12 col-xl-6">
+          <div id="gas-plot-total" style="width:100%;height:340px;"></div>
+        </div>
+        <div class="col-12 col-xl-6">
+          <div id="gas-plot-flows" style="width:100%;height:340px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 
@@ -1524,5 +1644,229 @@ async function updateSysStats() {
 
 updateSysStats();
 setInterval(updateSysStats, 2000);
+
+
+// ---------------------------------------------------------------------------
+// Gas Mixer  (Bronkhorst mass-flow controllers)
+// ---------------------------------------------------------------------------
+let gasFullScale = { argon_lnh: null, iso_lnh: null };  // from /gas/status
+let gasArgonLimit = null;   // {lnh, note, effective_max_lnh} temporary low-pressure cap, or null
+
+function gasNum(x, d = 3) { return (x == null || isNaN(x)) ? "—" : Number(x).toFixed(d); }
+
+// Live preview of the derived isobutane flow as the user types argon + %.
+function gasUpdateDerived() {
+  const argonLnh = parseFloat(document.getElementById("gas-argon-lnh").value);
+  const p = parseFloat(document.getElementById("gas-iso-pct").value);
+  const el = document.getElementById("gas-iso-derived");
+  if (isNaN(argonLnh) || isNaN(p) || p < 0 || p >= 100) { el.textContent = "iso —"; return; }
+  const isoLnh = p <= 0 ? 0 : argonLnh * p / (100 - p);
+  let txt = `iso ≈ ${gasNum(isoLnh)} ln/h`;
+  if (gasFullScale.iso_lnh && isoLnh > gasFullScale.iso_lnh) txt += " ⚠ over max";
+  el.textContent = txt;
+}
+document.getElementById("gas-argon-lnh").addEventListener("input", gasUpdateDerived);
+document.getElementById("gas-iso-pct").addEventListener("input", gasUpdateDerived);
+
+// Calibration reference inlet/outlet pressure (static, NOT a live measurement).
+function gasCalP(d) {
+  const i = d.cal_inlet_bar, o = d.cal_outlet_bar;
+  if (i == null && o == null) return "—";
+  if (!i && !o) return "not set";
+  return `${gasNum(i, 1)} / ${gasNum(o, 1)} bar-a`;
+}
+
+function gasCard(title, d, accent) {
+  // d is the per-device readback dict from /gas/status
+  const rows = [
+    ["Setpoint", `${gasNum(d.set_lnh)} ln/h`],
+    ["Measured", `${gasNum(d.flow_lnh)} ln/h`],
+    ["Valve", `${gasNum(d.valve_pct, 1)} %`],
+    ["Temp", `${gasNum(d.temp_c, 1)} °C`],
+    ["Full scale", `${gasNum(d.full_scale_lnh)} ln/h`],
+    ["Calib. P in/out", gasCalP(d)],
+  ].map(([k, v]) => `<div class="status-field"><span>${k}</span><span>${v}</span></div>`).join("");
+  return `
+    <div class="col-12 col-md-6">
+      <div class="status-card s-${accent}">
+        <div class="status-top">
+          <span class="status-name">${title}</span>
+          <span class="status-state" style="font-size:0.9rem;">${d.fluid}</span>
+        </div>
+        <div class="status-fields">${rows}</div>
+        <div class="text-muted small mt-2">SN ${d.serial} · ${d.model}</div>
+      </div>
+    </div>`;
+}
+
+async function gasRenderPlot() {
+  if (typeof Plotly === "undefined") return;
+  let h;
+  try { h = await (await fetch("/gas/history?hours=6")).json(); } catch (e) { return; }
+  if (!h || !h.success) return;
+  const axis = { gridcolor: '#242e39', zerolinecolor: '#38434f', linecolor: '#38434f' };
+  const base = () => ({
+    hovermode: "x unified", uirevision: "gas",
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: "#8b96a5" }, hoverlabel: { bgcolor: "#1b222b", bordercolor: "#38434f" },
+    legend: { orientation: "h" },
+  });
+  const tFont = { size: 14, color: "#cbd5e1" };
+  const cfg = { responsive: true, displaylogo: false };
+
+  // Fresh trace + layout builders (new objects per draw; Plotly tags layouts/traces
+  // with internal state, so the same plot on two divs must not share objects).
+  const totalPlot = () => ({
+    traces: [
+      { x: h.time, y: h.total_flow, name: "Total flow", mode: "lines", line: { color: "#4dabe8", width: 2 } },
+      { x: h.time, y: h.iso_pct, name: "Iso %", yaxis: "y2", mode: "lines", line: { color: "#199e70", width: 2, dash: "dot" } },
+    ],
+    layout: {
+      ...base(), margin: { t: 20, r: 56, b: 30, l: 56 }, xaxis: { ...axis },
+      yaxis:  { title: { text: "Total flow (ln/h)", font: { ...tFont, color: "#4dabe8" } }, ...axis },
+      yaxis2: { title: { text: "Isobutane (% of total)", font: { ...tFont, color: "#199e70" } },
+                overlaying: "y", side: "right", showgrid: false,
+                zerolinecolor: "#38434f", linecolor: "#38434f" },
+    },
+  });
+
+  // Argon (~4 ln/h) and isobutane (~0.2 ln/h) differ ~20x, so separate y-axes.
+  const flowsPlot = () => ({
+    traces: [
+      { x: h.time, y: h.argon_flow, name: "Argon", mode: "lines", line: { color: "#3987e5", width: 2 } },
+      { x: h.time, y: h.iso_flow, name: "Isobutane", yaxis: "y2", mode: "lines", line: { color: "#c98500", width: 2 } },
+    ],
+    layout: {
+      ...base(), margin: { t: 20, r: 58, b: 30, l: 58 }, xaxis: { ...axis },
+      yaxis:  { title: { text: "Argon (ln/h)", font: { ...tFont, color: "#3987e5" } }, ...axis },
+      yaxis2: { title: { text: "Isobutane (ln/h)", font: { ...tFont, color: "#c98500" } },
+                overlaying: "y", side: "right", showgrid: false,
+                zerolinecolor: "#38434f", linecolor: "#38434f" },
+    },
+  });
+
+  const draw = (id, build) => {
+    if (!document.getElementById(id)) return;
+    const p = build();
+    Plotly.react(id, p.traces, p.layout, cfg);
+  };
+  // Gas Mixer tab: total+% (left) and flows (right). Overview mirrors both.
+  draw("gas-plot-total", totalPlot);
+  draw("gas-plot-flows", flowsPlot);
+  draw("gas-plot-overview", totalPlot);
+  draw("gas-plot-overview-flows", flowsPlot);
+}
+
+async function gasUpdateStatus() {
+  let d;
+  try { d = await (await fetch("/gas/status")).json(); } catch (e) { return; }
+
+  const conn = document.getElementById("gas-conn");
+  document.getElementById("gas-csv-path").textContent = d.csv_path || "—";
+
+  if (!d.connected) {
+    conn.textContent = "disconnected" + (d.last_error ? ` — ${d.last_error}` : "");
+    conn.style.color = "var(--bad)";
+    document.getElementById("gas-cards").innerHTML =
+      `<div class="col-12 text-muted">No controllers detected.</div>`;
+    document.getElementById("run-gas-total").textContent = "—";
+    document.getElementById("run-gas-iso").textContent = "—";
+    return;
+  }
+  conn.textContent = "connected";
+  conn.style.color = "var(--ok)";
+
+  gasFullScale.argon_lnh = d.argon.full_scale_lnh;
+  gasFullScale.iso_lnh = d.iso.full_scale_lnh;
+  gasArgonLimit = d.argon_limit || null;
+  const argEl = document.getElementById("gas-argon-max");
+  if (gasArgonLimit && gasArgonLimit.effective_max_lnh < d.argon.full_scale_lnh) {
+    argEl.innerHTML = `max ${gasNum(gasArgonLimit.effective_max_lnh)} ln/h ` +
+      `<span style="color:var(--warn);">· capped: ${gasArgonLimit.note}</span>`;
+  } else {
+    argEl.textContent = `max ${gasNum(d.argon.full_scale_lnh)} ln/h`;
+  }
+
+  document.getElementById("gas-cards").innerHTML =
+    gasCard("Argon", d.argon, "info") + gasCard("Isobutane", d.iso, "warning");
+
+  document.getElementById("gas-total-flow").textContent = `${gasNum(d.derived.total_flow_lnh)} ln/h`;
+  document.getElementById("gas-iso-meas").textContent = `${gasNum(d.derived.iso_pct_meas, 2)} %`;
+  document.getElementById("gas-iso-set").textContent = `${gasNum(d.derived.iso_pct_set, 2)} %`;
+  document.getElementById("gas-updated").textContent = d.timestamp ? `updated ${d.timestamp.split("T")[1] || ""}` : "";
+
+  // Mirror live total flow + measured iso % into the Run Control header (Overview tab).
+  document.getElementById("run-gas-total").textContent = `${gasNum(d.derived.total_flow_lnh, 2)} ln/h`;
+  document.getElementById("run-gas-iso").textContent = `${gasNum(d.derived.iso_pct_meas, 2)} %`;
+  // The plots are CSV-driven (see gasRenderPlot); they refresh on tab-show + a timer.
+}
+
+document.getElementById("gas-fill").addEventListener("click", async () => {
+  const d = await (await fetch("/gas/status")).json();
+  if (!d.connected) { showPopup("Mixer not connected", "#dc3545"); return; }
+  document.getElementById("gas-argon-lnh").value = d.argon.set_lnh.toFixed(3);
+  document.getElementById("gas-iso-pct").value = d.derived.iso_pct_set.toFixed(2);
+  gasUpdateDerived();
+});
+
+async function gasApplyMix(argonLnh, isoPct) {
+  if (isNaN(argonLnh) || isNaN(isoPct)) { showPopup("Enter argon flow and isobutane %", "#dc3545"); return; }
+  if (!confirm(`Apply mixture?\n\nArgon: ${argonLnh.toFixed(3)} ln/h\nIsobutane: ${isoPct}% of total`)) return;
+  const res = await fetch("/gas/apply", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ argon_lnh: argonLnh, iso_percent: isoPct }),
+  });
+  const r = await res.json();
+  if (r.success) {
+    const w = (r.warnings && r.warnings.length) ? " (" + r.warnings.join("; ") + ")" : "";
+    showPopup("Mixture applied" + w, w ? "#fd7e14" : "#28a745");
+  } else {
+    showPopup("Apply failed: " + (r.message || "?"), "#dc3545");
+  }
+  gasUpdateStatus();
+}
+
+document.getElementById("gas-apply").addEventListener("click", () => {
+  gasApplyMix(parseFloat(document.getElementById("gas-argon-lnh").value),
+              parseFloat(document.getElementById("gas-iso-pct").value));
+});
+
+// Max Argon: drive argon to its max commandable flow (the low-pressure cap if one
+// is active, else device full scale), keeping the current isobutane %.
+document.getElementById("gas-max-argon").addEventListener("click", () => {
+  const maxLnh = gasArgonLimit ? gasArgonLimit.effective_max_lnh : gasFullScale.argon_lnh;
+  if (!maxLnh) { showPopup("Mixer not connected", "#dc3545"); return; }
+  const isoPct = parseFloat(document.getElementById("gas-iso-pct").value) || 0;
+  document.getElementById("gas-argon-lnh").value = maxLnh.toFixed(3);
+  document.getElementById("gas-iso-pct").value = isoPct;
+  gasUpdateDerived();
+  gasApplyMix(maxLnh, isoPct);
+});
+
+document.getElementById("gas-zero").addEventListener("click", async () => {
+  if (!confirm("Emergency zero: drive BOTH controllers to 0 flow?")) return;
+  const r = await (await fetch("/gas/zero", { method: "POST" })).json();
+  showPopup(r.success ? "Both setpoints zeroed" : "Zero failed: " + (r.message || "?"),
+            r.success ? "#28a745" : "#dc3545");
+  gasUpdateStatus();
+});
+
+// Gas plots appear on both the Overview and Gas Mixer tabs. Plotly can't size a plot
+// while its tab is hidden (display:none -> 0 width), so (re)render when either tab is
+// shown — the container then has real dimensions. Plots pull history from the CSV, so
+// they come up fully populated rather than filling in live.
+["#overview", "#gas-mixer"].forEach(sel =>
+  document.querySelector(`a[href="${sel}"]`).addEventListener("shown.bs.tab", gasRenderPlot));
+
+// Refresh the history plots on a timer, but only while a tab that shows them is visible.
+setInterval(() => {
+  const vis = document.getElementById("overview").classList.contains("active") ||
+              document.getElementById("gas-mixer").classList.contains("active");
+  if (vis) gasRenderPlot();
+}, 10000);
+
+gasUpdateStatus();
+setInterval(gasUpdateStatus, 2000);
+gasRenderPlot();   // initial draw (Overview is the default-active tab at load)
 </script>
 {% endblock %}
