@@ -226,3 +226,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# linux-gpib build tree (see pressure_reader/KEITHLEY2000_GPIB_SETUP.md)
+pressure_reader/gpib_build/
