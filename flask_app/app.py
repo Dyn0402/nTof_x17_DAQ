@@ -27,15 +27,16 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_daq_control_status, get_processor_watcher_status,
                         get_qa_watcher_status, get_backup_watcher_status,
                         get_pedestal_watcher_status, get_n1081b_watcher_status,
-                        get_gas_watcher_status, get_pressure_watcher_status)
+                        get_gas_watcher_status, get_he3_pressure_watcher_status)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
 from run_config_beam import Config, BASE_DATA_DIR
 from get_run_events import get_total_events_for_run
 from monitor import DaqMonitor, fetch_chat_id, get_bot_username
 from gas_mixer_control.flow_controller import GAS_LOG_DIR, GAS_STATE_PATH, GAS_COMMAND_PATH
-from pressure_reader.pressure_controller import (PRESSURE_LOG_DIR, PRESSURE_STATE_PATH,
-                                                 PRESS_UNIT)
+from he3_pressure_reader.he3_pressure_controller import (HE3_PRESSURE_LOG_DIR,
+                                                         HE3_PRESSURE_STATE_PATH,
+                                                         PRESS_UNIT)
 
 # BASE_DIR = "/home/dylan/PycharmProjects/nTof_x17_DAQ"
 BASE_DIR = "/home/mx17/PycharmProjects/nTof_x17_DAQ"
@@ -95,7 +96,7 @@ app = Flask(__name__)
 socketio = SocketIO(app)
 
 TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
-                 "pedestal_watcher", "n1081b_watcher", "gas_watcher", "pressure_watcher"]
+                 "pedestal_watcher", "n1081b_watcher", "gas_watcher", "he3_pressure_watcher"]
 # TEMPORARY: N1081B scan watcher (syncs .243 SecB module config to the HV scans).
 N1081B_WATCHER_TMUX = "n1081b_watcher"
 N1081B_WATCHER_SCRIPT = f"{BASE_DIR}/n1081b/n1081b_scan_watcher.py"
@@ -256,8 +257,8 @@ def status_all():
             info = get_n1081b_watcher_status()
         elif s == "gas_watcher":
             info = get_gas_watcher_status()
-        elif s == "pressure_watcher":
-            info = get_pressure_watcher_status()
+        elif s == "he3_pressure_watcher":
+            info = get_he3_pressure_watcher_status()
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 
@@ -532,30 +533,30 @@ def stop_gas_watcher():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route("/start_pressure_watcher", methods=["POST"])
-def start_pressure_watcher():
-    """Start the pressure-gauge watcher (sole owner of the Keithley 2000 GPIB link: reads,
-    converts, and logs pressure). Normally auto-started at boot by start_servers.sh; this
-    button is for restarting it from the GUI."""
+@app.route("/start_he3_pressure_watcher", methods=["POST"])
+def start_he3_pressure_watcher():
+    """Start the 3He target pressure-gauge watcher (sole owner of the Keithley 2000 GPIB
+    link: reads, converts, and logs pressure). Normally auto-started at boot by
+    start_servers.sh; this button is for restarting it from the GUI."""
     try:
-        subprocess.run(["tmux", "kill-session", "-t", "pressure_watcher"], capture_output=True)
+        subprocess.run(["tmux", "kill-session", "-t", "he3_pressure_watcher"], capture_output=True)
         # sys.executable = flask's venv python, so the linux-gpib binding resolves in the
         # new tmux session (a bare "python" would drop the venv).
         subprocess.Popen([
-            "tmux", "new-session", "-d", "-s", "pressure_watcher",
-            sys.executable, f"{BASE_DIR}/pressure_watcher.py"
+            "tmux", "new-session", "-d", "-s", "he3_pressure_watcher",
+            sys.executable, f"{BASE_DIR}/he3_pressure_watcher.py"
         ])
-        return jsonify({"success": True, "message": "Pressure watcher started"})
+        return jsonify({"success": True, "message": "3He pressure watcher started"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route("/stop_pressure_watcher", methods=["POST"])
-def stop_pressure_watcher():
-    """Stop the pressure watcher. Pressure logging pauses until it restarts."""
+@app.route("/stop_he3_pressure_watcher", methods=["POST"])
+def stop_he3_pressure_watcher():
+    """Stop the 3He pressure watcher. Pressure logging pauses until it restarts."""
     try:
-        subprocess.run(["tmux", "kill-session", "-t", "pressure_watcher"], capture_output=True)
-        return jsonify({"success": True, "message": "Pressure watcher stopped"})
+        subprocess.run(["tmux", "kill-session", "-t", "he3_pressure_watcher"], capture_output=True)
+        return jsonify({"success": True, "message": "3He pressure watcher stopped"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
@@ -1270,38 +1271,39 @@ def gas_history():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-# --- Gas-system pressure gauge (Keithley 2000 over GPIB) ---
-# The GPIB link is owned by the separate pressure_watcher process (see
-# pressure_reader/pressure_controller.py). Flask only reads the watcher's published
-# state and CSV history; it never touches the bus. Pressure is in bar (PRESS_UNIT).
+# --- 3He target pressure gauge (Keithley 2000 over GPIB) ---
+# The GPIB link is owned by the separate he3_pressure_watcher process (see
+# he3_pressure_reader/he3_pressure_controller.py). Flask only reads the watcher's
+# published state and CSV history; it never touches the bus. Pressure is in bar
+# (PRESS_UNIT).
 
-def _pressure_read_state():
+def _he3_pressure_read_state():
     """The watcher's latest published state, or a disconnected stub if it isn't running
     yet / hasn't written the file."""
     try:
-        with open(PRESSURE_STATE_PATH) as f:
+        with open(HE3_PRESSURE_STATE_PATH) as f:
             return json.load(f)
     except Exception:
-        return {"connected": False, "last_error": "pressure watcher not running",
+        return {"connected": False, "last_error": "3He pressure watcher not running",
                 "unit": PRESS_UNIT}
 
 
-@app.route("/pressure/status")
-def pressure_status():
-    """Latest pressure reading published by the pressure_watcher process (in bar)."""
-    return jsonify(_pressure_read_state())
+@app.route("/he3_pressure/status")
+def he3_pressure_status():
+    """Latest pressure reading published by the he3_pressure_watcher process (in bar)."""
+    return jsonify(_he3_pressure_read_state())
 
 
-@app.route("/pressure/history")
-def pressure_history():
-    """Logged pressure history from the per-day CSV(s) for the plot. `hours` trims to a
-    recent window; the result is downsampled to keep the payload light. Reads the CSVs
-    the pressure_watcher writes, so this is real persisted history."""
+@app.route("/he3_pressure/history")
+def he3_pressure_history():
+    """Logged 3He pressure history from the per-day CSV(s) for the plot. `hours` trims to
+    a recent window; the result is downsampled to keep the payload light. Reads the CSVs
+    the he3_pressure_watcher writes, so this is real persisted history."""
     import glob
     hours = request.args.get("hours", default=6.0, type=float)
     max_points = request.args.get("max_points", default=1500, type=int)
     try:
-        files = sorted(glob.glob(os.path.join(PRESSURE_LOG_DIR, "pressure_*.csv")))
+        files = sorted(glob.glob(os.path.join(HE3_PRESSURE_LOG_DIR, "he3_pressure_*.csv")))
         if not files:
             return jsonify({"success": True, "time": [], "pressure": [], "unit": PRESS_UNIT})
         # Read the last couple of day-files so a window spanning midnight still works.

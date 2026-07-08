@@ -9,7 +9,7 @@ config/backup_state.may.bak
 config/current_run_state.json
 config/gas_state.json
 config/gas_command.json
-config/pressure_state.json
+config/he3_pressure_state.json
 config/pedestal_qa_config.json
 config/pedestal_qa_state.json
 config/processor_config.json
@@ -230,11 +230,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# linux-gpib build tree (see pressure_reader/KEITHLEY2000_GPIB_SETUP.md)
-pressure_reader/gpib_build/
+# linux-gpib build tree (see he3_pressure_reader/KEITHLEY2000_GPIB_SETUP.md)
+he3_pressure_reader/gpib_build/
 
 # Gas mixer CSV data logs (per-day flow logs)
 gas_mixer_control/logs/
 
-# Pressure gauge CSV data logs (per-day pressure logs)
-pressure_reader/logs/
+# 3He pressure gauge CSV data logs (per-day pressure logs)
+he3_pressure_reader/logs/

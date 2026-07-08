@@ -15,6 +15,6 @@ bash_scripts/start_tmux.sh flask_server "flask_app/start_flask.sh" 5000
 # Gas-mixer watcher: sole owner of the FLOW-BUS (reads + logs + applies setpoints).
 # Must run for gas logging/control; Flask talks to it via config/gas_command.json.
 bash_scripts/start_tmux.sh gas_watcher "python gas_watcher.py" 5000
-# Pressure watcher: sole owner of the Keithley 2000 GPIB link (reads + logs pressure).
-# Flask reads its state from config/pressure_state.json. Read-only (no control).
-bash_scripts/start_tmux.sh pressure_watcher "python pressure_watcher.py" 5000
+# 3He pressure watcher: sole owner of the Keithley 2000 GPIB link (reads + logs pressure).
+# Flask reads its state from config/he3_pressure_state.json. Read-only (no control).
+bash_scripts/start_tmux.sh he3_pressure_watcher "python he3_pressure_watcher.py" 5000

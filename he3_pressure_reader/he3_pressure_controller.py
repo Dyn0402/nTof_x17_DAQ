@@ -3,11 +3,11 @@
 """
 Created on July 07 2026
 Created in PyCharm
-Created as nTof_x17_DAQ/pressure_reader/pressure_controller.py
+Created as nTof_x17_DAQ/he3_pressure_reader/he3_pressure_controller.py
 
 @author: Dylan Neff, dylan
 
-Monitoring layer for the gas-system pressure gauge read through a Keithley 2000
+Monitoring layer for the 3He target pressure gauge read through a Keithley 2000
 multimeter over GPIB (NI GPIB-USB-HS + linux-gpib). Mirrors the gas mixer's
 flow_controller split, but read-only: there is nothing to command, so there is no
 command file — just a published state file and a per-day CSV.
@@ -19,11 +19,11 @@ map of that voltage:
 
 A single background thread owns all GPIB access: it opens the instrument, polls the
 voltage at a fixed interval, caches the converted reading (so the web UI reads are
-instant and never collide on the bus), publishes it to PRESSURE_STATE_PATH, and
+instant and never collide on the bus), publishes it to HE3_PRESSURE_STATE_PATH, and
 appends the pressure to a per-day CSV.
 
 Because a GPIB instrument has one owner, the Flask app must NOT open the bus itself
-— it reads the published state file. See pressure_reader/KEITHLEY2000_GPIB_SETUP.md.
+— it reads the published state file. See he3_pressure_reader/KEITHLEY2000_GPIB_SETUP.md.
 """
 
 import os
@@ -42,14 +42,14 @@ except ImportError:  # keep import-safe so the Flask app still boots without the
     Gpib = None
     gpib = None
 
-# Shared file paths for the watcher/Flask split. The pressure_watcher process is the
-# sole owner of the GPIB bus: it writes PRESSURE_STATE_PATH (readback the Flask app
-# serves). PRESSURE_LOG_DIR holds the per-day CSVs. Paths are resolved relative to the
-# repo so watcher + Flask agree.
+# Shared file paths for the watcher/Flask split. The he3_pressure_watcher process is
+# the sole owner of the GPIB bus: it writes HE3_PRESSURE_STATE_PATH (readback the Flask
+# app serves). HE3_PRESSURE_LOG_DIR holds the per-day CSVs. Paths are resolved relative
+# to the repo so watcher + Flask agree.
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_DIR = os.path.dirname(_MODULE_DIR)
-PRESSURE_LOG_DIR = os.path.join(_MODULE_DIR, "logs")
-PRESSURE_STATE_PATH = os.path.join(_REPO_DIR, "config", "pressure_state.json")
+HE3_PRESSURE_LOG_DIR = os.path.join(_MODULE_DIR, "logs")
+HE3_PRESSURE_STATE_PATH = os.path.join(_REPO_DIR, "config", "he3_pressure_state.json")
 
 # --- voltage -> pressure conversion:  pressure = (V - offset) * slope, in bar ---
 PRESS_OFFSET_V = 1.0
@@ -62,11 +62,11 @@ def volts_to_pressure(v):
     return (v - PRESS_OFFSET_V) * PRESS_SLOPE
 
 
-class PressureController:
+class He3PressureController:
     """Owns the Keithley 2000 GPIB handle plus the polling/logging thread."""
 
     def __init__(self, board=0, pad=15, func="VOLT:DC", poll_s=2.0, log_s=2.0,
-                 state_path=PRESSURE_STATE_PATH, log_dir=None):
+                 state_path=HE3_PRESSURE_STATE_PATH, log_dir=None):
         self.board = board
         # NOTE: the Keithley's GPIB primary address is NOT guaranteed to be this — it
         # was 15 on the first bench machine. Rescan the bus (see the setup guide) and
@@ -76,7 +76,7 @@ class PressureController:
         self.poll_s = poll_s
         self.log_s = log_s
         self.state_path = state_path
-        self.log_dir = log_dir or PRESSURE_LOG_DIR
+        self.log_dir = log_dir or HE3_PRESSURE_LOG_DIR
 
         self._lock = threading.Lock()          # guards ALL GPIB access
         self.inst = None
@@ -163,7 +163,7 @@ class PressureController:
 
     def _csv_path(self):
         day = datetime.now().strftime("%Y-%m-%d")
-        return os.path.join(self.log_dir, f"pressure_{day}.csv")
+        return os.path.join(self.log_dir, f"he3_pressure_{day}.csv")
 
     _CSV_FIELDS = ["timestamp", "pressure_bar"]
 
@@ -182,13 +182,13 @@ class PressureController:
                     w.writeheader()
                 w.writerow(row)
         except Exception as e:
-            print(f"[pressure_controller] CSV log failed: {e}")
+            print(f"[he3_pressure_controller] CSV log failed: {e}")
 
     # ---------------- watcher IPC (state file) ----------------
 
     def log(self, msg):
-        """Timestamped, prefixed line for the pressure_watcher tmux pane (and logs)."""
-        print(f"{datetime.now().strftime('%H:%M:%S')} [pressure_watcher] {msg}", flush=True)
+        """Timestamped, prefixed line for the he3_pressure_watcher tmux pane (and logs)."""
+        print(f"{datetime.now().strftime('%H:%M:%S')} [he3_pressure_watcher] {msg}", flush=True)
 
     def _write_state(self, state):
         """Atomically publish the current state for the Flask app to read."""
@@ -199,7 +199,7 @@ class PressureController:
                 json.dump(state, f)
             os.replace(tmp, self.state_path)   # atomic: readers never see a partial file
         except Exception as e:
-            print(f"[pressure_controller] state write failed: {e}")
+            print(f"[he3_pressure_controller] state write failed: {e}")
 
     # ---------------- poll loop ----------------
 
@@ -244,13 +244,13 @@ class PressureController:
 
     def run_blocking(self):
         """Run the poll/log loop in the current thread until SIGINT/SIGTERM. Used by
-        pressure_watcher.py."""
+        he3_pressure_watcher.py."""
         signal.signal(signal.SIGINT, lambda *a: self._stop.set())
         signal.signal(signal.SIGTERM, lambda *a: self._stop.set())
-        self.log(f"pressure watcher starting (pad {self.pad}, poll {self.poll_s}s, "
+        self.log(f"3He pressure watcher starting (pad {self.pad}, poll {self.poll_s}s, "
                  f"log {self.log_s}s, P=(V-{PRESS_OFFSET_V})*{PRESS_SLOPE} {PRESS_UNIT})")
         self._run()
-        self.log("pressure watcher stopped")
+        self.log("3He pressure watcher stopped")
 
 
 # Module-level singleton so the Flask app could share one controller if ever needed.
@@ -262,14 +262,14 @@ def get_controller(**kwargs):
     global _controller
     with _controller_lock:
         if _controller is None:
-            _controller = PressureController(**kwargs)
+            _controller = He3PressureController(**kwargs)
             _controller.start()
     return _controller
 
 
 def _demo():
     """Quick standalone check: connect, print one reading, exit."""
-    pc = PressureController()
+    pc = He3PressureController()
     pc.start()
     time.sleep(3)
     print(json.dumps(pc.get_state(), indent=2, default=str))

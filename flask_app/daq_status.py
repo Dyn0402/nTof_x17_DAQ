@@ -17,8 +17,9 @@ from datetime import datetime
 # Gas watcher publishes its state here (see gas_mixer_control/flow_controller.py).
 _REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAS_STATE_FILE = os.path.join(_REPO_DIR, "config", "gas_state.json")
-# Pressure watcher publishes its state here (see pressure_reader/pressure_controller.py).
-PRESSURE_STATE_FILE = os.path.join(_REPO_DIR, "config", "pressure_state.json")
+# 3He pressure watcher publishes its state here (see
+# he3_pressure_reader/he3_pressure_controller.py).
+HE3_PRESSURE_STATE_FILE = os.path.join(_REPO_DIR, "config", "he3_pressure_state.json")
 
 
 """ Colors:
@@ -469,21 +470,22 @@ def get_gas_watcher_status():
     return small("Logging", "success")
 
 
-def get_pressure_watcher_status():
-    """Compact card for the pressure-gauge watcher (the separate process that owns the
-    Keithley 2000 GPIB link). Derived from tmux session existence + the state file the
-    watcher publishes (connection + freshness), rendered as a small status-only card."""
+def get_he3_pressure_watcher_status():
+    """Compact card for the 3He target pressure-gauge watcher (the separate process that
+    owns the Keithley 2000 GPIB link). Derived from tmux session existence + the state
+    file the watcher publishes (connection + freshness), rendered as a small status-only
+    card."""
     def small(status, color):
         return {"status": status, "color": color, "small": True, "fields": []}
 
     # No tmux session -> the watcher isn't running (pressure logging is down).
-    alive = subprocess.run(["tmux", "has-session", "-t", "pressure_watcher"],
+    alive = subprocess.run(["tmux", "has-session", "-t", "he3_pressure_watcher"],
                            capture_output=True).returncode == 0
     if not alive:
         return small("STOPPED", "secondary")
 
     try:
-        with open(PRESSURE_STATE_FILE) as f:
+        with open(HE3_PRESSURE_STATE_FILE) as f:
             st = json.load(f)
     except Exception:
         return small("Starting", "info")   # session up, no state published yet
