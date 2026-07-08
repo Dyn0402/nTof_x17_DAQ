@@ -75,12 +75,11 @@ DDE_P_OUTLET   = 179  # outlet pressure the device was CALIBRATED for (bar-a); n
 SETPOINT_MAX = 32000  # full-scale raw setpoint (== 100% of capacity)
 VALVE_RAW_FULL = 2 ** 24  # valve-output register full-scale (raw 16,777,216 == 100% open)
 
-# TEMPORARY: software cap on argon flow while the argon supply pressure is low.
-# Argon can't reach its 7.591 ln/h full scale below its ~3 bar-a calibrated inlet
-# (currently ~0.7 bar), so the achievable/commandable max is capped here. Set
-# ARGON_MAX_LNH = None to remove the limit once inlet pressure is restored.
-ARGON_MAX_LNH = 4.0
-ARGON_LIMIT_NOTE = "low inlet pressure (~0.7 bar) — temporary, remove when pressure restored"
+# Optional software cap on commandable argon flow (ln/h). None = full device scale
+# (7.591 ln/h). Set to a float to re-cap, e.g. if the argon inlet pressure drops
+# below its ~3 bar-a calibration and the controller can't reach full scale.
+ARGON_MAX_LNH = None
+ARGON_LIMIT_NOTE = "low inlet pressure — temporary cap, remove when pressure restored"
 
 # Roles keyed by serial number: authoritative backup if a controller's Fluid Name
 # is ever ambiguous or reflashed. Update here if a unit is replaced.
