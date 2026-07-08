@@ -123,95 +123,101 @@ def run_watcher(config: dict):
             sys.stdout.flush()
             idle_line = False
 
-    while True:
-        found_new = False
+    def _scan_once() -> bool:
+        """Run one newest-first scan and process at most ONE file_num.
 
+        Runs, subruns and file_nums are all walked newest-first, and the scan
+        returns as soon as it processes a single file_num so the caller can
+        immediately rescan.  This keeps the watcher always working the newest
+        available data, only draining older backlog when nothing newer needs
+        processing (i.e. it works backwards in general).  Returns True if it
+        processed a file_num, False if a full pass found nothing to do.
+        """
         if not runs_dir.exists():
-            pass
-        else:
-            for run_dir in sorted(runs_dir.iterdir()):
-                if not run_dir.is_dir():
-                    continue
-                if include_runs is not None and run_dir.name not in include_runs:
-                    continue
-                if run_dir.name in exclude_runs:
-                    continue
-                if run_dir.name in checked_stale_runs:
+            return False
+
+        for run_dir in _newest_first(d for d in runs_dir.iterdir() if d.is_dir()):
+            if include_runs is not None and run_dir.name not in include_runs:
+                continue
+            if run_dir.name in exclude_runs:
+                continue
+            if run_dir.name in checked_stale_runs:
+                continue
+
+            is_stale = _run_is_stale(run_dir, raw_inner, stale_run_days)
+
+            sample_period = _read_sample_period(run_dir)
+
+            for subrun_dir in _newest_first(d for d in run_dir.iterdir() if d.is_dir()):
+                raw_dir = subrun_dir / raw_inner
+                if not raw_dir.exists():
                     continue
 
-                is_stale = _run_is_stale(run_dir, raw_inner, stale_run_days)
+                ped_dir = _resolve_pedestal_dir(raw_dir, pedestal_loc, pedestal_base_dir)
 
-                sample_period = _read_sample_period(run_dir)
+                if do_decode and ped_dir:
+                    _decode_pedestals(ped_dir, decode_exe)
 
-                for subrun_dir in sorted(run_dir.iterdir()):
-                    if not subrun_dir.is_dir():
+                all_fnums  = _get_data_file_nums(raw_dir)
+                done_fnums = _get_processed_file_nums(
+                    subrun_dir, combined_inner, hits_inner, decoded_inner,
+                    do_combine, do_analyze
+                )
+
+                for fnum in sorted(all_fnums - done_fnums, reverse=True):
+                    all_fdf_group = [
+                        raw_dir / f for f in os.listdir(raw_dir)
+                        if _is_data_fdf(f) and _extract_file_num(f) == fnum
+                    ]
+                    if not all_fdf_group:
                         continue
 
-                    raw_dir = subrun_dir / raw_inner
-                    if not raw_dir.exists():
+                    key = (run_dir.name, subrun_dir.name, fnum)
+                    current = {p.name: p.stat().st_size for p in all_fdf_group if p.exists()}
+                    if not current or any(s == 0 for s in current.values()):
+                        prev_sizes[key] = current
                         continue
 
-                    ped_dir = _resolve_pedestal_dir(raw_dir, pedestal_loc, pedestal_base_dir)
+                    if prev_sizes.get(key) == current:
+                        _end_idle()
+                        print(f"[watcher] {run_dir.name}/{subrun_dir.name}  "
+                              f"file_num={fnum:03d}  ({len(all_fdf_group)} FEU(s))")
+                        _process_file_num(
+                            fnum, all_fdf_group, subrun_dir, ped_dir,
+                            decoded_inner, hits_inner, combined_inner,
+                            decode_exe, analyze_exe, combine_exe,
+                            do_decode, do_analyze, do_combine,
+                            save_fdfs, save_decoded, n_threads,
+                            sample_period, common_noise_subtraction
+                        )
+                        del prev_sizes[key]
+                        return True
+                    else:
+                        prev_sizes[key] = current
 
-                    if do_decode and ped_dir:
-                        _decode_pedestals(ped_dir, decode_exe)
+            if is_stale:
+                checked_stale_runs.add(run_dir.name)
+                _end_idle()
+                print(f"[watcher] Marked stale (will skip): {run_dir.name}")
 
-                    all_fnums  = _get_data_file_nums(raw_dir)
-                    done_fnums = _get_processed_file_nums(
-                        subrun_dir, combined_inner, hits_inner, decoded_inner,
-                        do_combine, do_analyze
-                    )
+        return False
 
-                    for fnum in sorted(all_fnums - done_fnums):
-                        all_fdf_group = [
-                            raw_dir / f for f in os.listdir(raw_dir)
-                            if _is_data_fdf(f) and _extract_file_num(f) == fnum
-                        ]
-                        if not all_fdf_group:
-                            continue
-
-                        key = (run_dir.name, subrun_dir.name, fnum)
-                        current = {p.name: p.stat().st_size for p in all_fdf_group if p.exists()}
-                        if not current or any(s == 0 for s in current.values()):
-                            prev_sizes[key] = current
-                            continue
-
-                        if prev_sizes.get(key) == current:
-                            _end_idle()
-                            print(f"[watcher] {run_dir.name}/{subrun_dir.name}  "
-                                  f"file_num={fnum:03d}  ({len(all_fdf_group)} FEU(s))")
-                            _process_file_num(
-                                fnum, all_fdf_group, subrun_dir, ped_dir,
-                                decoded_inner, hits_inner, combined_inner,
-                                decode_exe, analyze_exe, combine_exe,
-                                do_decode, do_analyze, do_combine,
-                                save_fdfs, save_decoded, n_threads,
-                                sample_period, common_noise_subtraction
-                            )
-                            del prev_sizes[key]
-                            found_new = True
-                        else:
-                            prev_sizes[key] = current
-
-                if is_stale:
-                    checked_stale_runs.add(run_dir.name)
-                    _end_idle()
-                    print(f"[watcher] Marked stale (will skip): {run_dir.name}")
-
-        if found_new:
+    while True:
+        if _scan_once():
             idle_ticks = 0
+            continue
+
+        idle_ticks += 1
+        elapsed = idle_ticks * poll_interval
+        ts = datetime.datetime.now().strftime('%H:%M:%S')
+        sp = _SPINNER[idle_ticks % 4]
+        if not runs_dir.exists():
+            msg = f'[watcher] {sp} waiting for runs_dir  #{idle_ticks}  {ts}'
         else:
-            idle_ticks += 1
-            elapsed = idle_ticks * poll_interval
-            ts = datetime.datetime.now().strftime('%H:%M:%S')
-            sp = _SPINNER[idle_ticks % 4]
-            if not runs_dir.exists():
-                msg = f'[watcher] {sp} waiting for runs_dir  #{idle_ticks}  {ts}'
-            else:
-                msg = f'[watcher] {sp} idle  #{idle_ticks}  {elapsed}s  {ts}'
-            sys.stdout.write(f'\r{msg}          ')
-            sys.stdout.flush()
-            idle_line = True
+            msg = f'[watcher] {sp} idle  #{idle_ticks}  {elapsed}s  {ts}'
+        sys.stdout.write(f'\r{msg}          ')
+        sys.stdout.flush()
+        idle_line = True
         time.sleep(poll_interval)
 
 
@@ -300,6 +306,23 @@ def _decode_pedestals(ped_dir: str, decode_exe: str):
             continue
         print(f"[watcher] Decoding pedestal: {fdf.name}")
         _decode_file(str(fdf), str(root_out), decode_exe)
+
+
+# ---------------------------------------------------------------------------
+# Ordering
+# ---------------------------------------------------------------------------
+
+def _newest_first(dirs):
+    """Sort directories newest-first by the last integer in their name.
+
+    Runs are ``run_<N>`` (higher N == newer) and subruns end in a ``_<k>``
+    creation index (higher k == newer), so the trailing integer orders both by
+    recency.  Names without a number sort last.
+    """
+    def key(p):
+        nums = re.findall(r'\d+', p.name)
+        return int(nums[-1]) if nums else -1
+    return sorted(dirs, key=key, reverse=True)
 
 
 # ---------------------------------------------------------------------------

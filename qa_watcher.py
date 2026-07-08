@@ -133,9 +133,119 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
     done_first:  set  = set()  # 'first' mode: subruns already processed
     done_fnums:  dict = {}  # 'per_file' mode: set of completed file_nums
 
-    while True:
-        found_new = False
+    def _scan_once() -> bool:
+        """Run one newest-first scan and launch at most ONE QA job.
 
+        Runs, subruns and (in per_file mode) file_nums are all walked
+        newest-first, and the scan returns as soon as it completes a single QA
+        job so the caller can immediately rescan.  This keeps QA always working
+        the newest available data, only draining older backlog when nothing
+        newer needs processing (i.e. it works backwards in general).
+
+        Returns True if a QA job completed (restart the scan from the newest),
+        False if a full pass launched nothing / completed nothing.  A QA that is
+        killed for memory pressure is NOT treated as progress: the scan keeps
+        walking older work and ultimately goes idle, giving the box a breather
+        before the killed subrun is retried on a later pass.
+        """
+        if not runs_dir.exists():
+            return False
+
+        for run_dir in _newest_first(d for d in runs_dir.iterdir() if d.is_dir()):
+            if include_runs is not None and run_dir.name not in include_runs:
+                continue
+            if run_dir.name in exclude_runs:
+                continue
+            if run_dir.name in checked_stale_runs:
+                continue
+
+            run_config_path = run_dir / 'run_config.json'
+            if not run_config_path.exists():
+                continue
+
+            is_stale = _run_is_stale(run_dir, combined_inner, stale_run_days)
+
+            for subrun_dir in _newest_first(d for d in run_dir.iterdir() if d.is_dir()):
+                combined_dir = subrun_dir / combined_inner
+                if not combined_dir.exists():
+                    continue
+
+                stable = _stable_combined_files(combined_dir)
+                if not stable:
+                    continue
+
+                key = (run_dir.name, subrun_dir.name)
+
+                if mode == 'all':
+                    current = frozenset(stable)
+                    if current != seen_files.get(key):
+                        _end_idle()
+                        mem_pct, free_mb = _mem_usage_pct()
+                        print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
+                              f"  n_files={len(stable)}  mem={mem_pct:.1f}%  free={free_mb:.0f}MB")
+                        _log('QA_LAUNCH', run=run_dir.name, subrun=subrun_dir.name,
+                             n_files=len(stable), mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
+                        completed_ok = _run_qa_monitored(
+                            qa_python, qa_script, subrun_dir, run_config_path,
+                            'all', memory_kill_pct=memory_kill_pct,
+                            cpu_nice=cpu_nice, cpu_affinity=cpu_affinity,
+                            qa_threads=qa_threads)
+                        if completed_ok:
+                            seen_files[key] = current
+                            _save_state(state_path, seen_files)
+                            _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name)
+                            return True
+
+                elif mode == 'first':
+                    if key not in done_first:
+                        if any(_file_num(f) == 0 for f in stable):
+                            _end_idle()
+                            mem_pct, free_mb = _mem_usage_pct()
+                            print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
+                                  f"  file_num=0  mem={mem_pct:.1f}%  free={free_mb:.0f}MB")
+                            _log('QA_LAUNCH', run=run_dir.name, subrun=subrun_dir.name,
+                                 file_num=0, mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
+                            completed_ok = _run_qa_monitored(
+                                qa_python, qa_script, subrun_dir, run_config_path,
+                                'first', memory_kill_pct=memory_kill_pct,
+                                cpu_nice=cpu_nice, cpu_affinity=cpu_affinity,
+                                qa_threads=qa_threads)
+                            if completed_ok:
+                                done_first.add(key)
+                                _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name)
+                                return True
+
+                elif mode == 'per_file':
+                    completed = done_fnums.get(key, set())
+                    new_fnums = {_file_num(f) for f in stable} - {None} - completed
+                    for fnum in sorted(new_fnums, reverse=True):
+                        _end_idle()
+                        mem_pct, free_mb = _mem_usage_pct()
+                        print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
+                              f"  file_num={fnum:03d}  mem={mem_pct:.1f}%  free={free_mb:.0f}MB")
+                        _log('QA_LAUNCH', run=run_dir.name, subrun=subrun_dir.name,
+                             file_num=fnum, mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
+                        completed_ok = _run_qa_monitored(
+                            qa_python, qa_script, subrun_dir, run_config_path,
+                            'per_file', file_num=fnum, memory_kill_pct=memory_kill_pct,
+                            cpu_nice=cpu_nice, cpu_affinity=cpu_affinity,
+                            qa_threads=qa_threads)
+                        if completed_ok:
+                            completed.add(fnum)
+                            done_fnums[key] = completed
+                            _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name,
+                                 file_num=fnum)
+                            return True
+                    done_fnums[key] = completed
+
+            if is_stale:
+                checked_stale_runs.add(run_dir.name)
+                _end_idle()
+                print(f"[qa_watcher] Marked stale (will skip): {run_dir.name}")
+
+        return False
+
+    while True:
         if reset_signal_path:
             reset = _pop_reset_signal(reset_signal_path)
             if reset is not False:
@@ -158,125 +268,40 @@ def run_watcher(config: dict, reset_signal_path: Path = None):
                     _end_idle()
                     print(f"[qa_watcher] Reset: {sorted(reset)} will be reprocessed")
 
-        if not runs_dir.exists():
-            pass
-        else:
-            for run_dir in sorted(runs_dir.iterdir()):
-                if not run_dir.is_dir():
-                    continue
-                if include_runs is not None and run_dir.name not in include_runs:
-                    continue
-                if run_dir.name in exclude_runs:
-                    continue
-                if run_dir.name in checked_stale_runs:
-                    continue
-
-                run_config_path = run_dir / 'run_config.json'
-                if not run_config_path.exists():
-                    continue
-
-                is_stale = _run_is_stale(run_dir, combined_inner, stale_run_days)
-
-                for subrun_dir in sorted(run_dir.iterdir()):
-                    if not subrun_dir.is_dir():
-                        continue
-
-                    combined_dir = subrun_dir / combined_inner
-                    if not combined_dir.exists():
-                        continue
-
-                    stable = _stable_combined_files(combined_dir)
-                    if not stable:
-                        continue
-
-                    key = (run_dir.name, subrun_dir.name)
-
-                    if mode == 'all':
-                        current = frozenset(stable)
-                        if current != seen_files.get(key):
-                            _end_idle()
-                            mem_pct, free_mb = _mem_usage_pct()
-                            print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
-                                  f"  n_files={len(stable)}  mem={mem_pct:.1f}%  free={free_mb:.0f}MB")
-                            _log('QA_LAUNCH', run=run_dir.name, subrun=subrun_dir.name,
-                                 n_files=len(stable), mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
-                            completed_ok = _run_qa_monitored(
-                                qa_python, qa_script, subrun_dir, run_config_path,
-                                'all', memory_kill_pct=memory_kill_pct,
-                                cpu_nice=cpu_nice, cpu_affinity=cpu_affinity,
-                                qa_threads=qa_threads)
-                            if completed_ok:
-                                seen_files[key] = current
-                                _save_state(state_path, seen_files)
-                                _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name)
-                            found_new = True
-
-                    elif mode == 'first':
-                        if key not in done_first:
-                            if any(_file_num(f) == 0 for f in stable):
-                                _end_idle()
-                                mem_pct, free_mb = _mem_usage_pct()
-                                print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
-                                      f"  file_num=0  mem={mem_pct:.1f}%  free={free_mb:.0f}MB")
-                                _log('QA_LAUNCH', run=run_dir.name, subrun=subrun_dir.name,
-                                     file_num=0, mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
-                                completed_ok = _run_qa_monitored(
-                                    qa_python, qa_script, subrun_dir, run_config_path,
-                                    'first', memory_kill_pct=memory_kill_pct,
-                                    cpu_nice=cpu_nice, cpu_affinity=cpu_affinity,
-                                    qa_threads=qa_threads)
-                                if completed_ok:
-                                    done_first.add(key)
-                                    _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name)
-                                found_new = True
-
-                    elif mode == 'per_file':
-                        completed = done_fnums.get(key, set())
-                        new_fnums = {_file_num(f) for f in stable} - {None} - completed
-                        for fnum in sorted(new_fnums):
-                            _end_idle()
-                            mem_pct, free_mb = _mem_usage_pct()
-                            print(f"[qa_watcher] {run_dir.name}/{subrun_dir.name}"
-                                  f"  file_num={fnum:03d}  mem={mem_pct:.1f}%  free={free_mb:.0f}MB")
-                            _log('QA_LAUNCH', run=run_dir.name, subrun=subrun_dir.name,
-                                 file_num=fnum, mem_pct=f'{mem_pct:.1f}%', free_mb=f'{free_mb:.0f}')
-                            completed_ok = _run_qa_monitored(
-                                qa_python, qa_script, subrun_dir, run_config_path,
-                                'per_file', file_num=fnum, memory_kill_pct=memory_kill_pct,
-                                cpu_nice=cpu_nice, cpu_affinity=cpu_affinity,
-                                qa_threads=qa_threads)
-                            if completed_ok:
-                                completed.add(fnum)
-                                _log('QA_DONE', run=run_dir.name, subrun=subrun_dir.name,
-                                     file_num=fnum)
-                            found_new = True
-                        done_fnums[key] = completed
-
-                if is_stale:
-                    checked_stale_runs.add(run_dir.name)
-                    _end_idle()
-                    print(f"[qa_watcher] Marked stale (will skip): {run_dir.name}")
-
-        if found_new:
+        if _scan_once():
             idle_ticks = 0
+            continue
+
+        idle_ticks += 1
+        elapsed = idle_ticks * poll_interval
+        ts = datetime.datetime.now().strftime('%H:%M:%S')
+        sp = _SPINNER[idle_ticks % 4]
+        if not runs_dir.exists():
+            msg = f'[qa_watcher] {sp} waiting for runs_dir  #{idle_ticks}  {ts}'
         else:
-            idle_ticks += 1
-            elapsed = idle_ticks * poll_interval
-            ts = datetime.datetime.now().strftime('%H:%M:%S')
-            sp = _SPINNER[idle_ticks % 4]
-            if not runs_dir.exists():
-                msg = f'[qa_watcher] {sp} waiting for runs_dir  #{idle_ticks}  {ts}'
-            else:
-                msg = f'[qa_watcher] {sp} idle  #{idle_ticks}  {elapsed}s  {ts}'
-            sys.stdout.write(f'\r{msg}          ')
-            sys.stdout.flush()
-            idle_line = True
+            msg = f'[qa_watcher] {sp} idle  #{idle_ticks}  {elapsed}s  {ts}'
+        sys.stdout.write(f'\r{msg}          ')
+        sys.stdout.flush()
+        idle_line = True
         time.sleep(poll_interval)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _newest_first(dirs):
+    """Sort directories newest-first by the last integer in their name.
+
+    Runs are ``run_<N>`` (higher N == newer) and subruns end in a ``_<k>``
+    creation index (higher k == newer), so the trailing integer orders both by
+    recency.  Names without a number sort last.
+    """
+    def key(p):
+        nums = re.findall(r'\d+', p.name)
+        return int(nums[-1]) if nums else -1
+    return sorted(dirs, key=key, reverse=True)
+
 
 def _load_state(state_path: Path) -> dict:
     if state_path is None or not state_path.exists():
