@@ -19,29 +19,13 @@ from caen_hv_py.exceptions import CAENHVError
 
 # from run_config import Config
 
-# .stop_run lives in the repo root (same dir as this file and daq_control.py).
-# hv_control creates it to ask daq_control to end the run cleanly when a ramp
-# hard-fails (e.g. the CAEN CFE server crashed) instead of daq_control blocking
-# forever on "Waiting for HV to ramp...". Path must match daq_control.STOP_RUN_FLAG.
-STOP_RUN_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.stop_run')
-
-# Bound the ramp wait so a dead crate costs one sub-run + a clean stop rather
-# than hanging the whole (possibly overnight) run. Overridable via hv_info.
+# Bound the ramp wait so a dead crate costs one sub-run rather than hanging the
+# whole (possibly overnight) run. Overridable via hv_info.
 DEFAULT_RAMP_TIMEOUT_S = 180
 
 
 class HVRampError(RuntimeError):
     """HV could not be set/ramped within the timeout (hard, non-transient)."""
-
-
-def _request_stop_run():
-    """Create the .stop_run flag so daq_control ends the run at the next
-    sub-run boundary. Best-effort; harmless if it already exists."""
-    try:
-        with open(STOP_RUN_FLAG, 'w') as f:
-            f.write('hv ramp failure\n')
-    except OSError as e:
-        print(f'Could not create stop-run flag: {e}')
 
 
 def main():
@@ -77,17 +61,17 @@ def main():
                             try:
                                 set_hvs(hv_info, sub_run['hvs'], caen_hv, caen_lock)
                             except HVRampError as e:
-                                # Hard HV failure (e.g. CFE server crash). End the run
-                                # cleanly instead of hanging daq_control forever: stop
-                                # the monitor thread, request a stop via the .stop_run
-                                # flag, and reply WITHOUT 'HV Set' so daq_control skips
-                                # this sub-run (leaving it un-marked, so resume re-runs it).
+                                # Hard HV failure (e.g. CFE server crash, or a channel that
+                                # plateaus outside tolerance under load) — bail out of just
+                                # this sub-run instead of hanging or killing the whole run.
+                                # Reply WITHOUT 'HV Set' so daq_control skips this sub-run
+                                # (leaving it un-marked, so a resume run re-tries it) and
+                                # moves on to the next one.
                                 print(f'HV RAMP FAILED for {sub_run["sub_run_name"]}: {e}')
                                 if monitor_thread is not None:
                                     monitor_stop_event.set()
                                     monitor_thread.join()
                                     monitor_thread = None
-                                _request_stop_run()
                                 server.send(f'HV Ramp Error {sub_run["sub_run_name"]}: {e}')
                             else:
                                 server.send(f'HV Set {sub_run["sub_run_name"]}')

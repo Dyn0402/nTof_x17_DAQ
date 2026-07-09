@@ -195,6 +195,16 @@ def main():
                         print(f'[pause] Post-sub-run pause: waiting {post_pause_s}s after {sub_run_name}...')
                         _sleep_unless_stop(post_pause_s)
                         print('[pause] Post-sub-run pause: done')
+                else:
+                    # HV ramp failed (e.g. a channel plateaued outside tolerance, or the
+                    # CFE server dropped). Close out this sub-run's monitor thread and
+                    # move on to the next sub-run instead of aborting the whole run —
+                    # leaving it unmarked so a resume run re-tries it.
+                    print(f'[hv] Ramp failed for {sub_run_name}: {res} — skipping this sub-run.')
+                    if config.hv_info['hv_monitoring']:
+                        hv.send('End Monitoring')
+                        hv.receive()  # Stopping monitoring
+                        hv.receive()  # Finished monitoring
         except KeyboardInterrupt as e:
             print(f'Run stoppping.')
 
