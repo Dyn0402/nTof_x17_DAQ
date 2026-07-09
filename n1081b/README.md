@@ -18,14 +18,15 @@ All five sit on the **private DAQ network**, reachable only from the DAQ server
 |----|--------|-----------|-----------|------------------------|
 | 192.168.10.240 | 49323 | 2025.3.27.0 | on | pulse_gen / counter / counter / counter |
 | 192.168.10.241 | 22428 | 2025.3.27.0 | on | pulse_gen / counter / counter / counter |
-| 192.168.10.242 | 49325 | **2023.12.4.0** | on | scaler / wire / wire / wire (TTL, th=300) |
+| 192.168.10.242 | 49325 | 2025.3.27.0 | on | fanout / pulse_gen (Poisson) / and / or |
 | 192.168.10.243 | 49326 | 2025.3.27.0 | on | or / or / counter / or (mixed DISCR/NIM) |
 | 192.168.10.244 | 32429 | 2025.3.27.0 | **off** | majority / counter / or_veto / counter |
 
 Board layout: 4 **sections** A–D (enum 0–3), each with 6 LEMO inputs (0–5). One
 *function* is assigned per section.
 
-⚠️ **242 is on older firmware** than the rest (see Firmware below).
+All five now run the same firmware `2025.3.27.0` (242 was upgraded 2026-07-08; it
+previously ran the older `2023.12.4.0`).
 
 **Homogenized 2026-07-01:** boards **240, 241, 242, 243** were reset to a uniform
 state — all 4 sections = `wire`, input NIM / 50 Ω / threshold 0, all 6 input
@@ -104,9 +105,11 @@ Downloaded to `docs/`:
 
 ## Firmware
 
-242 runs `2023.12.4.0`; the others run `2025.3.27.0`.
+All five boards run `2025.3.27.0`. 242 was upgraded 2026-07-08 (previously
+`2023.12.4.0`); the old-firmware quirks — `configure_or`/`__config_logic6` timing
+out — no longer apply to it.
 
-**We cannot upgrade it from our Python tooling** — the SDK exposes no firmware
+**We cannot upgrade from our Python tooling** — the SDK exposes no firmware
 method. Upgrade paths are the board's **web GUI** (`http://<ip>/`, port 80 open on
 the DAQ net) System/Firmware section, or the **2.8" touchscreen + USB stick**. Both
 need the correct N1081B firmware package, which lives behind the CAEN download
@@ -140,5 +143,5 @@ time-tag logger (incl. the CH 1,2,4,5 / T0 caveats).
 - [x] Homogenized 240/241/242/243 to all-wire NIM/50Ω/th0 (244 left in use).
 - [x] Docs downloaded; time-tag resolution confirmed (10 ns).
 - [ ] **244**: homogenize it too once it's free (`homogenize.py --include-244`).
-- [ ] **242 firmware** upgrade to `2025.3.27.0` — needs firmware pkg + web GUI/USB.
+- [x] **242 firmware** upgraded to `2025.3.27.0` (2026-07-08).
 - [ ] Run-control integration (watcher-style, like `qa_watcher.py`).
