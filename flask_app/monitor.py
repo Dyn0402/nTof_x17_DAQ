@@ -20,7 +20,8 @@ import requests
 
 from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_daq_control_status, get_processor_watcher_status,
-                        get_qa_watcher_status)
+                        get_qa_watcher_status, get_gas_watcher_status,
+                        GAS_STATE_FILE)
 
 TELEGRAM_URL = "https://api.telegram.org/bot{token}/{method}"
 
@@ -140,6 +141,46 @@ class DaqMonitor:
 
     def rule_enabled(self, name):
         return self.config.get("rules", {}).get(name, True)
+
+    def _rule_names(self):
+        return sorted(
+            name for name in dir(self)
+            if name.startswith("rule_") and callable(getattr(self, name))
+        )
+
+    def list_rules(self):
+        """Return [{name, label, description, enabled}] for every rule method.
+
+        `description` is the first paragraph of the rule method's docstring,
+        collapsed to a single line.
+        """
+        rules = []
+        for name in self._rule_names():
+            doc = (getattr(self, name).__doc__ or "").strip()
+            # First blank-line-delimited paragraph, whitespace-collapsed.
+            first_para = doc.split("\n\n", 1)[0]
+            description = " ".join(first_para.split())
+            label = name[len("rule_"):].replace("_", " ")
+            rules.append({
+                "name": name,
+                "label": label,
+                "description": description,
+                "enabled": self.rule_enabled(name),
+            })
+        return rules
+
+    def set_rule_enabled(self, name, enabled):
+        """Enable/disable a single rule and persist. Returns (ok, error)."""
+        if name not in self._rule_names():
+            return False, f"Unknown rule: {name}"
+        self.config.setdefault("rules", {})[name] = bool(enabled)
+        # Clear any live alert state so a just-disabled rule stops nagging and a
+        # re-enabled one starts fresh rather than firing on stale state.
+        self._alert_active.pop(name, None)
+        self._alert_sent_at.pop(name, None)
+        self._pending_since.pop(name, None)
+        self.save_config()
+        return True, None
 
     def _rule_min_duration(self, name):
         """Seconds the condition must be True before an alert is sent (default 0)."""
@@ -336,3 +377,73 @@ class DaqMonitor:
         if info["status"] == "UNKNOWN STATE":
             return True, "daq_control is in UNKNOWN STATE — check the terminal."
         return False, f"daq_control: {info['status']}"
+
+    def rule_gas_watcher_dead(self):
+        """Alert if the gas-mixer watcher is not running or not producing fresh,
+        connected readings — in that state gas logging AND flow control are down,
+        and rule_gas_flow_starved below is blind (no data to judge)."""
+        info = get_gas_watcher_status()
+        status = info["status"]
+        if status == "STOPPED":
+            return True, "gas_watcher is not running — gas logging and flow control are down."
+        if status == "No Gas":
+            return True, "gas_watcher is up but the flow controllers are not connected."
+        if status == "Stale":
+            return True, "gas_watcher is not publishing fresh readings (state file is stale)."
+        return False, f"gas_watcher: {status}"
+
+    def rule_gas_flow_starved(self):
+        """Alert if a gas channel's measured flow stays far below its setpoint while
+        the valve is wound open — the signature of an empty bottle / lost supply
+        pressure. (Isobutane ran dry unnoticed on 2026-07-08: setpoint held at
+        0.379 ln/h while flow decayed to 0 and the valve saturated at 73%.)
+
+        Tunable via rule_options.rule_gas_flow_starved in monitor_config.json:
+          min_setpoint_lnh  — ignore channels commanded at/below this (default 0.05,
+                              so an intentional /gas/zero never trips it)
+          deficit_fraction  — flow below this fraction of setpoint counts as starved
+                              (default 0.5)
+          valve_open_pct    — valve at/above this counts as wound open (default 50);
+                              this is what distinguishes true starvation from a normal
+                              ramp-down (where the valve closes instead).
+        """
+        try:
+            with open(GAS_STATE_FILE) as f:
+                st = json.load(f)
+        except Exception:
+            # No readable state -> handled by rule_gas_watcher_dead, not here.
+            return False, "gas state unavailable"
+
+        if not st.get("connected"):
+            return False, "gas controllers not connected"
+
+        # Skip stale data so we never judge starvation on frozen readings
+        # (rule_gas_watcher_dead owns the stale/dead case).
+        try:
+            age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
+        except Exception:
+            age = None
+        if age is not None and age > 30:
+            return False, "gas state stale"
+
+        opts = self.config.get("rule_options", {}).get("rule_gas_flow_starved", {})
+        min_set = opts.get("min_setpoint_lnh", 0.05)
+        deficit = opts.get("deficit_fraction", 0.5)
+        valve_open = opts.get("valve_open_pct", 50.0)
+
+        starved = []
+        for key in ("argon", "iso"):
+            ch = st.get(key) or {}
+            sp = ch.get("set_lnh")
+            fl = ch.get("flow_lnh")
+            vp = ch.get("valve_pct")
+            if sp is None or fl is None:
+                continue
+            if sp >= min_set and fl < deficit * sp and (vp is None or vp >= valve_open):
+                vtxt = f"{vp:.0f}%" if vp is not None else "?"
+                starved.append(
+                    f"{ch.get('fluid', key)}: flow {fl:.3f} ln/h vs set {sp:.3f} "
+                    f"ln/h (valve {vtxt})")
+        if starved:
+            return True, "Gas flow starved (check supply bottle/pressure) — " + "; ".join(starved)
+        return False, "gas flow OK"

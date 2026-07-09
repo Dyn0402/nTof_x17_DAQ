@@ -148,7 +148,8 @@
   <div class="panel mt-3 monitor-strip" id="monitor-panel">
     <div class="strip-row">
       <span class="strip-label">Monitoring</span>
-      <button id="monitor-toggle" class="btn btn-sm btn-secondary">Off</button>
+      <span id="monitor-state" class="fw-bold me-1">—</span>
+      <button id="monitor-toggle" class="btn btn-sm btn-secondary">Start</button>
       <span id="monitor-last-check" class="text-muted small"></span>
       <span id="monitor-active-alerts" class="text-danger small fw-bold"></span>
       <div class="ms-auto d-flex gap-2">
@@ -158,6 +159,9 @@
     </div>
     <div class="collapse" id="monitor-setup-collapse">
       <div class="collapse-body">
+        <div class="text-muted small fw-bold mt-1 mb-1">Alerts</div>
+        <div id="monitor-rules"></div>
+        <hr class="my-2">
         <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
           <span class="text-muted small">Chat ID:</span>
           <span id="monitor-chat-id" class="small font-monospace"></span>
@@ -1393,13 +1397,18 @@ async function updateMonitorStatus() {
   const res = await fetch("/monitor/status");
   const d = await res.json();
 
+  const state = document.getElementById("monitor-state");
   const btn = document.getElementById("monitor-toggle");
   if (d.running) {
-    btn.textContent = "On";
-    btn.className = "btn btn-sm btn-success";
+    state.textContent = "Running";
+    state.className = "fw-bold me-1 text-success";
+    btn.textContent = "Stop";
+    btn.className = "btn btn-sm btn-outline-danger";
   } else {
-    btn.textContent = "Off";
-    btn.className = "btn btn-sm btn-secondary";
+    state.textContent = "Stopped";
+    state.className = "fw-bold me-1 text-danger";
+    btn.textContent = "Start";
+    btn.className = "btn btn-sm btn-outline-success";
   }
 
   const lastCheck = document.getElementById("monitor-last-check");
@@ -1420,6 +1429,42 @@ document.getElementById("monitor-toggle").addEventListener("click", async () => 
   await fetch("/monitor/toggle", { method: "POST" });
   await updateMonitorStatus();
 });
+
+async function renderMonitorRules() {
+  const res = await fetch("/monitor/rules");
+  const d = await res.json();
+  const container = document.getElementById("monitor-rules");
+  container.innerHTML = (d.rules || []).map(r => {
+    const stateTxt = r.enabled ? "On" : "Off";
+    const stateCls = r.enabled ? "text-success" : "text-muted";
+    const btnTxt = r.enabled ? "Disable" : "Enable";
+    const btnCls = r.enabled ? "btn-outline-danger" : "btn-outline-success";
+    return `
+      <div class="d-flex align-items-start gap-2 py-1 border-bottom">
+        <div class="flex-grow-1">
+          <div class="small fw-bold">${r.label}</div>
+          <div class="text-muted small">${r.description || ""}</div>
+        </div>
+        <span class="fw-bold small ${stateCls}" style="min-width:2.2em;text-align:right;">${stateTxt}</span>
+        <button class="btn btn-sm ${btnCls}" data-rule="${r.name}" data-enabled="${r.enabled}">${btnTxt}</button>
+      </div>`;
+  }).join("");
+}
+
+document.getElementById("monitor-rules").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-rule]");
+  if (!btn) return;
+  const enabled = btn.dataset.enabled === "true";
+  await fetch("/monitor/rule_toggle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: btn.dataset.rule, enabled: !enabled }),
+  });
+  await renderMonitorRules();
+});
+
+// Refresh the rule list whenever the Setup panel is opened.
+document.getElementById("monitor-setup-collapse").addEventListener("shown.bs.collapse", renderMonitorRules);
 
 document.getElementById("monitor-test").addEventListener("click", async () => {
   const res = await fetch("/monitor/test", { method: "POST" });

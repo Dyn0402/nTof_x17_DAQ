@@ -1043,6 +1043,24 @@ def monitor_status():
     return jsonify(monitor.status_dict())
 
 
+@app.route("/monitor/rules")
+def monitor_rules():
+    return jsonify({"rules": monitor.list_rules()})
+
+
+@app.route("/monitor/rule_toggle", methods=["POST"])
+def monitor_rule_toggle():
+    data = request.get_json(silent=True) or {}
+    name = data.get("name")
+    enabled = data.get("enabled")
+    if name is None or enabled is None:
+        return jsonify({"success": False, "message": "name and enabled required."})
+    ok, err = monitor.set_rule_enabled(name, enabled)
+    if not ok:
+        return jsonify({"success": False, "message": err})
+    return jsonify({"success": True, "name": name, "enabled": bool(enabled)})
+
+
 @app.route("/monitor/fetch_chat_id", methods=["POST"])
 def monitor_fetch_chat_id():
     if not monitor.token:
