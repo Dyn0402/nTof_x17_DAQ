@@ -17,94 +17,67 @@ BASE_DISK     = '/mnt/data/x17/'
 PROJECT       = 'beam_july'
 BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
 
-# ---------------------------------------------------------------------------
-# Self-trigger per-detector threshold + HV scan (Ar/CF4/Iso 88/10/2) — overnight.
-#   The DAQ runs in self-trigger mode. The run cycles the *triggering* detector
-#   A -> B -> C -> D; for each, the trigger source is that detector's two FEUs (X & Y),
-#   selected by a per-detector self-trigger .cfg (SelfTrig_Mx17_July_<det>.cfg, with Trg
-#   roles on those FEUs). All four detectors are always read out.
-#   For each triggering detector we scan three discriminator thresholds set by the global
-#   Dream*1 ThDAC (magnitudes 127/105/89 = high/med/low; each is its own per-detector .cfg)
-#   and, at each threshold, a short resist HV scan: every detector starts at its own max resist
-#   and steps down together, drift held fixed. A final higher-statistics tail repeats a coarse
-#   3-point resist scan per detector at a single DAC threshold.
-#   NB: the self-trigger threshold is the analog Dream*1 DAC, NOT the _thr.prg (that is the ZS
-#   readout threshold and does not gate the trigger). Channels are enabled via Dream*8/9=0 in the
-#   cfgs; pedestals import the latest real run as usual. Trigger requires X-Y coincidence (both of
-#   the detector's FEUs fire), HIT_multi>=4 channels per connector, only its 2 FEUs are read out,
-#   and each sub-run is capped at a per-FEU event count (MAIN_EVENTS / TAIL_EVENTS) OR its run_time.
-#   The trigger config changes per sub-run via the daq_config_template_path override, so
-#   set_feus_from_detectors is OFF (Trg roles + DAC come from the .cfg, not the pipeline).
-#   Sample period / NbOfSamples / latency are driven from dream_daq_info.
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Gamma-flash-triggered DAQ-recovery scan (Ar/Iso 95/5).  ALL FOUR detectors read out.
+#
+#   Successor to the run_13/16/17 self-trigger attempts, which had trouble.  Instead
+#   of self-triggering, the DAQ is now EXTERNALLY triggered (TCM / N1081B): on every
+#   1.2 s machine cycle it fires on the gamma flash itself, and then again at a RANDOM
+#   time within a 30 ms window after the flash.  Sampling the post-flash window at
+#   random times maps out WHEN the baseline stops being flat (DAQ recovered) and, if
+#   we are lucky, catches real detector signals returning.
+#
+#   Window: 32 samples x 60 ns = 1920 ns per event.  The 60 ns period is deliberate
+#   (wider window than 20 ns) at the cost of time resolution; 32 samples kept short.
+#
+#   Trigger + full 4-detector readout come from the external-trigger TCM template
+#   (Tcm_Mx17_July.cfg) with set_feus_from_detectors=True (all four detectors = Dat,
+#   no self-trigger FEU role).  Same DAQ path the run_15 beam scan used.
+#
+#   Sequence (see SUB-RUN BUILD below):
+#     1. "gas_change" settling sub-run: 2 h at drift 800 V, resists at max (all channels).
+#     2. A resist scan per drift, run in order DRIFT_SCAN_ORDER.  Each scan steps all
+#        four detectors together from their own max down in -5 V steps for 10 points;
+#        the first 6 points run 30 min, the last 4 run 10 min (spend the most time near
+#        max gain).  800 V is the "good" scan; 600 V precedes it, 400 V follows.
+# ===========================================================================
 OVERHEAD_MIN = 1      # per-subrun ramp poll + DAQ prep + 10 s inter-subrun wait
 
 # Per-channel maximum resist voltages, card 5 channels 1-4 = detectors A/B/C/D.
-# Every scan starts each detector at its own max and steps down from there.
-RESIST_MAX = {'1': 540, '2': 535, '3': 530, '4': 515}
+# Every scan starts each detector at its own max and steps down from there in lock-step.
+RESIST_MAX = {'1': 480, '2': 480, '3': 460, '4': 445}
 
-# Triggering-detector cycle and its card-5 resist channel.
-DETECTORS = ['A', 'B', 'C', 'D']
-DET_RESIST_CH = {'A': '1', 'B': '2', 'C': '3', 'D': '4'}
-DRIFT_V = 800                       # all four drift channels, held fixed across the scan
+# ----- Resist scan profile (all drift scans share this per-point timing) -----
+# Each scan steps all four detectors together from their own max down in -RESIST_STEP_V
+# steps for N_POINTS points.  First N_LONG points run long, the rest short.
+RESIST_STEP_V    = 5     # step size (V) below each detector's max
+N_POINTS         = 10    # resist points per scan (max, max-5, ... max-45)
+N_LONG           = 6     # first N_LONG points run SUBRUN_MIN_LONG, the rest SUBRUN_MIN_SHORT
+SUBRUN_MIN_LONG  = 30    # minutes per point, first N_LONG points
+SUBRUN_MIN_SHORT = 10    # minutes per point, remaining points
 
-# Self-trigger discriminator threshold = global Dream*1 ThDAC magnitude (0-127), NOT the _thr.prg
-# (which is the ZS/readout threshold and does not gate the trigger -- verified 2026-07-06). Each DAC
-# level is a separate per-detector .cfg (SelfTrig_Mx17_July_<det>_dac<mag>.cfg, built by
-# dream_scripts/make_selftrig_cfgs.py). 127/105/89 (high/med/low) translate the old 1000/700/500 scan
-# via ~5.6 ADC counts/DAC-LSB (17.5% discriminator window). Larger magnitude = higher (tighter) threshold.
-THRESHOLDS_DAC = [127, 105, 89]
+# Drift scans, run in this order.  800 V is the "good" scan; 600 V before, 400 V after.
+DRIFT_SCAN_ORDER = [600, 800, 400]
 
-# Per-FEU event cap: each sub-run stops at MAIN_EVENTS events/FEU OR its run_time, whichever comes
-# first (RunCtrl OR logic). Bounds data volume when the rate saturates at high HV.
-MAIN_EVENTS = 6000
+# ----- Leading gas-exchange / settling sub-run -----
+GAS_CHANGE_MIN    = 120   # 2 h settle
+GAS_CHANGE_OFFSET = 0     # resists held at max (all channels) during settle
+GAS_CHANGE_DRIFT  = 800   # drift held at the good operating point
 
-# Main scan: per (detector, DAC threshold), a resist scan from each detector's own max.
-MAIN_N_POINTS = 8                   # resist points
-MAIN_RESIST_STEP = 10               # V decrement per point
-MAIN_SUBRUN_MIN = 10
 
-# High-statistics tail: per detector, a long resist scan at one DAC, starting at max-20 V and
-# stepping down -10 V, 30 min / 12000 events each. Runs as far down as time allows (resume-safe);
-# the sequence intentionally extends well past a night so it never runs dry before we stop it.
-TAIL_DAC = 105
-TAIL_SUBRUN_MIN = 30
-TAIL_EVENTS = 12000
-TAIL_START_OFFSET = 20              # first tail point at each detector's max - 20 V
-TAIL_RESIST_STEP = 10
-TAIL_RESIST_OFFSETS = list(range(TAIL_START_OFFSET, 151, TAIL_RESIST_STEP))  # 20,30,...,150
+def build_resist_offsets(step_v, n_points):
+    """Offsets (V below each detector's max) for a scan: [0, step, 2*step, ...] (n_points)."""
+    return [step_v * k for k in range(n_points)]
 
-# Per-detector, per-DAC self-trig cfg (relative to base_out_dir). Pedestals import the latest real
-# pedestal run as usual (dream_daq_info defaults) -- the trigger threshold is the DAC, not the pedestal.
-DREAM_CFG_INNER_DIR = 'dream_config/'
-SELFTRIG_CFG_FMT = 'SelfTrig_Mx17_July_{det}_dac{dac}.cfg'
+
+def scan_point_minutes(k):
+    """Run time (minutes) for the k-th resist point: long for the first N_LONG, then short."""
+    return SUBRUN_MIN_LONG if k < N_LONG else SUBRUN_MIN_SHORT
 
 
 def fmt_v(v):
     """Format a setpoint for sub-run names: 540, 537.5, 400 (no trailing .0)."""
     return f'{v:g}'
-
-
-def make_self_trig_sub_run(det, dac, offset, minutes, base_out_dir, k, tag='', events=None):
-    """One self-trigger sub-run: triggers on `det` at global-DAC threshold `dac`, all four detectors
-    ramped to (own max - offset) resist at DRIFT_V. Per-sub-run override selects the detector's
-    per-DAC self-trig .cfg; pedestals come from the dream_daq_info defaults (latest real run). When
-    `events` is given it overrides the dream_daq_info per-FEU event cap for this sub-run."""
-    resists = {ch: v - offset for ch, v in RESIST_MAX.items()}
-    det_resist = resists[DET_RESIST_CH[det]]
-    sub = {
-        'sub_run_name': f'trig{det}_dac{dac}_dr{DRIFT_V}_r{fmt_v(det_resist)}_{tag}{k:02d}',
-        'run_time': minutes,           # Minutes
-        'post_pause_s': 0,             # seconds; 0 = none
-        'daq_config_template_path': f'{base_out_dir}{DREAM_CFG_INNER_DIR}{SELFTRIG_CFG_FMT.format(det=det, dac=dac)}',
-        'hvs': {
-            '5': resists,                                                   # Positive Resists (A/B/C/D on ch 1-4)
-            '9': {'0': DRIFT_V, '1': DRIFT_V, '2': DRIFT_V, '3': DRIFT_V},  # Negative Drifts
-        },
-    }
-    if events is not None:
-        sub['daq_run_events'] = events
-    return sub
 
 
 class Config(RunConfigBase):
@@ -115,7 +88,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_13'
+        self.run_name = 'run_18'  # Gamma-flash externally-triggered DAQ-recovery scan (flash + random 30 ms window)
         self.base_out_dir = BASE_DATA_DIR
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -126,16 +99,16 @@ class Config(RunConfigBase):
         self.start_time = None
         self.process_on_fly = False  # True to process fdfs on the fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
-        self.resume = True  # True to resume an existing run: skip sub-runs already marked .subrun_complete.
+        self.resume = False  # True to resume an existing run: skip sub-runs already marked .subrun_complete.
         self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
         # self.gas = 'Ar/CO2 70/30'  # Gas type for run
-        self.gas = 'Ar/CF4/Iso 88/10/2'  # Gas type for run
+        self.gas = 'Ar/Iso 95/5'  # Gas type for run
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         # self.gas = 'Ne/Iso 95/5'  # Gas type for run
         # self.beam_type = 'cosmics'
-        self.beam_type = 'neutrons'
+        self.beam_type = 'neutrons'  # noqa: keep
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
@@ -147,23 +120,22 @@ class Config(RunConfigBase):
         # self.target_type = 'empty target holder'
         self.target_type = 'none'
         # self.trigger = "Det 3 SiPM Wall + Det 3 Scint"
-        self.trigger = "PS Pickup"
+        # self.trigger = "PS Pickup"
+        self.trigger = ("External (TCM/N1081B): gamma flash on each 1.2 s cycle + random trigger "
+                        "within 30 ms window after flash; all 4 detectors read out")
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_May.cfg',
+            # External-trigger (TCM) template: gamma flash + random post-flash trigger fed in
+            # externally; every detector is Dat (full 4-detector readout), no self-trigger FEU.
             'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_July.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Cosmics_Mx17_May.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_QA.cfg',
-            # 'daq_config_template_path': f'{self.base_out_dir}dream_config/Self_Trig_det3_QA.cfg',
 
             # 'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'run_directory': f'/home/mx17/july_dream/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-            # 'n_samples_per_waveform': 400,  # Number of samples per waveform to configure in DAQ
-            'n_samples_per_waveform': 32,  # Number of samples per waveform to configure in DAQ
+            'n_samples_per_waveform': 32,  # short window (32 x 60 ns = 1920 ns)
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -171,20 +143,13 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-            'latency': 2,  # Latency setting for DAQ in clock cycles (self-trig: matches May Self_Trig cfgs)
-            'daq_run_events': MAIN_EVENTS,  # Per-FEU event cap per sub-run (0 = infinite); tail overrides it
-            # 'sample_period': 20,  # ns, sampling period
-            'sample_period': 60,  # ns, sampling period (-> DrmClk RdClk_Div/WrClk_Div 6.0 in cfg)
+            'latency': 3,  # Latency (clock cycles); external-trigger value from run_15 Tcm config — check flash sits in window
+            'sample_period': 60,  # ns, sampling period (only 20 or 60 supported) -> wider window than run_15's 20 ns
+            # No daq_run_events cap: runs are purely time-based (30 min scan / 3 h settle), like run_15.
             'zs_check_sample': 4,  # Number of samples to read out beyond threshold crossing
-            # True to auto-select the active FEUs in the .cfg from the included detectors' dream_feus maps.
-            # Only the Sys Topo / Feu_RunCtrl_Id / NetChan_Ip lines for FEUs actually used by the included
-            # detectors are left active; the rest are commented out. On each active Sys Topo line the per-
-            # Dream roles are set to Dat for used connectors and Msk otherwise. nTof has no dedicated
-            # trigger FEU (multiplicity coincidence), so trigger_feu stays None.
-            # OFF for the self-trigger run: the per-detector self-trig .cfg carries the Trg roles,
-            # and set_active_feus would overwrite every Dream role to Dat/Msk. All 8 FEUs are used
-            # (all detectors read out) so nothing needs commenting out anyway.
-            'set_feus_from_detectors': False,
+            # Full 4-detector readout auto-derived from included detectors (all four = Dat). External
+            # trigger, so no trigger FEU (nTof multiplicity path is unused here).
+            'set_feus_from_detectors': True,
         }
 
         self.processor_info = {
@@ -223,23 +188,39 @@ class Config(RunConfigBase):
             self.hv_info['username'] = lines[0].strip()
             self.hv_info['password'] = lines[1].strip()
 
-        # ----- Self-trigger per-detector threshold + HV scan (built from constants above) -----
-        # Main scan: triggering detector A->B->C->D, DAC threshold 127->105->89, and at each a
-        # resist scan (all detectors ramped together, drift fixed). Then a high-statistics tail:
-        # a coarse 3-point resist scan per detector at a single DAC. Each sub-run selects its own
-        # per-detector per-DAC self-trig .cfg via override; pedestals are the latest real run.
+        # ----- SUB-RUN BUILD (from constants above) -----
+        # 1) Leading gas-exchange / settling sub-run: GAS_CHANGE_MIN, all resists at
+        #    max - GAS_CHANGE_OFFSET, drift at the good operating point.  2) One resist scan per drift
+        #    in DRIFT_SCAN_ORDER; each steps all four detectors together from their own max down in
+        #    -RESIST_STEP_V steps for N_POINTS points, scan_point_minutes(k) per point (long then short).
+        #    All four detectors read out every sub-run.
         self.sub_runs = []
-        for det in DETECTORS:
-            for dac in THRESHOLDS_DAC:
-                for k in range(MAIN_N_POINTS):
-                    off = k * MAIN_RESIST_STEP
-                    self.sub_runs.append(
-                        make_self_trig_sub_run(det, dac, off, MAIN_SUBRUN_MIN, self.base_out_dir, k))
-        for det in DETECTORS:
-            for k, off in enumerate(TAIL_RESIST_OFFSETS):
-                self.sub_runs.append(
-                    make_self_trig_sub_run(det, TAIL_DAC, off, TAIL_SUBRUN_MIN,
-                                           self.base_out_dir, k, tag='hi', events=TAIL_EVENTS))
+
+        gas_resists = {ch: v - GAS_CHANGE_OFFSET for ch, v in RESIST_MAX.items()}
+        self.sub_runs.append({
+            'sub_run_name': f'gas_change_dr{GAS_CHANGE_DRIFT}_Amax'
+                            + (f'-{GAS_CHANGE_OFFSET}' if GAS_CHANGE_OFFSET else ''),
+            'run_time': GAS_CHANGE_MIN,  # Minutes
+            'post_pause_s': 0,  # seconds; 0 = none
+            'hvs': {
+                '5': gas_resists,  # Positive Resists (mx17_A/B/C/D on channels 1-4)
+                '9': {ch: GAS_CHANGE_DRIFT for ch in ('0', '1', '2', '3')},  # Negative Drifts
+            },
+        })
+
+        offsets = build_resist_offsets(RESIST_STEP_V, N_POINTS)
+        for drift in DRIFT_SCAN_ORDER:
+            for k, off in enumerate(offsets):
+                resists = {ch: v - off for ch, v in RESIST_MAX.items()}
+                self.sub_runs.append({
+                    'sub_run_name': f'dr{drift}_A{fmt_v(resists["1"])}_{k:02d}',
+                    'run_time': scan_point_minutes(k),  # Minutes (30 for first N_LONG, then 10)
+                    'post_pause_s': 0,  # seconds; 0 = none
+                    'hvs': {
+                        '5': resists,  # Positive Resists (mx17_A/B/C/D on channels 1-4)
+                        '9': {'0': drift, '1': drift, '2': drift, '3': drift},  # Negative Drifts
+                    },
+                })
 
 
         self.bench_geometry = {
@@ -654,24 +635,50 @@ if __name__ == '__main__':
 
     config.write_to_file(f'{out_run_dir}{config_name}')
 
-    # Schedule summary — sanity-check timing and the scan structure.
-    run_min = sum(sr['run_time'] for sr in config.sub_runs)
-    n_sub = len(config.sub_runs)
-    overhead_min = n_sub * OVERHEAD_MIN
-    total_h = (run_min + overhead_min) / 60
-    n_main = len(DETECTORS) * len(THRESHOLDS_DAC) * MAIN_N_POINTS
-    n_tail = len(DETECTORS) * len(TAIL_RESIST_OFFSETS)
-    print(f'Gas: {config.gas}')
-    print(f'Run: {config.run_name}  (self-trigger, per-detector+DAC cfg — no n1081b scan watcher)')
-    print(f'  Trigger cycle: {" -> ".join(DETECTORS)}  (each triggers on its own X&Y FEUs)')
-    print(f'  Thresholds: Dream*1 DAC {THRESHOLDS_DAC}  (global discriminator DAC, high->low)')
-    print(f'  Trigger: X-Y coincidence (both FEUs), HIT_multi>=4 ch/connector, <=1 Dream/FEU')
-    print(f'  Main scan: {len(DETECTORS)} det x {len(THRESHOLDS_DAC)} DAC x {MAIN_N_POINTS} resist pts '
-          f'(-{MAIN_RESIST_STEP} V/pt, drift {DRIFT_V} V), {MAIN_SUBRUN_MIN} min OR {MAIN_EVENTS} ev/FEU -> {n_main} sub-runs')
-    print(f'  Hi-stat tail: {len(DETECTORS)} det x {len(TAIL_RESIST_OFFSETS)} resist pts (max-{TAIL_START_OFFSET} '
-          f'down -{TAIL_RESIST_STEP} V) @ DAC {TAIL_DAC}, {TAIL_SUBRUN_MIN} min OR {TAIL_EVENTS} ev/FEU -> {n_tail} sub-runs')
-    print(f'Sub-runs: {n_sub} total  (Det A max resist {RESIST_MAX["1"]} V; B/C/D offset-matched from own max)')
-    print(f'Run time: {run_min} min run + ~{overhead_min} min overhead = ~{total_h:.2f} h '
-          f'(user typically kills early)')
+    # ----- Wall-clock schedule ------------------------------------------------
+    # Set the intended start time here to project when each phase begins/ends.
+    from datetime import datetime, timedelta
+    START = datetime.now().replace(hour=23, minute=0, second=0, microsecond=0)  # 11 PM tonight
+
+    ns = config.dream_daq_info['n_samples_per_waveform']
+    sp = config.dream_daq_info['sample_period']
+    print(f'Gas: {config.gas}   Beam: {config.beam_type}')
+    print(f'Run: {config.run_name}  — external gamma-flash + random-window trigger, all 4 read out')
+    print(f'DAQ: {ns} samples x {sp} ns = {ns * sp} ns window; full readout; '
+          f'template {config.dream_daq_info["daq_config_template_path"].split("/")[-1]}')
+    print(f'Resist scan: max -> max-{RESIST_STEP_V * (N_POINTS - 1)} V in -{RESIST_STEP_V} V steps, '
+          f'{N_POINTS} pts ({N_LONG}x{SUBRUN_MIN_LONG} min + {N_POINTS - N_LONG}x{SUBRUN_MIN_SHORT} min); '
+          f'drifts (in order) {DRIFT_SCAN_ORDER} V')
+    print(f'Lead-in: gas_change {GAS_CHANGE_MIN} min at drift {GAS_CHANGE_DRIFT} V, '
+          f'resists {"max" if not GAS_CHANGE_OFFSET else f"max-{GAS_CHANGE_OFFSET}"} V\n')
+
+    # Walk the sub-runs, assigning wall-clock start/end (run_time + per-subrun overhead).
+    t = START
+    print(f'{"sub-run":34s} {"len":>6s}  {"start":>7s} -> {"end":>7s}')
+    print('-' * 62)
+    phase_start = {}  # drift -> (start_dt, end_dt) spanning that scan
+    for sr in config.sub_runs:
+        dur = timedelta(minutes=sr['run_time'] + OVERHEAD_MIN)
+        end = t + dur
+        # Track drift-scan phase boundaries for the summary below.
+        name = sr['sub_run_name']
+        if name.startswith('dr'):
+            drift = int(name[2:name.index('_')])
+            s, _ = phase_start.get(drift, (t, end))
+            phase_start[drift] = (s, end)
+        hh = sr['run_time']
+        lbl = f'{hh//60}h{hh%60:02d}' if hh >= 60 else f'{hh}m'
+        print(f'{name:34s} {lbl:>6s}  {t:%H:%M} -> {end:%H:%M}')
+        t = end
+
+    total_min = sum(sr['run_time'] + OVERHEAD_MIN for sr in config.sub_runs)
+    print('-' * 62)
+    print(f'\nPhase boundaries (drift scans, in run order):')
+    for drift in DRIFT_SCAN_ORDER:
+        s, e = phase_start[drift]
+        star = '   <-- "good" scan' if drift == 800 else ''
+        print(f'  drift {drift} V:  {s:%a %H:%M} -> {e:%a %H:%M}{star}')
+    print(f'\nSub-runs: {len(config.sub_runs)}   Total: {total_min} min = {total_min/60:.2f} h  '
+          f'(start {START:%a %H:%M} -> end {t:%a %H:%M})')
 
     print('donzo')
