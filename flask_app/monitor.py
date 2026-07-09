@@ -139,7 +139,7 @@ class DaqMonitor:
     def resend_interval(self):
         return self.config.get("resend_interval_minutes", 30) * 60
 
-    def rule_enabled(self, name):
+    def _is_rule_enabled(self, name):
         return self.config.get("rules", {}).get(name, True)
 
     def _rule_names(self):
@@ -165,7 +165,7 @@ class DaqMonitor:
                 "name": name,
                 "label": label,
                 "description": description,
-                "enabled": self.rule_enabled(name),
+                "enabled": self._is_rule_enabled(name),
             })
         return rules
 
@@ -247,7 +247,7 @@ class DaqMonitor:
         }
 
         for name, fn in rules.items():
-            if not self.rule_enabled(name):
+            if not self._is_rule_enabled(name):
                 continue
             try:
                 is_alert, detail = fn()
