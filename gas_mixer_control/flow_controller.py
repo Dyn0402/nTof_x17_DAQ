@@ -78,8 +78,8 @@ VALVE_RAW_FULL = 2 ** 24  # valve-output register full-scale (raw 16,777,216 == 
 # Optional software cap on commandable argon flow (ln/h). None = full device scale
 # (7.591 ln/h). Set to a float to re-cap, e.g. if the argon inlet pressure drops
 # below its ~3 bar-a calibration and the controller can't reach full scale.
-ARGON_MAX_LNH = None
-ARGON_LIMIT_NOTE = "low inlet pressure — temporary cap, remove when pressure restored"
+ARGON_MAX_LNH = 7.2
+ARGON_LIMIT_NOTE = "argon flow capped at 7.2 ln/h (configured limit)"
 
 # Roles keyed by serial number: authoritative backup if a controller's Fluid Name
 # is ever ambiguous or reflashed. Update here if a unit is replaced.
