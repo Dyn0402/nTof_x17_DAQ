@@ -36,7 +36,10 @@ from monitor import DaqMonitor, fetch_chat_id, get_bot_username
 from gas_mixer_control.flow_controller import GAS_LOG_DIR, GAS_STATE_PATH, GAS_COMMAND_PATH
 from he3_pressure_reader.he3_pressure_controller import (HE3_PRESSURE_LOG_DIR,
                                                          HE3_PRESSURE_STATE_PATH,
-                                                         PRESS_UNIT)
+                                                         HE3_PRESSURE_CONFIG_PATH,
+                                                         PRESS_UNIT, clamp_period,
+                                                         MIN_SAMPLE_PERIOD_S,
+                                                         MAX_SAMPLE_PERIOD_S)
 
 # BASE_DIR = "/home/dylan/PycharmProjects/nTof_x17_DAQ"
 BASE_DIR = "/home/mx17/PycharmProjects/nTof_x17_DAQ"
@@ -1341,6 +1344,61 @@ def he3_pressure_history():
         })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/he3_pressure/config", methods=["GET", "POST"])
+def he3_pressure_config():
+    """Get/set the pressure sample rate. The value is written to a config file the
+    he3_pressure_watcher reads each loop, so a change takes effect within one cycle (and
+    persists across watcher restarts). Rate is bounded to a range that's safe for the
+    Keithley GPIB link and this multi-process box (see the controller's limit comment)."""
+    min_hz = round(1.0 / MAX_SAMPLE_PERIOD_S, 4)
+    max_hz = round(1.0 / MIN_SAMPLE_PERIOD_S, 4)
+
+    if request.method == "GET":
+        try:
+            with open(HE3_PRESSURE_CONFIG_PATH) as f:
+                poll_s = json.load(f).get("poll_s")
+        except Exception:
+            poll_s = None
+        return jsonify({"success": True, "poll_s": poll_s,
+                        "sample_hz": (round(1.0 / poll_s, 4) if poll_s else None),
+                        "min_hz": min_hz, "max_hz": max_hz})
+
+    data = request.get_json(silent=True) or {}
+    # Accept sample_hz (what the GUI sends) or a raw poll_s period.
+    if data.get("sample_hz") is not None:
+        try:
+            hz = float(data["sample_hz"])
+            if hz <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "sample_hz must be a positive number"}), 400
+        period = 1.0 / hz
+    elif data.get("poll_s") is not None:
+        try:
+            period = float(data["poll_s"])
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "poll_s must be a number"}), 400
+    else:
+        return jsonify({"success": False, "message": "sample_hz required"}), 400
+
+    clamped = clamp_period(period)
+    try:
+        os.makedirs(os.path.dirname(HE3_PRESSURE_CONFIG_PATH), exist_ok=True)
+        with open(HE3_PRESSURE_CONFIG_PATH, "w") as f:
+            json.dump({"poll_s": clamped}, f)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"could not write config: {e}"}), 500
+
+    warning = None
+    if abs(clamped - period) > 1e-6:
+        warning = f"clamped to {round(1.0 / clamped, 3)} Hz (allowed {min_hz}–{max_hz} Hz)"
+    log_event('HE3_PRESS_RATE', 'flask_button', remote_addr=request.remote_addr,
+              poll_s=round(clamped, 3))
+    return jsonify({"success": True, "poll_s": round(clamped, 3),
+                    "sample_hz": round(1.0 / clamped, 4),
+                    "min_hz": min_hz, "max_hz": max_hz, "warning": warning})
 
 
 def is_dream_daq_running():

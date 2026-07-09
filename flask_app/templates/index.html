@@ -304,7 +304,7 @@
           </div>
 
           <div class="d-flex flex-wrap gap-2 mt-3">
-            <button id="gas-apply" class="btn btn-success">Apply Mixture</button>
+            <button id="gas-apply" class="btn" style="background:#4dabe8;border-color:#4dabe8;color:#1b222b;">Apply Mixture</button>
             <button id="gas-max-argon" class="btn btn-outline-info">Max Argon</button>
             <button id="gas-fill" class="btn btn-outline-secondary btn-sm">Use current setpoint</button>
             <button id="gas-zero" class="btn btn-danger ms-auto">Emergency Zero</button>
@@ -389,6 +389,15 @@
               <div class="stat-label">3He Pressure</div>
               <div class="stat-value" id="he3-pressure-now" style="font-size:1.6rem;">—</div>
             </div>
+          </div>
+          <div class="mt-3">
+            <label for="he3-pressure-hz" class="form-label mb-1">Sample rate (Hz)</label>
+            <div class="d-flex gap-2 align-items-center">
+              <input id="he3-pressure-hz" type="number" step="0.1" min="0.02" max="2"
+                     class="form-control form-control-sm" style="max-width:7rem;" placeholder="—">
+              <button id="he3-pressure-hz-apply" class="btn btn-primary btn-sm">Set</button>
+            </div>
+            <div class="text-muted small mt-1" id="he3-pressure-hz-hint">—</div>
           </div>
           <p class="text-muted small mb-0 mt-3">
             Read from a Keithley 2000 over GPIB and converted from the gauge's DC
@@ -1753,6 +1762,12 @@ setInterval(updateSysStats, 2000);
 // ---------------------------------------------------------------------------
 let gasFullScale = { argon_lnh: null, iso_lnh: null };  // from /gas/status
 let gasArgonLimit = null;   // {lnh, note, effective_max_lnh} temporary low-pressure cap, or null
+let gasCurrent = { argon_lnh: null, iso_pct: null };  // live controller setpoints (from /gas/status)
+let gasFieldsInit = false;  // have the inputs been auto-filled from the live setpoint yet?
+
+// Tolerances for "did the entered value actually change?" — below one input step
+// (argon 0.01 ln/h, iso 0.1 %) but above display-rounding noise on the readback.
+const GAS_ARG_TOL = 0.002, GAS_PCT_TOL = 0.01;
 
 function gasNum(x, d = 3) { return (x == null || isNaN(x)) ? "—" : Number(x).toFixed(d); }
 
@@ -1767,8 +1782,43 @@ function gasUpdateDerived() {
   if (gasFullScale.iso_lnh && isoLnh > gasFullScale.iso_lnh) txt += " ⚠ over max";
   el.textContent = txt;
 }
-document.getElementById("gas-argon-lnh").addEventListener("input", gasUpdateDerived);
-document.getElementById("gas-iso-pct").addEventListener("input", gasUpdateDerived);
+
+// Colour "Apply Mixture" orange when the entered values differ from the live
+// setpoint (pressing it will change the mixture) and light blue when they match
+// (pressing it is a no-op). Keeps it obvious that Apply changes hardware.
+function gasUpdateApplyState() {
+  const btn = document.getElementById("gas-apply");
+  const argon = parseFloat(document.getElementById("gas-argon-lnh").value);
+  const pct = parseFloat(document.getElementById("gas-iso-pct").value);
+  const valid = !isNaN(argon) && !isNaN(pct) && argon >= 0 && pct >= 0 && pct < 100;
+  const known = gasCurrent.argon_lnh != null && gasCurrent.iso_pct != null;
+  const changed = valid && known &&
+    (Math.abs(argon - gasCurrent.argon_lnh) > GAS_ARG_TOL ||
+     Math.abs(pct - gasCurrent.iso_pct) > GAS_PCT_TOL);
+  if (changed) {
+    btn.style.background = "#fd7e14"; btn.style.borderColor = "#fd7e14";
+    btn.textContent = "Apply Mixture — change pending";
+  } else {
+    btn.style.background = "#4dabe8"; btn.style.borderColor = "#4dabe8";
+    btn.textContent = "Apply Mixture";
+  }
+  btn.style.color = "#1b222b";
+}
+
+// Load the input fields from the last-seen live setpoint. Returns false if the
+// setpoint isn't known yet.
+function gasFillFromCurrent() {
+  if (gasCurrent.argon_lnh == null || gasCurrent.iso_pct == null) return false;
+  document.getElementById("gas-argon-lnh").value = gasCurrent.argon_lnh.toFixed(3);
+  document.getElementById("gas-iso-pct").value = gasCurrent.iso_pct.toFixed(2);
+  gasUpdateDerived();
+  gasUpdateApplyState();
+  return true;
+}
+
+function gasOnInput() { gasUpdateDerived(); gasUpdateApplyState(); }
+document.getElementById("gas-argon-lnh").addEventListener("input", gasOnInput);
+document.getElementById("gas-iso-pct").addEventListener("input", gasOnInput);
 
 // Calibration reference inlet/outlet pressure (static, NOT a live measurement).
 function gasCalP(d) {
@@ -1801,12 +1851,50 @@ function gasCard(title, d, accent) {
     </div>`;
 }
 
+// Round a raw step up to a "nice" 1/2/5·10ⁿ value (for stable axis bounds).
+function gasNiceStep(raw) {
+  if (!(raw > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+
+// Compute a stable, "nice"-rounded [lo, hi] for a set of y-values so the axis
+// doesn't jitter as points enter/leave the sliding 6 h window. Bounds are rounded
+// outward to a 1/2/5·10ⁿ grid, so small data changes keep identical bounds; only a
+// genuinely larger/smaller extreme moves the axis. Returns null if there's no data.
+function gasNiceRange(values, opts) {
+  opts = opts || {};
+  const includeZero = !!opts.includeZero;
+  const padFrac = opts.padFrac == null ? 0.05 : opts.padFrac;
+  let lo = Infinity, hi = -Infinity, n = 0;
+  for (const x of values || []) {
+    if (x != null && isFinite(x)) { if (x < lo) lo = x; if (x > hi) hi = x; n++; }
+  }
+  if (!n) return null;
+  if (includeZero) lo = Math.min(lo, 0);
+  if (lo === hi) { const e = Math.abs(hi) || 1; hi += e * 0.1; lo -= e * 0.1; }
+  const span = (hi - lo) || 1;
+  hi += span * padFrac;
+  if (!includeZero) lo -= span * padFrac;
+  const step = gasNiceStep((hi - lo) / 8);
+  lo = (includeZero && lo >= 0) ? 0 : Math.floor(lo / step) * step;
+  hi = Math.ceil(hi / step) * step;
+  return [lo, hi];
+}
+
 async function gasRenderPlot() {
   if (typeof Plotly === "undefined") return;
   let h;
   try { h = await (await fetch("/gas/history?hours=6")).json(); } catch (e) { return; }
   if (!h || !h.success) return;
   const axis = { gridcolor: '#242e39', zerolinecolor: '#38434f', linecolor: '#38434f' };
+  // Fixed, zero-anchored y-ranges keep the plots from jumping as the window slides.
+  const rTotal = gasNiceRange(h.total_flow, { includeZero: true });
+  const rIsoP  = gasNiceRange(h.iso_pct,    { includeZero: true });
+  const rArgon = gasNiceRange(h.argon_flow, { includeZero: true });
+  const rIsoF  = gasNiceRange(h.iso_flow,   { includeZero: true });
+  const withRange = (ax, r) => r ? { ...ax, range: r, autorange: false } : { ...ax, autorange: true };
   const base = () => ({
     hovermode: "x unified", uirevision: "gas",
     paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
@@ -1825,10 +1913,10 @@ async function gasRenderPlot() {
     ],
     layout: {
       ...base(), margin: { t: 20, r: 56, b: 30, l: 56 }, xaxis: { ...axis },
-      yaxis:  { title: { text: "Total flow (ln/h)", font: { ...tFont, color: "#4dabe8" } }, ...axis },
-      yaxis2: { title: { text: "Isobutane (% of total)", font: { ...tFont, color: "#199e70" } },
+      yaxis:  withRange({ title: { text: "Total flow (ln/h)", font: { ...tFont, color: "#4dabe8" } }, ...axis }, rTotal),
+      yaxis2: withRange({ title: { text: "Isobutane (% of total)", font: { ...tFont, color: "#199e70" } },
                 overlaying: "y", side: "right", showgrid: false,
-                zerolinecolor: "#38434f", linecolor: "#38434f" },
+                zerolinecolor: "#38434f", linecolor: "#38434f" }, rIsoP),
     },
   });
 
@@ -1840,10 +1928,10 @@ async function gasRenderPlot() {
     ],
     layout: {
       ...base(), margin: { t: 20, r: 58, b: 30, l: 58 }, xaxis: { ...axis },
-      yaxis:  { title: { text: "Argon (ln/h)", font: { ...tFont, color: "#3987e5" } }, ...axis },
-      yaxis2: { title: { text: "Isobutane (ln/h)", font: { ...tFont, color: "#c98500" } },
+      yaxis:  withRange({ title: { text: "Argon (ln/h)", font: { ...tFont, color: "#3987e5" } }, ...axis }, rArgon),
+      yaxis2: withRange({ title: { text: "Isobutane (ln/h)", font: { ...tFont, color: "#c98500" } },
                 overlaying: "y", side: "right", showgrid: false,
-                zerolinecolor: "#38434f", linecolor: "#38434f" },
+                zerolinecolor: "#38434f", linecolor: "#38434f" }, rIsoF),
     },
   });
 
@@ -1881,6 +1969,17 @@ async function gasUpdateStatus() {
   gasFullScale.argon_lnh = d.argon.full_scale_lnh;
   gasFullScale.iso_lnh = d.iso.full_scale_lnh;
   gasArgonLimit = d.argon_limit || null;
+
+  // Track the live setpoint so we can auto-fill the inputs, colour the Apply
+  // button, and show from→to in the confirm dialog / restore on cancel.
+  gasCurrent.argon_lnh = d.argon.set_lnh;
+  gasCurrent.iso_pct = d.derived.iso_pct_set;
+  if (!gasFieldsInit) {
+    // Auto-fill once, but never clobber values the user has already typed.
+    const a = document.getElementById("gas-argon-lnh"), p = document.getElementById("gas-iso-pct");
+    if ((a.value === "" && p.value === "") ? gasFillFromCurrent() : true) gasFieldsInit = true;
+  }
+  gasUpdateApplyState();
   const argEl = document.getElementById("gas-argon-max");
   if (gasArgonLimit && gasArgonLimit.effective_max_lnh < d.argon.full_scale_lnh) {
     argEl.innerHTML = `max ${gasNum(gasArgonLimit.effective_max_lnh)} ln/h ` +
@@ -1906,26 +2005,45 @@ async function gasUpdateStatus() {
 document.getElementById("gas-fill").addEventListener("click", async () => {
   const d = await (await fetch("/gas/status")).json();
   if (!d.connected) { showPopup("Mixer not connected", "#dc3545"); return; }
-  document.getElementById("gas-argon-lnh").value = d.argon.set_lnh.toFixed(3);
-  document.getElementById("gas-iso-pct").value = d.derived.iso_pct_set.toFixed(2);
-  gasUpdateDerived();
+  gasCurrent.argon_lnh = d.argon.set_lnh;
+  gasCurrent.iso_pct = d.derived.iso_pct_set;
+  gasFillFromCurrent();
 });
 
 async function gasApplyMix(argonLnh, isoPct) {
   if (isNaN(argonLnh) || isNaN(isoPct)) { showPopup("Enter argon flow and isobutane %", "#dc3545"); return; }
-  if (!confirm(`Apply mixture?\n\nArgon: ${argonLnh.toFixed(3)} ln/h\nIsobutane: ${isoPct}% of total`)) return;
+  // Show the change as current → new so it's clear what Apply will do.
+  const line = (label, from, to, unit, dec, tol) => {
+    const toS = `${to.toFixed(dec)} ${unit}`;
+    if (from == null) return `${label}: ${toS}`;
+    if (Math.abs(from - to) <= tol) return `${label}: ${toS} (unchanged)`;
+    return `${label}: ${from.toFixed(dec)} → ${to.toFixed(dec)} ${unit}`;
+  };
+  const msg = "Apply mixture?\n\n" +
+    line("Argon", gasCurrent.argon_lnh, argonLnh, "ln/h", 3, GAS_ARG_TOL) + "\n" +
+    line("Isobutane", gasCurrent.iso_pct, isoPct, "% of total", 2, GAS_PCT_TOL);
+  if (!confirm(msg)) {
+    // Canceled: put the inputs back to the live setpoint (undo the pending edit).
+    gasFillFromCurrent();
+    return;
+  }
   const res = await fetch("/gas/apply", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ argon_lnh: argonLnh, iso_percent: isoPct }),
   });
   const r = await res.json();
   if (r.success) {
+    // Optimistically adopt the applied values as the new "current" so Apply flips
+    // back to light blue immediately; the forced poll below confirms from readback.
+    gasCurrent.argon_lnh = argonLnh;
+    gasCurrent.iso_pct = isoPct;
+    gasUpdateApplyState();
     const w = (r.warnings && r.warnings.length) ? " (" + r.warnings.join("; ") + ")" : "";
     showPopup("Mixture applied" + w, w ? "#fd7e14" : "#28a745");
   } else {
     showPopup("Apply failed: " + (r.message || "?"), "#dc3545");
   }
-  gasUpdateStatus();
+  gasUpdateStatus();   // force an immediate poll rather than waiting for the 2 s timer
 }
 
 document.getElementById("gas-apply").addEventListener("click", () => {
@@ -1977,6 +2095,20 @@ gasRenderPlot();   // initial draw (Overview is the default-active tab at load)
 // ---------------------------------------------------------------------------
 function presNum(x, d = 3) { return (x == null || isNaN(x)) ? "—" : Number(x).toFixed(d); }
 
+// Sample-rate input colouring: blue (--info) = the value currently applied on the
+// watcher; orange (--warn) = an edited-but-not-yet-Set value. he3AppliedHz tracks the
+// live applied rate so we can tell "dirty" from "clean".
+let he3AppliedHz = null;
+
+function he3RateDirty() {
+  const v = parseFloat(document.getElementById("he3-pressure-hz").value);
+  return !isNaN(v) && he3AppliedHz != null && Math.abs(v - he3AppliedHz) > 1e-9;
+}
+function he3RateRecolor() {
+  document.getElementById("he3-pressure-hz").style.color =
+    he3RateDirty() ? "var(--warn)" : "var(--info)";
+}
+
 async function he3PressureUpdateStatus() {
   let d;
   try { d = await (await fetch("/he3_pressure/status")).json(); } catch (e) { return; }
@@ -1984,6 +2116,24 @@ async function he3PressureUpdateStatus() {
   const conn = document.getElementById("he3-pressure-conn");
   const unit = d.unit || "bar";
   document.getElementById("he3-pressure-csv-path").textContent = d.csv_path || "—";
+
+  // Sample-rate control — populate whenever the watcher publishes a rate (even if the
+  // gauge itself is disconnected). Prefill the input with the applied rate in blue, but
+  // never clobber a value the user is editing (focused or dirty) — that stays orange.
+  if (d.sample_hz != null) {
+    he3AppliedHz = d.sample_hz;
+    const lim = d.sample_limits;
+    const hzInput = document.getElementById("he3-pressure-hz");
+    if (lim) { hzInput.min = lim.min_hz; hzInput.max = lim.max_hz; }
+    if (document.activeElement !== hzInput && !he3RateDirty()) {
+      hzInput.value = d.sample_hz;
+    }
+    he3RateRecolor();
+    const per = d.poll_s ? ` (every ${presNum(d.poll_s, 2)} s)` : "";
+    const range = lim ? ` · allowed ${lim.min_hz}–${lim.max_hz} Hz` : "";
+    document.getElementById("he3-pressure-hz-hint").textContent =
+      `applied ${d.sample_hz} Hz${per}${range}`;
+  }
 
   if (!d.connected) {
     conn.textContent = "disconnected" + (d.last_error ? ` — ${d.last_error}` : "");
@@ -2004,6 +2154,32 @@ async function he3PressureUpdateStatus() {
   document.getElementById("run-he3-pressure").textContent = `${presNum(d.pressure, 2)} ${unit}`;
   // The plot is CSV-driven (see he3PressureRenderPlot); it refreshes on tab-show + a timer.
 }
+
+async function he3PressureSetRate() {
+  const v = parseFloat(document.getElementById("he3-pressure-hz").value);
+  if (isNaN(v) || v <= 0) { showPopup("Enter a sample rate in Hz", "#dc3545"); return; }
+  const r = await (await fetch("/he3_pressure/config", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sample_hz: v }),
+  })).json();
+  if (r.success) {
+    showPopup(`Sample rate → ${r.sample_hz} Hz` + (r.warning ? ` (${r.warning})` : ""),
+              r.warning ? "#fd7e14" : "#28a745");
+    // Reflect the applied (possibly clamped) value immediately and turn the text blue.
+    he3AppliedHz = r.sample_hz;
+    document.getElementById("he3-pressure-hz").value = r.sample_hz;
+    he3RateRecolor();
+    he3PressureUpdateStatus();
+  } else {
+    showPopup("Set rate failed: " + (r.message || "?"), "#dc3545");
+  }
+}
+document.getElementById("he3-pressure-hz-apply").addEventListener("click", he3PressureSetRate);
+document.getElementById("he3-pressure-hz").addEventListener("keydown", e => {
+  if (e.key === "Enter") he3PressureSetRate();
+});
+// Live colour feedback while editing: orange once the value differs from what's applied.
+document.getElementById("he3-pressure-hz").addEventListener("input", he3RateRecolor);
 
 async function he3PressureRenderPlot() {
   if (typeof Plotly === "undefined") return;
