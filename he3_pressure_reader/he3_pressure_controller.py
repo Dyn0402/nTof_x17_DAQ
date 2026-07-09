@@ -50,11 +50,25 @@ _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_DIR = os.path.dirname(_MODULE_DIR)
 HE3_PRESSURE_LOG_DIR = os.path.join(_MODULE_DIR, "logs")
 HE3_PRESSURE_STATE_PATH = os.path.join(_REPO_DIR, "config", "he3_pressure_state.json")
+# The Flask app writes the desired sample period here; the watcher reads it each loop
+# and applies it within one cycle (read-only monitor, so a plain config file — no
+# per-command ack machinery like the gas watcher needs).
+HE3_PRESSURE_CONFIG_PATH = os.path.join(_REPO_DIR, "config", "he3_pressure_config.json")
 
 # --- voltage -> pressure conversion:  pressure = (V - offset) * slope, in bar ---
 PRESS_OFFSET_V = 1.0
 PRESS_SLOPE = 400.0
 PRESS_UNIT = "bar"
+
+# --- sample-rate limits ---
+# One GPIB :READ? round-trip on a Keithley 2000 (NPLC=1 integration ~17-20 ms plus
+# transport) is tens of ms, but this box also runs the DAQ, HV, gas, backup and
+# processor watchers, so we deliberately keep the fastest rate modest: pressure
+# monitoring gains nothing from sub-second sampling, and slow polling keeps GPIB +
+# CPU load negligible. 2 Hz (0.5 s) is the hard ceiling; 1 sample/min the floor.
+MIN_SAMPLE_PERIOD_S = 0.5    # -> 2.0 Hz max
+MAX_SAMPLE_PERIOD_S = 60.0   # -> ~0.0167 Hz min
+DEFAULT_SAMPLE_PERIOD_S = 2.0
 
 
 def volts_to_pressure(v):
@@ -62,20 +76,34 @@ def volts_to_pressure(v):
     return (v - PRESS_OFFSET_V) * PRESS_SLOPE
 
 
+def clamp_period(p):
+    """Clamp a requested sample period (seconds) into the safe [MIN, MAX] range.
+    Non-numeric input falls back to the default period."""
+    try:
+        p = float(p)
+    except (TypeError, ValueError):
+        return DEFAULT_SAMPLE_PERIOD_S
+    return max(MIN_SAMPLE_PERIOD_S, min(MAX_SAMPLE_PERIOD_S, p))
+
+
 class He3PressureController:
     """Owns the Keithley 2000 GPIB handle plus the polling/logging thread."""
 
-    def __init__(self, board=0, pad=15, func="VOLT:DC", poll_s=2.0, log_s=2.0,
-                 state_path=HE3_PRESSURE_STATE_PATH, log_dir=None):
+    def __init__(self, board=0, pad=15, func="VOLT:DC", poll_s=DEFAULT_SAMPLE_PERIOD_S,
+                 log_s=None, state_path=HE3_PRESSURE_STATE_PATH,
+                 config_path=HE3_PRESSURE_CONFIG_PATH, log_dir=None):
         self.board = board
         # NOTE: the Keithley's GPIB primary address is NOT guaranteed to be this — it
         # was 15 on the first bench machine. Rescan the bus (see the setup guide) and
         # update this default once the real address is known.
         self.pad = pad
         self.func = func
-        self.poll_s = poll_s
-        self.log_s = log_s
+        # Poll and log run at the same cadence (one logged row per sample); log_s tracks
+        # poll_s unless explicitly overridden.
+        self.poll_s = clamp_period(poll_s)
+        self.log_s = clamp_period(poll_s if log_s is None else log_s)
         self.state_path = state_path
+        self.config_path = config_path
         self.log_dir = log_dir or HE3_PRESSURE_LOG_DIR
 
         self._lock = threading.Lock()          # guards ALL GPIB access
@@ -157,6 +185,16 @@ class He3PressureController:
         state["last_error"] = self.last_error
         state["unit"] = PRESS_UNIT
         state["csv_path"] = self._csv_path()
+        # Current sample rate + the allowed range, so the GUI can render the input.
+        state["poll_s"] = self.poll_s
+        state["log_s"] = self.log_s
+        state["sample_hz"] = round(1.0 / self.poll_s, 4) if self.poll_s else None
+        state["sample_limits"] = {
+            "min_hz": round(1.0 / MAX_SAMPLE_PERIOD_S, 4),
+            "max_hz": round(1.0 / MIN_SAMPLE_PERIOD_S, 4),
+            "min_period_s": MIN_SAMPLE_PERIOD_S,
+            "max_period_s": MAX_SAMPLE_PERIOD_S,
+        }
         return state
 
     # ---------------- CSV logging ----------------
@@ -201,10 +239,30 @@ class He3PressureController:
         except Exception as e:
             print(f"[he3_pressure_controller] state write failed: {e}")
 
+    def _apply_config(self):
+        """Pick up a sample-period change the Flask app wrote to the config file and
+        apply it (clamped) to the poll/log cadence. Called once per loop iteration, so a
+        GUI change takes effect within one cycle. Missing/garbage file -> keep current."""
+        try:
+            with open(self.config_path) as f:
+                cfg = json.load(f)
+        except (FileNotFoundError, ValueError, OSError):
+            return
+        p = cfg.get("poll_s")
+        if p is None:
+            return
+        p = clamp_period(p)
+        if p != self.poll_s or p != self.log_s:
+            self.log(f"sample period -> {p:.3f}s ({1.0 / p:.3f} Hz)")
+            self.poll_s = p
+            self.log_s = p
+
     # ---------------- poll loop ----------------
 
     def _run(self):
+        self._apply_config()   # honor any saved rate before the first sample
         while not self._stop.is_set():
+            self._apply_config()
             if not self.connected:
                 with self._lock:
                     self._connect()

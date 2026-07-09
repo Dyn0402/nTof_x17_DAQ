@@ -10,6 +10,7 @@ config/current_run_state.json
 config/gas_state.json
 config/gas_command.json
 config/he3_pressure_state.json
+config/he3_pressure_config.json
 config/pedestal_qa_config.json
 config/pedestal_qa_state.json
 config/processor_config.json
