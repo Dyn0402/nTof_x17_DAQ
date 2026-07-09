@@ -217,7 +217,11 @@ def get_processor_watcher_status():
         if "[decode]" in line:
             return {"status": "Decoding",      "color": "success",  "fields": fields}
         if "[analyze]" in line:
-            return {"status": "Analyzing",     "color": "success",  "fields": fields}
+            # analyze work lines carry the detector on the FEU being analyzed:
+            #   [analyze] det=mx17_A feu=03  <file>   (det= absent if unmapped)
+            dm = re.search(r'\[analyze\] det=(\S+)', line)
+            det_field = [{"label": "Detector", "value": dm.group(1)}] if dm else []
+            return {"status": "Analyzing",     "color": "success",  "fields": fields + det_field}
         if "[combine]" in line:
             return {"status": "Combining",     "color": "success",  "fields": fields}
         if "[cleanup]" in line:

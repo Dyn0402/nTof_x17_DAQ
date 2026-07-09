@@ -147,6 +147,7 @@ def run_watcher(config: dict):
             is_stale = _run_is_stale(run_dir, raw_inner, stale_run_days)
 
             sample_period = _read_sample_period(run_dir)
+            feu_det_map   = _read_feu_detector_map(run_dir)
 
             for subrun_dir in _newest_first(d for d in run_dir.iterdir() if d.is_dir()):
                 raw_dir = subrun_dir / raw_inner
@@ -188,7 +189,8 @@ def run_watcher(config: dict):
                             decode_exe, analyze_exe, combine_exe,
                             do_decode, do_analyze, do_combine,
                             save_fdfs, save_decoded, n_threads,
-                            sample_period, common_noise_subtraction
+                            sample_period, common_noise_subtraction,
+                            feu_det_map
                         )
                         del prev_sizes[key]
                         return True
@@ -230,7 +232,8 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                        decode_exe, analyze_exe, combine_exe,
                        do_decode, do_analyze, do_combine,
                        save_fdfs, save_decoded, n_threads,
-                       sample_period=None, common_noise_subtraction=True):
+                       sample_period=None, common_noise_subtraction=True,
+                       feu_det_map=None):
 
     decoded_dir  = subrun_dir / decoded_inner
     hits_dir     = subrun_dir / hits_inner
@@ -265,7 +268,8 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                 if hits_path.exists():
                     continue
                 tasks.append(pool.submit(
-                    _analyze_file, str(root_path), ped_dir, str(hits_path), analyze_exe, sample_period, common_noise_subtraction
+                    _analyze_file, str(root_path), ped_dir, str(hits_path), analyze_exe,
+                    sample_period, common_noise_subtraction, feu_det_map
                 ))
             for t in as_completed(tasks):
                 t.result()
@@ -458,6 +462,44 @@ def _read_sample_period(run_dir: Path):
         return None
 
 
+def _read_feu_detector_map(run_dir: Path) -> dict:
+    """Return {feu_num: detector_label} from run_config.json, or {} if absent.
+
+    Each detector's ``dream_feus`` maps a connector name to a ``(feu, channel)``
+    pair, so a detector can span several FEUs (e.g. beam ``mx17_A`` uses FEU 3+4)
+    and, conversely, one FEU can serve several detectors (e.g. the cosmic-bench
+    ``m3`` quadrants all sit on FEU 1).  When a FEU serves more than one included
+    detector the labels are joined with ``/`` so the analyze line stays a single
+    whitespace-free token.  Restricted to ``included_detectors`` when present.
+    """
+    cfg_path = run_dir / 'run_config.json'
+    if not cfg_path.exists():
+        return {}
+    try:
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+    except Exception as e:
+        print(f"[watcher] Could not read detectors from {cfg_path}: {e}")
+        return {}
+
+    detectors = cfg.get('detectors', []) or []
+    included  = cfg.get('included_detectors')
+    if included:
+        detectors = [d for d in detectors if d.get('name') in set(included)]
+
+    feu_map: dict = {}
+    for det in detectors:
+        name = det.get('name')
+        if not name:
+            continue
+        for feu_ch in (det.get('dream_feus') or {}).values():
+            if isinstance(feu_ch, (list, tuple)) and feu_ch:
+                feu = int(feu_ch[0])
+                if name not in feu_map.setdefault(feu, []):
+                    feu_map[feu].append(name)
+    return {feu: '/'.join(names) for feu, names in feu_map.items()}
+
+
 # ---------------------------------------------------------------------------
 # Worker functions (invoke C++ executables)
 # ---------------------------------------------------------------------------
@@ -468,12 +510,13 @@ def _decode_file(fdf_path: str, root_path: str, decode_exe: str):
 
 
 def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe: str,
-                  sample_period=None, common_noise_subtraction: bool = True):
+                  sample_period=None, common_noise_subtraction: bool = True, feu_det_map=None):
     m = re.search(r'_(\d{3})_(\d{2})', os.path.basename(root_path))
     if not m:
         print(f"[analyze] Cannot extract FEU number from {root_path}, skipping")
         return
     feu_num = int(m.group(2))
+    detector = (feu_det_map or {}).get(feu_num)
 
     ped_path = ''
     if ped_dir and os.path.isdir(ped_dir):
@@ -492,7 +535,8 @@ def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe:
         else:
             print(f"[analyze] No pedestal for FEU {feu_num}, continuing without")
 
-    print(f"[analyze] {os.path.basename(root_path)}")
+    det_tag = f"det={detector} " if detector else ""
+    print(f"[analyze] {det_tag}feu={feu_num:02d}  {os.path.basename(root_path)}")
     cmd = [analyze_exe, root_path, hits_out_path, ped_path]
     if sample_period is not None:
         cmd += ['--tps', str(sample_period)]
