@@ -7,7 +7,12 @@ source .venv/bin/activate
 # hv_control is very chatty (HV monitor every monitor_interval seconds), so
 # keep it short. The others keep a longer buffer for debugging.
 bash_scripts/start_tmux.sh hv_control "python hv_control.py" 500
-bash_scripts/start_tmux.sh dream_daq "python dream_daq_control.py" 20000
+# Prepend bash_scripts/daq_shims to PATH so RunCtrl's post-pedestal
+# `xterm -e xmgrace ...` plot calls hit a no-op shim instead of failing on the
+# missing X DISPLAY (which otherwise hangs the DAQ at a "Press C to Continue"
+# prompt). Data is unaffected; only the interactive plot is skipped. See the
+# comment in bash_scripts/daq_shims/xterm.
+bash_scripts/start_tmux.sh dream_daq "PATH=/home/mx17/PycharmProjects/nTof_x17_DAQ/bash_scripts/daq_shims:\$PATH python dream_daq_control.py" 20000
 #bash_scripts/start_tmux.sh decoder "python processing_control.py" 20000
 #bash_scripts/start_tmux.sh processor "python processor_server.py" 20000
 bash_scripts/start_tmux.sh daq_control "echo 'Daq control session started'" 20000

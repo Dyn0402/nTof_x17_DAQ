@@ -59,13 +59,22 @@ class Config(RunConfigBase):
             'zero_suppress': False,   # pedestals are always full readout
             'n_samples_per_waveform': ped_n_samples,  # always 32 for pedestals
             'do_pedestal_threshold_run': True,  # Sys Action PedThrRun -> 1
-            'do_data_run': False,     # Sys Action DataRun -> 0: skip the data-taking
-                                      # phase after pedestals. It only produced empty
-                                      # _datrun_ FDFs (external trigger, no beam -> 0
-                                      # events) that get_pedestals then copied into
-                                      # every real subrun and could deadlock the
-                                      # processor. Only the _pedthr_/.prg outputs
-                                      # matter, and those come from PedThrRun.
+            'do_data_run': True,      # Sys Action DataRun -> 1. Batch-mode RunCtrl does
+                                      # NOT self-exit after a pedthr-only run: it parks at
+                                      # its AnswTb menu ("Not AllTests") and blocks the
+                                      # whole DAQ chain (subprocess.call never returns).
+                                      # Running the short data-taking phase lets RunCtrl
+                                      # reach its normal cleanup/exit path, exactly like a
+                                      # beam run. The phase is bounded by Sys DaqRun Time
+                                      # (= subrun run_time), so with no beam it just times
+                                      # out (~10 s) and writes empty _datrun_ FDFs. Those
+                                      # are junk for a pedestal run, so dream_daq_control
+                                      # discards them (does not copy them into raw_daq_data
+                                      # and deletes them from the run dir) whenever a run
+                                      # has both PedThrRun and DataRun on. Only the
+                                      # _pedthr_/.prg outputs remain, and those come from
+                                      # PedThrRun. NOTE: previously this was 0 to avoid the
+                                      # empty _datrun_ FDFs, but that caused the menu hang.
             'pedestals_dir': None,    # taking fresh pedestals -> don't apply existing ones
             'pedestals': None,
         })

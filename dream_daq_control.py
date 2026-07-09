@@ -129,12 +129,23 @@ def main():
                         #     copy_files_on_the_fly_thread = threading.Thread(target=copy_files_on_the_fly,
                         #                                                        args=copy_files_args)
                         #     copy_files_on_the_fly_thread.start()
+                        # A pedestal run enables BOTH PedThrRun and DataRun: the data
+                        # phase exists only so batch RunCtrl self-exits, and its _datrun_
+                        # FDFs are empty junk to be discarded (kept out of raw_daq_data
+                        # here, deleted from the run dir below). Beam runs (DataRun only)
+                        # are untouched.
+                        discard_data_run = bool(effective_do_pedestal_threshold_run) and bool(effective_do_data_run)
+
                         if effective_copy_on_fly:
                             daq_finished = threading.Event()
+                            copy_files_kwargs = {
+                                'skip_substrings': ['_datrun_'] if discard_data_run else None,
+                            }
                             copy_files_args = (sub_run_dir, sub_run_out_raw_inner_dir, daq_finished)
                             copy_files_on_the_fly_thread = threading.Thread(
                                 target=copy_files_on_the_fly,
                                 args=copy_files_args,
+                                kwargs=copy_files_kwargs,
                                 daemon=True,
                             )
                             copy_files_on_the_fly_thread.start()
@@ -230,6 +241,26 @@ def main():
                                 shutil.copy(os.path.join(sub_run_dir, log_file), sub_run_out_raw_inner_dir)
                                 print(f'Copied log file {log_file} to {sub_run_out_raw_inner_dir}')
 
+                        if discard_data_run:
+                            # RunCtrl has exited, so every _datrun_ file is final. Delete
+                            # them: they are the empty data-taking output written only so
+                            # batch RunCtrl self-exits after a pedestal run. Pedestal
+                            # outputs are named _pedthr_, so this never touches them. Clean
+                            # both the run dir and raw_daq_data (the copier is told to skip
+                            # _datrun_, but clear it defensively in case any slipped in).
+                            n_removed = 0
+                            for clean_dir in (sub_run_dir, sub_run_out_raw_inner_dir):
+                                if not clean_dir or not os.path.isdir(clean_dir):
+                                    continue
+                                for fname in os.listdir(clean_dir):
+                                    if '_datrun_' in fname:
+                                        try:
+                                            os.remove(os.path.join(clean_dir, fname))
+                                            n_removed += 1
+                                        except OSError as e:
+                                            print(f'Could not remove data-run file {fname}: {e}')
+                            print(f'Pedestal run: discarded {n_removed} _datrun_ file(s).')
+
                         os.chdir(original_working_directory)
 
                         # if run_successful:
@@ -310,11 +341,21 @@ def listen_for_stop(server, stop_event):
 #             file_num += 1
 #         sleep(check_interval)  # Check every 5 seconds
 
-def copy_files_on_the_fly(sub_run_dir, sub_out_dir, daq_finished_event, check_interval=5, extra_minutes_after_finish=3):
+def copy_files_on_the_fly(sub_run_dir, sub_out_dir, daq_finished_event, check_interval=5, extra_minutes_after_finish=3,
+                          skip_substrings=None):
     """
     Copies new .fdf files during the run, and continues for extra_minutes_after_finish
     after DAQ finishes, then exits cleanly without blocking the main thread.
+
+    :param skip_substrings: Optional iterable of substrings; any .fdf whose name contains
+        one is never copied. Used by pedestal runs to keep the empty _datrun_ FDFs (written
+        only so batch RunCtrl self-exits) out of raw_daq_data, where 0-byte FDFs can deadlock
+        the processor.
     """
+    skip_substrings = tuple(skip_substrings or ())
+
+    def _skip(name):
+        return any(s in name for s in skip_substrings)
 
     create_dir_if_not_exist(sub_out_dir)
     sleep(60)  # Give DAQ time to start writing before first scan
@@ -325,7 +366,7 @@ def copy_files_on_the_fly(sub_run_dir, sub_out_dir, daq_finished_event, check_in
     while not daq_finished_event.is_set():
         files_for_num = [
             f for f in os.listdir(sub_run_dir)
-            if f.endswith('.fdf') and get_file_num_from_fdf_file_name(f, -2) == file_num
+            if f.endswith('.fdf') and not _skip(f) and get_file_num_from_fdf_file_name(f, -2) == file_num
         ]
         if files_for_num and not file_num_still_running(sub_run_dir, file_num, silent=True):
             for file_name in files_for_num:
@@ -344,7 +385,7 @@ def copy_files_on_the_fly(sub_run_dir, sub_out_dir, daq_finished_event, check_in
 
     while time.time() < end_time:
         for file_name in os.listdir(sub_run_dir):
-            if file_name.endswith('.fdf') and file_name not in already_seen:
+            if file_name.endswith('.fdf') and not _skip(file_name) and file_name not in already_seen:
                 src = os.path.join(sub_run_dir, file_name)
                 dst = os.path.join(sub_out_dir, file_name)
                 try:

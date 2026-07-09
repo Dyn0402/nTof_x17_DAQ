@@ -1,0 +1,20 @@
+#!/bin/sh
+# No-op xterm shim for the headless dream_daq DAQ launch.
+#
+# After taking pedestals/thresholds, RunCtrl (setuid-root) calls
+#   system("xterm -e xmgrace ... Grace_RawCmnNoise.par <run>_dat.ace &")
+# to pop interactive noise plots. The dream_daq tmux session has no X DISPLAY,
+# so the real /usr/bin/xterm fails ("Can't open display"), system() returns
+# nonzero, and RunCtrl hangs forever at "FAILED to visualize data; Press C to
+# Continue; A to Abandon" (a busy-wait that ignores everything but A/C keys).
+# That freezes dream_daq_control -> daq_control and holds HV up.
+#
+# This shim shadows /usr/bin/xterm ONLY for the dream_daq launch (its dir is
+# prepended to PATH in start_servers.sh). It makes those plot calls succeed
+# silently. The pedestal/threshold DATA is written by FeuDataFileReader and is
+# completely unaffected -- only the interactive plot is skipped.
+#
+# To restore plotting: delete this file (or remove the PATH prepend in
+# start_servers.sh). Manual RunCtrl runs from a real desktop are unaffected.
+echo "[daq_shims/xterm] suppressed plot call: $*" >&2
+exit 0
