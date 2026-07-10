@@ -1,6 +1,7 @@
 # Credentials / local config with secrets
 config/monitor_config.json
 hv_creds.txt
+flask_app/access_config.py
 
 # Runtime/local state (not versioned)
 config/backup_config.json

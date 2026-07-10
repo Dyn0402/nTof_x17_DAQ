@@ -17,10 +17,12 @@ import select
 import threading
 import time
 import json
+import hmac
+import ipaddress
 from datetime import datetime, timedelta
 import pandas as pd
 from urllib.parse import quote
-from flask import Flask, render_template, jsonify, request, send_from_directory, abort
+from flask import Flask, render_template, jsonify, request, send_from_directory, abort, session
 from flask_socketio import SocketIO, emit
 
 from daq_status import (get_dream_daq_status, get_hv_control_status,
@@ -97,6 +99,129 @@ def log_event(event, source, **details):
 
 app = Flask(__name__)
 socketio = SocketIO(app)
+
+# ===========================================================================
+# View-only access control
+# ---------------------------------------------------------------------------
+# The GUI is served on 0.0.0.0:5001, so anyone on the network can load it. To
+# let people WATCH without being able to click control actions, every state-
+# changing request (all control routes are POSTs) is gated. A caller may
+# control if EITHER its IP is whitelisted (silent, no login) OR it has
+# unlocked this browser session with the control password. Everyone else gets
+# a live, read-only view (all GET routes stay open) and a 403 on any control
+# attempt.
+#
+# Real config lives in access_config.py (gitignored); see
+# access_config.example.py. If that file is missing we fail SAFE: control is
+# allowed only from localhost until you configure it.
+# ===========================================================================
+try:
+    from access_config import (WHITELIST_IPS, WHITELIST_CIDRS,
+                                CONTROL_PASSWORD, SECRET_KEY)
+except Exception as _access_err:
+    print(f"[access] access_config.py not loaded ({_access_err}); control "
+          f"restricted to localhost until configured. See access_config.example.py.")
+    WHITELIST_IPS = ["127.0.0.1", "::1"]
+    WHITELIST_CIDRS = []
+    CONTROL_PASSWORD = ""          # empty string → password unlock disabled
+    SECRET_KEY = "dev-only-change-me"
+
+app.secret_key = SECRET_KEY
+app.permanent_session_lifetime = timedelta(days=30)
+
+# Endpoints reachable even in view-only mode: the auth handshake and static
+# assets. Any other endpoint using a non-GET method is treated as control.
+# gas_zero is a safety action (emergency gas shutoff) — allowed even in view-only mode.
+_AUTH_EXEMPT_ENDPOINTS = {"control_login", "control_logout", "auth_status", "static", "gas_zero"}
+
+
+def _client_ip():
+    return request.remote_addr or ""
+
+
+def _ip_whitelisted(ip):
+    """True if ip is in WHITELIST_IPS or falls inside any WHITELIST_CIDRS range."""
+    if ip in WHITELIST_IPS:
+        return True
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for cidr in WHITELIST_CIDRS:
+        try:
+            if addr in ipaddress.ip_network(cidr, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def control_via():
+    """How the current request is allowed to control: 'ip', 'session', or None."""
+    if _ip_whitelisted(_client_ip()):
+        return "ip"
+    if session.get("control_authed"):
+        return "session"
+    return None
+
+
+def is_authorized():
+    return control_via() is not None
+
+
+@app.context_processor
+def _inject_auth():
+    """Expose auth state to every template (base.html topbar, index controls)."""
+    via = control_via()
+    return {"authorized": via is not None, "auth_via": via,
+            "password_enabled": bool(CONTROL_PASSWORD)}
+
+
+@app.before_request
+def _gate_control_actions():
+    # SocketIO transport (currently unused) must never be gated.
+    if request.path.startswith("/socket.io"):
+        return
+    if request.endpoint in _AUTH_EXEMPT_ENDPOINTS:
+        return
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    if is_authorized():
+        return
+    log_event("DENIED", "view_only", remote_addr=_client_ip(), path=request.path)
+    return jsonify({"success": False, "view_only": True,
+                    "message": "View-only mode — control is locked. Unlock "
+                               "with the control password to make changes."}), 403
+
+
+@app.route("/auth/login", methods=["POST"])
+def control_login():
+    if not CONTROL_PASSWORD:
+        return jsonify({"success": False,
+                        "message": "Password unlock is disabled on this server."}), 400
+    data = request.get_json(silent=True) or {}
+    if hmac.compare_digest(str(data.get("password", "")), str(CONTROL_PASSWORD)):
+        session.permanent = True
+        session["control_authed"] = True
+        log_event("AUTH_UNLOCK", "flask_login", remote_addr=_client_ip())
+        return jsonify({"success": True})
+    log_event("AUTH_FAIL", "flask_login", remote_addr=_client_ip())
+    return jsonify({"success": False, "message": "Incorrect password."}), 401
+
+
+@app.route("/auth/logout", methods=["POST"])
+def control_logout():
+    session.pop("control_authed", None)
+    log_event("AUTH_LOCK", "flask_login", remote_addr=_client_ip())
+    return jsonify({"success": True})
+
+
+@app.route("/auth/status")
+def auth_status():
+    via = control_via()
+    return jsonify({"authorized": via is not None, "via": via,
+                    "ip": _client_ip(), "password_enabled": bool(CONTROL_PASSWORD)})
+
 
 TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
                  "pedestal_watcher", "n1081b_watcher", "gas_watcher", "he3_pressure_watcher"]
@@ -427,15 +552,6 @@ def take_pedestals():
     try:
         subprocess.Popen([f"{BASH_DIR}/run_pedestals.sh"])
         return jsonify({"success": True, "message": "Taking pedestals"})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route("/git_reset", methods=["POST"])
-def git_reset():
-    try:
-        subprocess.Popen([f"{BASH_DIR}/git_reset.sh"])
-        return jsonify({"success": True, "message": "Git now up to date"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

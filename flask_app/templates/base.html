@@ -287,6 +287,28 @@
         .breadcrumb-item.active { color: var(--text); }
         .breadcrumb-item + .breadcrumb-item::before { color: #4a5462; }
         .table-dark { --bs-table-bg: var(--panel-2); border-color: var(--border); }
+
+        /* ---------- View-only / access control ---------- */
+        .auth-badge {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+            padding: 0.2rem 0.6rem; border-radius: 999px; font-weight: 600;
+            white-space: nowrap;
+        }
+        .auth-badge .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .auth-badge.control  { color: var(--ok);   border: 1px solid rgba(61, 220, 132, 0.4); }
+        .auth-badge.control .dot  { background: var(--ok);   box-shadow: 0 0 6px var(--ok); }
+        .auth-badge.viewonly { color: var(--warn); border: 1px solid rgba(240, 192, 64, 0.4); }
+        .auth-badge.viewonly .dot { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+        .view-locked { opacity: 0.45 !important; cursor: not-allowed !important; filter: grayscale(0.55); }
+        #auth-unlock-modal {
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);
+            display: none; align-items: center; justify-content: center; z-index: 2000;
+        }
+        #auth-unlock-modal .box {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 10px; padding: 1.2rem 1.3rem; width: min(370px, 92vw);
+        }
     </style>
 </head>
 <body>
@@ -316,6 +338,21 @@
                     <a class="nav-link" data-bs-toggle="tab" href="#he3-pressure">3He Pressure</a>
                 </li>
             </ul>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                {% if authorized %}
+                    <span class="auth-badge control" title="You can control this DAQ">
+                        <span class="dot"></span>Control{% if auth_via == 'ip' %} · IP{% endif %}</span>
+                    {% if auth_via == 'session' %}
+                        <button id="auth-lock-btn" class="btn btn-sm btn-outline-secondary">Lock</button>
+                    {% endif %}
+                {% else %}
+                    <span class="auth-badge viewonly" title="Read-only: control actions are disabled">
+                        <span class="dot"></span>View-only</span>
+                    {% if password_enabled %}
+                        <button id="auth-unlock-btn" class="btn btn-sm btn-outline-info">Unlock</button>
+                    {% endif %}
+                {% endif %}
+            </div>
         </div>
     </nav>
 
@@ -324,5 +361,121 @@
     </div>
 
     {% block scripts %}{% endblock %}
+
+    <div id="auth-unlock-modal">
+        <div class="box">
+            <div style="font-weight:600; margin-bottom:0.6rem;">Unlock control</div>
+            <p class="text-muted" style="font-size:0.82rem; margin-bottom:0.7rem;">
+                Enter the control password to enable start/stop and other actions from this browser.</p>
+            <input id="auth-pw" type="password" class="form-control" placeholder="Control password"
+                   autocomplete="current-password">
+            <div id="auth-err" style="color:var(--bad); font-size:0.8rem; min-height:1.1rem; margin-top:0.4rem;"></div>
+            <div class="d-flex gap-2 justify-content-end mt-2">
+                <button id="auth-cancel" class="btn btn-sm btn-secondary">Cancel</button>
+                <button id="auth-submit" class="btn btn-sm btn-info">Unlock</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ===== View-only access control (client side) ==========================
+    // The server enforces this authoritatively (403 on control routes). This
+    // block just keeps the UI honest: disable control buttons for viewers and
+    // block any stray non-GET fetch, plus wire the unlock/lock controls.
+    window.AUTHORIZED = {{ 'true' if authorized else 'false' }};
+    window.AUTH_VIA   = {{ ('"' + auth_via + '"') if auth_via else 'null' }};
+
+    // Buttons that trigger a control (POST) action. View-only buttons (reload,
+    // refresh, load images, run/subrun/detector selectors) are NOT listed so
+    // viewers keep full read access.
+    // NOTE: "gas-zero" (emergency gas shutoff) is deliberately NOT listed — it
+    // stays enabled for viewers as a safety action.
+    window.CONTROL_BUTTON_IDS = [
+        "run-toggle", "stop-sub-run", "pause-toggle", "restart-all", "take-pedestals",
+        "rerun-qa", "processor-toggle", "qa-toggle", "pedestal-toggle",
+        "backup-toggle", "n1081b-toggle", "gas-watcher-toggle", "he3-pressure-watcher-toggle",
+        "monitor-toggle", "monitor-test", "monitor-fetch-chat-id", "monitor-set-chat-id",
+        "gas-apply", "gas-max-argon", "he3-pressure-hz-apply",
+    ];
+
+    function _authToast(msg) {
+        let t = document.getElementById("_auth-toast");
+        if (!t) {
+            t = document.createElement("div");
+            t.id = "_auth-toast";
+            t.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);" +
+                "background:#1b222b;border:1px solid #f0c040;color:#f0c040;padding:0.5rem 0.9rem;" +
+                "border-radius:8px;z-index:3000;font-size:0.85rem;box-shadow:0 4px 18px rgba(0,0,0,0.5);";
+            document.body.appendChild(t);
+        }
+        t.textContent = msg;
+        t.style.display = "block";
+        clearTimeout(t._h);
+        t._h = setTimeout(() => { t.style.display = "none"; }, 3200);
+    }
+
+    if (!window.AUTHORIZED) {
+        // Belt-and-braces: stop any non-GET fetch from firing at all. The
+        // /auth/ and /socket.io paths stay open so unlock still works.
+        const _origFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+            const method = ((init && init.method) ||
+                            (typeof input === "object" && input && input.method) || "GET").toUpperCase();
+            const url = (typeof input === "string") ? input : (input && input.url) || "";
+            const exempt = url.startsWith("/auth/") || url.startsWith("/socket.io") ||
+                           url.startsWith("/gas/zero");  // emergency gas shutoff always allowed
+            if (method !== "GET" && method !== "HEAD" && !exempt) {
+                _authToast("View-only mode — unlock control to make changes.");
+                return Promise.reject(new Error("view-only"));
+            }
+            return _origFetch(input, init);
+        };
+        document.addEventListener("DOMContentLoaded", () => {
+            window.CONTROL_BUTTON_IDS.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.disabled = true;
+                el.classList.add("view-locked");
+                el.title = "View-only — unlock control to use this";
+            });
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const modal  = document.getElementById("auth-unlock-modal");
+        const openBtn = document.getElementById("auth-unlock-btn");
+        const lockBtn = document.getElementById("auth-lock-btn");
+        const pw  = document.getElementById("auth-pw");
+        const err = document.getElementById("auth-err");
+        const show = () => { if (modal) { modal.style.display = "flex"; err.textContent = ""; pw.value = ""; pw.focus(); } };
+        const hide = () => { if (modal) modal.style.display = "none"; };
+        if (openBtn) openBtn.addEventListener("click", show);
+        const cancel = document.getElementById("auth-cancel");
+        if (cancel) cancel.addEventListener("click", hide);
+        if (modal) modal.addEventListener("click", e => { if (e.target === modal) hide(); });
+
+        async function submit() {
+            err.textContent = "";
+            let r;
+            try {
+                r = await fetch("/auth/login", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ password: pw.value }),
+                });
+            } catch (e) { err.textContent = "Network error"; return; }
+            const d = await r.json().catch(() => ({}));
+            if (r.ok && d.success) { location.reload(); }
+            else { err.textContent = (d && d.message) || "Incorrect password"; }
+        }
+        const submitBtn = document.getElementById("auth-submit");
+        if (submitBtn) submitBtn.addEventListener("click", submit);
+        if (pw) pw.addEventListener("keydown", e => { if (e.key === "Enter") submit(); });
+
+        if (lockBtn) lockBtn.addEventListener("click", async () => {
+            try { await fetch("/auth/logout", { method: "POST" }); } catch (e) {}
+            location.reload();
+        });
+    });
+    </script>
 </body>
 </html>

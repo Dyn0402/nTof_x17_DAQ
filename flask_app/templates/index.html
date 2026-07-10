@@ -45,7 +45,6 @@
               <button id="pause-toggle" class="btn btn-outline-warning">Pause After Subrun</button>
               <button id="restart-all" class="btn btn-outline-danger">Restart All</button>
               <button id="take-pedestals" class="btn btn-secondary">Take Pedestals</button>
-              <button id="git-reset" class="btn btn-secondary">Git Reset</button>
             </div>
           </div>
 
@@ -725,13 +724,6 @@ document.getElementById("take-pedestals").addEventListener("click", async () => 
   showPopup(data.message, "#17a2b8");
 });
 
-
-// git reset button handler
-document.getElementById("git-reset").addEventListener("click", async () => {
-  const res = await fetch("/git_reset", { method: "POST" });
-  const data = await res.json();
-  showPopup(data.message, "#17a2b8");
-});
 
 document.getElementById("rerun-qa").addEventListener("click", async () => {
   const input = prompt(
