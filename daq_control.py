@@ -41,6 +41,22 @@ def _remove_flag(path):
         pass
 
 
+def _snapshot_n1081b(out_path, label):
+    """Fire a read-only background snapshot of the N1081B trigger modules for this
+    sub-run (see n1081b/poll_modules.py). Fully guarded: any import/runtime problem
+    is logged and swallowed so it can never disturb the run. The poll waits for the
+    scan watcher's .pause_run to clear before reading, so it never races an in-flight
+    config change."""
+    try:
+        _n1081b_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'n1081b')
+        if _n1081b_dir not in sys.path:
+            sys.path.insert(0, _n1081b_dir)
+        from poll_modules import poll_in_background
+        poll_in_background(out_path, label=label, wait_flag=PAUSE_FLAG)
+    except Exception as e:  # noqa: BLE001 - snapshotting must never break the run
+        print(f'[n1081b] snapshot skipped ({e!r})')
+
+
 def _sleep_unless_stop(seconds):
     """Sleep in 1 s steps, returning early if a stop-run is requested so Stop Run
     stays responsive through a configured post-sub-run pause."""
@@ -164,6 +180,12 @@ def main():
                         sleep(settle_time)
 
                     print(f'Prepping DAQs for {sub_run_name}')
+
+                    # Read-only background snapshot of the N1081B trigger modules for
+                    # this sub-run. Fired here (after HV ramp / any scan-watcher config
+                    # change has settled, before the blocking DAQ call) so it runs in
+                    # parallel with data-taking and captures the as-built trigger state.
+                    _snapshot_n1081b(f'{sub_top_out_dir}n1081b_config.json', sub_run_name)
 
                     print(f'Starting run for sub run {sub_run_name}')
                     run_daq_controller(sub_run, sub_out_dir, dream_daq)
