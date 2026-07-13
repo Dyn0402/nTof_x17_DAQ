@@ -69,6 +69,9 @@ class N1081BScanControl:
         self.active = False        # snapshot taken -> restore owed on exit
         self._last_tag = None
         self.tags = [sr['sub_run_name'].split('_')[0] for sr in (sub_runs or [])]
+        # Set before the mode='off' early return so summary()/repr never touch an
+        # unset attribute (the non-off path overrides this with the resolved default).
+        self.schedule_path = schedule_path
 
         # mode='off' is an unconditional no-op: never import board code or read the
         # schedule, so it ALWAYS constructs even if those are broken. This is the
@@ -136,8 +139,9 @@ class N1081BScanControl:
         seen = list(dict.fromkeys(self.tags))
         scans = set(self.sched.get('scans', {})) if self.sched else set()
         modu = [t for t in seen if t in scans]
+        sched_name = os.path.basename(self.schedule_path) if self.schedule_path else 'none'
         return (f'needed={self.needed} tags={seen} modulated={modu} '
-                f'schedule={os.path.basename(self.schedule_path)}')
+                f'schedule={sched_name}')
 
     # ------------------------------------------------------------------- actions
     def start(self):
