@@ -28,7 +28,7 @@ from flask_socketio import SocketIO, emit
 from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_daq_control_status, get_processor_watcher_status,
                         get_qa_watcher_status, get_backup_watcher_status,
-                        get_pedestal_watcher_status, get_n1081b_watcher_status,
+                        get_pedestal_watcher_status,
                         get_gas_watcher_status, get_he3_pressure_watcher_status,
                         get_beam_watcher_status)
 
@@ -236,11 +236,8 @@ def auth_status():
 
 
 TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
-                 "pedestal_watcher", "n1081b_watcher", "gas_watcher", "he3_pressure_watcher",
+                 "pedestal_watcher", "gas_watcher", "he3_pressure_watcher",
                  "beam_watcher"]
-# TEMPORARY: N1081B scan watcher (syncs .243 SecB module config to the HV scans).
-N1081B_WATCHER_TMUX = "n1081b_watcher"
-N1081B_WATCHER_SCRIPT = f"{BASE_DIR}/n1081b/n1081b_scan_watcher.py"
 sessions = {}
 
 @app.route("/")
@@ -394,8 +391,6 @@ def status_all():
             info = get_backup_watcher_status()
         elif s == "pedestal_watcher":
             info = get_pedestal_watcher_status()
-        elif s == "n1081b_watcher":
-            info = get_n1081b_watcher_status()
         elif s == "gas_watcher":
             info = get_gas_watcher_status()
         elif s == "he3_pressure_watcher":
@@ -612,40 +607,6 @@ def stop_processor():
     try:
         subprocess.run(["tmux", "kill-session", "-t", PROCESSOR_TMUX], capture_output=True)
         return jsonify({"success": True, "message": "Processor watcher stopped"})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route("/start_n1081b_watcher", methods=["POST"])
-def start_n1081b_watcher():
-    """TEMPORARY: launch the N1081B scan watcher in its own tmux session. Start this
-    BEFORE the DAQ run — it applies the first scan's module config (scan01 baseline,
-    outputs OFF) and then swaps config at each scan boundary."""
-    try:
-        subprocess.run(["tmux", "kill-session", "-t", N1081B_WATCHER_TMUX], capture_output=True)
-        # sys.executable = flask's venv python (has n1081b_sdk); a bare "python" in a
-        # fresh tmux login shell would drop the venv.
-        subprocess.Popen([
-            "tmux", "new-session", "-d", "-s", N1081B_WATCHER_TMUX,
-            sys.executable, N1081B_WATCHER_SCRIPT
-        ])
-        return jsonify({"success": True, "message": "N1081B watcher started (applies scan01 baseline)"})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route("/stop_n1081b_watcher", methods=["POST"])
-def stop_n1081b_watcher():
-    """TEMPORARY: stop the N1081B scan watcher. Killing the tmux session sends SIGTERM,
-    so the watcher restores the SecB baseline (delay 1000 / outputs on) on the way out."""
-    try:
-        # Send the run the SIGTERM path (restore baseline) rather than a hard kill:
-        # signal the pane's process, then drop the session.
-        subprocess.run(["tmux", "send-keys", "-t", f"{N1081B_WATCHER_TMUX}:0.0", "C-c"],
-                       capture_output=True)
-        time.sleep(1.5)
-        subprocess.run(["tmux", "kill-session", "-t", N1081B_WATCHER_TMUX], capture_output=True)
-        return jsonify({"success": True, "message": "N1081B watcher stopped (baseline restored)"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

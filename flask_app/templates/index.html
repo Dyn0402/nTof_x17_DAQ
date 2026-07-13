@@ -200,7 +200,6 @@
               <button id="qa-toggle" class="btn btn-info btn-sm">Start QA</button>
               <button id="pedestal-toggle" class="btn btn-info btn-sm">Start Pedestal QA</button>
               <button id="backup-toggle" class="btn btn-info btn-sm">Start Backup</button>
-              <button id="n1081b-toggle" class="btn btn-primary btn-sm">Start N1081B</button>
               <button id="gas-watcher-toggle" class="btn btn-info btn-sm">Start Gas Watcher</button>
               <button id="he3-pressure-watcher-toggle" class="btn btn-info btn-sm">Start 3He Pressure Watcher</button>
               <button id="beam-watcher-toggle" class="btn btn-info btn-sm">Start Beam Watcher</button>
@@ -1449,10 +1448,6 @@ const WATCHER_TOGGLES = [
       start: "/start_ped_qa", stop: "/stop_ped_qa", confirm: "Stop the pedestal QA watcher?" },
     { name: "backup_watcher", btn: "backup-toggle", label: "Backup",
       start: "/start_backup", stop: "/stop_backup", confirm: "Stop the backup watcher?" },
-    // TEMPORARY: N1081B scan watcher (syncs .243 SecB module config to the HV scans).
-    { name: "n1081b_watcher", btn: "n1081b-toggle", label: "N1081B",
-      start: "/start_n1081b_watcher", stop: "/stop_n1081b_watcher",
-      confirm: "Stop the N1081B watcher? (restores the SecB baseline)" },
     { name: "gas_watcher", btn: "gas-watcher-toggle", label: "Gas Watcher",
       start: "/start_gas_watcher", stop: "/stop_gas_watcher",
       confirm: "Stop the gas watcher? (logging + gas control pause; gas keeps flowing at its current setpoint)" },

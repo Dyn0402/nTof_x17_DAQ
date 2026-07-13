@@ -369,51 +369,6 @@ def get_pedestal_watcher_status():
     return _st("RUNNING", "info")
 
 
-def get_n1081b_watcher_status():
-    """TEMPORARY card for the N1081B scan watcher (n1081b/n1081b_scan_watcher.py).
-    Parses the watcher's own log lines from the n1081b_watcher tmux pane."""
-    try:
-        # stderr -> DEVNULL so tmux's "can't find session" note doesn't spam the
-        # flask console every poll while the watcher session isn't running.
-        output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pJS", "-50", "-t", "n1081b_watcher:0.0"],
-            text=True, stderr=subprocess.DEVNULL
-        )
-    except subprocess.CalledProcessError:
-        return {"status": "STOPPED", "color": "secondary", "fields": []}
-
-    lines = [l for l in output.splitlines() if l.strip()]
-
-    # Current scan / delay / outputs from the most recent "[scan] active=" line.
-    fields = []
-    for line in reversed(lines):
-        m = re.search(r'\[scan\] active=(\S+) delay=(\S+) out=(\S+)', line)
-        if m:
-            fields = [
-                {"label": "Scan",    "value": m.group(1)},
-                {"label": "Delay",   "value": m.group(2)},
-                {"label": "Outputs", "value": "on" if m.group(3) == "True" else "off"},
-            ]
-            break
-
-    # State from the most recent meaningful line.
-    for line in reversed(lines):
-        if "watcher done" in line:
-            return {"status": "Done", "color": "info", "fields": fields}
-        if "LEAVING DAQ PAUSED" in line:
-            return {"status": "HELD (verify failed)", "color": "danger", "fields": fields}
-        if "[scan] restoring baseline" in line:
-            return {"status": "Restoring", "color": "warning", "fields": fields}
-        if "[scan] switching" in line or "Holding DAQ" in line:
-            return {"status": "Switching cfg", "color": "warning", "fields": fields}
-        if "[scan] active=" in line or "released DAQ into" in line:
-            return {"status": "Watching", "color": "success", "fields": fields}
-        if "scans:" in line or "Board " in line:
-            return {"status": "Starting", "color": "info", "fields": fields}
-
-    return {"status": "RUNNING", "color": "info", "fields": fields}
-
-
 def get_decoder_status():
     try:
         output = subprocess.check_output(
