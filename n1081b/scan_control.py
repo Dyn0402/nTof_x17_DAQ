@@ -16,8 +16,9 @@ lever, no ``.subrun_complete`` boundary polling. This class just:
     sub-run's leading scan tag maps to a ``scans`` entry in the schedule; else
     honour an explicit ``on``/``off``),
   * snapshots the live board state once at run start (for restore-on-exit),
-  * applies the per-sub-run tag config, verified by read-back, and
-  * restores the board to its found state on exit.
+  * applies the per-sub-run tag config, verified by read-back, publishing it to
+    ``config/n1081b_scan_active.json`` for the DAQ-GUI Trigger tab diagram, and
+  * restores the board to its found state on exit (marking the state inactive).
 
 Tag mapping is identical to the watcher: ``tag = sub_run_name.split('_')[0]`` and
 ``cfg = n1081b_scan_schedule.json['scans'][tag]``. The board primitives
@@ -84,11 +85,13 @@ class N1081BScanControl:
         # SDK is imported lazily inside these, so importing here needs no board).
         from n1081b_scan_watcher import (DEFAULT_SCHEDULE, apply_scan,
                                          snapshot_targets, restore_snapshot,
-                                         _fmt_cfg)
+                                         _fmt_cfg, write_scan_active, clear_scan_active)
         self._apply_scan = apply_scan
         self._snapshot_targets = snapshot_targets
         self._restore_snapshot = restore_snapshot
         self._fmt_cfg = _fmt_cfg
+        self._write_scan_active = write_scan_active
+        self._clear_scan_active = clear_scan_active
 
         self.schedule_path = schedule_path or DEFAULT_SCHEDULE
         # A missing OR corrupt schedule means we have no scan definitions. Under
@@ -171,6 +174,9 @@ class N1081BScanControl:
         ok = self._apply_scan(self.sched, cfg, dry_run=self.dry_run)
         if ok:
             self._last_tag = tag
+            # Publish for the DAQ-GUI Trigger tab diagram (same state file the
+            # standalone watcher used to write — see trigger-diagram-inline-scan-active).
+            self._write_scan_active(tag, cfg, active=True, dry_run=self.dry_run)
         return ok
 
     def restore(self):
@@ -189,4 +195,5 @@ class N1081BScanControl:
                           'trigger may be left in the last scan config. Reset the '
                           'N1081B before the next run (e.g. '
                           'n1081b_scan_watcher.py --restore-baseline).')
+            self._clear_scan_active(dry_run=self.dry_run)
         self.active = False
