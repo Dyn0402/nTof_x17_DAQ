@@ -43,13 +43,17 @@ exposes. Deliberately *not* captured (not config, or unsafe to call passively):
   (`_snapshot_n1081b`) that swallows any import/runtime error; the thread itself
   catches everything and only logs. A busy or unreachable board records an error
   entry and the run continues untouched.
-- **Does not clash with `n1081b_scan_watcher`.** The watcher changes board config at
-  sub-run **boundaries** and gates daq_control with `.pause_run` (set before it
-  writes, cleared after). We poll at DAQ-start, which daq_control only reaches once
-  the pause has cleared, so the watcher's write is already done. As a
-  belt-and-suspenders guard the poll also **waits for `.pause_run` to clear**
-  (bounded, 180 s) before reading, so it never reads a board mid-apply. When the
-  watcher isn't running, config is static and we just record what's live.
+- **Records the as-built trigger.** Trigger/mesh modulation is now applied
+  in-process by `scan_control.py` (`N1081BScanControl`, called from daq_control)
+  BEFORE this snapshot fires — and before the DAQ starts — so the snapshot always
+  captures the config the sub-run actually ran with. This replaced the standalone
+  `n1081b_scan_watcher.py` process (which switched config at sub-run boundaries and
+  gated daq_control via `.pause_run`). The poll still **waits for `.pause_run` to
+  clear** (bounded, 180 s) as a belt-and-suspenders guard — now that flag is only
+  set by a manual pause or an apply-failure hold, never a routine scan swap. When a
+  run needs no modulation, config is static and we just record what's live. (If the
+  legacy watcher is ever run standalone, this still coexists — same `.pause_run`
+  handshake.)
 - **A ~2 s settle delay** before the read lets the config reach steady state.
 
 ## Scope

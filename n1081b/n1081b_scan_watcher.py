@@ -1,33 +1,46 @@
 #!/usr/bin/env python3
 """
-N1081B scan watcher — synchronises .243 Section B module config with the DREAM HV
-scans WITHOUT integrating into the DAQ.
+N1081B scan watcher — synchronises N1081B module config with the DREAM HV scans
+WITHOUT integrating into the DAQ.
+
+  ⚠ SUPERSEDED for data runs (2026-07-13): daq_control now applies the per-sub-run
+  trigger/mesh config IN-PROCESS via n1081b/scan_control.py (which reuses the board
+  primitives below), so the modulation is part of the run and can't be forgotten —
+  the failure that corrupted run_30/run_33. Do NOT run this process during a
+  daq_control run; both would drive the same board. Keep using it standalone for
+  manual board setup, `--restore-baseline`, and `--dry-run`.
 
 Model (decided with the user): one daq_control run contains several HV scans; each
-scan is a group of sub-runs whose name shares a leading scan tag (scan01, scan02, …,
-produced by run_config_beam.py). Each scan wants a different N1081B .243 Section B
-config (input delay on ch1&2, output enable on ch1&2) — mapped by scan tag in
-config/n1081b_scan_schedule.json.
+scan is a group of sub-runs whose name shares a leading scan tag (the first
+'_'-delimited token, produced by run_config_beam.py). Each scan wants a different
+N1081B config, mapped by scan tag in config/n1081b_scan_schedule.json.
+
+MULTI-SECTION (2026-07-10): the schedule may now drive SEVERAL board sections at
+once via a `targets` map (e.g. mesh trigger on SEC_B input + pulser on SEC_D
+outputs). Each scan tag carries a per-target override of only the fields it wants
+to change (`input_status`, `delay`, `output_status`); every other field (gate,
+monostable width, inversion, enables) is read live from the board and preserved.
+The legacy single-section schema (`section` + `channels` + flat scan dicts) is still
+accepted and mapped onto a single implicit target named "_default".
+
+Restore-on-exit: by default the watcher SNAPSHOTS the live config of every target
+channel at startup and re-applies that exact snapshot when it exits, so the board is
+returned to precisely the state it was found in. Set `"restore": "baseline"` in the
+schedule (plus a `baseline` block) to reset to a fixed known-good config instead.
 
 How it stays in sync, using only mechanisms the DAQ already has:
   * SIGNAL (boundary): daq_control writes `{run_out_dir}{sub_run}/.subrun_complete`
-    on each successful sub-run (daq_control.py:185). The last sub-run of a scan
-    completing = that scan is done. These markers are per-run-dir and only written
-    on success, so they are unambiguous and stale-proof.
+    on each successful sub-run. The last sub-run of a scan completing = that scan is
+    done. These markers are per-run-dir and only written on success, so they are
+    unambiguous and stale-proof.
   * LEVER (hold): the `.pause_run` flag at the repo root. daq_control checks it at
     the top of each sub-run loop (before ramping the next sub-run) and waits while
-    present. We set it the instant a scan's boundary sub-run completes (≥10 s + the
-    configured boundary pause of headroom before the check), swap the module config,
-    verify it latched, then clear it to release the DAQ into the next scan.
-  * END: tmux pane "donzo"/"Run complete" (or the final sub-run's marker) → restore
-    the baseline config and exit.
+    present. We set it the instant a scan's boundary sub-run completes, swap the
+    module config, verify it latched, then clear it to release the DAQ.
+  * END: the final sub-run's marker (or Stop Run) -> restore + exit.
 
 Because the watcher both SETS and CLEARS `.pause_run`, the DAQ physically cannot
-start the next scan until the config change is verified. A configured boundary pause
-(run_config_beam.BOUNDARY_PAUSE_MIN) is the safety floor if the watcher is down.
-
-Only `delay` (input) and output `status` are changed; gate, monostable width and
-inversion are read live from the board and preserved. Run on mx17-daq (board net).
+start the next scan until the config change is verified. Run on mx17-daq (board net).
 
 Usage:
     .venv/bin/python n1081b/n1081b_scan_watcher.py            # live
@@ -60,63 +73,126 @@ def _board_module():
     return N1081B
 
 
-def apply_module_config(sched, delay, output_status, input_status=True, dry_run=False):
-    """Apply `delay` + `input_status` to the input channels and `output_status` to the
-    output channels of the configured board/section, preserving every other field.
-    Verifies via read-back. Returns the verified read-back (or a synthetic dict in
-    dry-run). Raises on connect/login/verify failure so the caller can hold the DAQ
-    paused.
+def resolve_targets(sched):
+    """Ordered {name: {'board': ip, 'section': str, 'channels': [int,...]}} from the
+    schedule.
 
-    input_status is FORCED (not preserved) so it defaults back to True (input enabled,
-    triggers flowing) for every ordinary scan; only a scan that explicitly sets it False
-    (the no-trigger 'ctrl' baseline: output ON, input OFF) disables the input. Preserving
-    it would leave the input stuck OFF for all scans after the control."""
-    ip, sec_name, channels = sched['board'], sched['section'], sched['channels']
-    if dry_run:
-        log(f'  [dry-run] would set {sec_name} ch{channels}: input delay={delay}, '
-            f'input status={input_status}, output status={output_status}')
-        return {ch: {'delay': delay, 'in_status': input_status, 'status': output_status} for ch in channels}
+    Supports the multi-target schema (`targets`, each target optionally carrying its
+    own `board` ip — MULTI-BOARD, 2026-07-11) and the legacy single-section schema
+    (`section` + `channels`), which maps to one implicit target `_default`. Targets
+    without a `board` use the schedule's top-level `board`.
+    """
+    if 'targets' in sched:
+        return {name: {'board': t.get('board', sched['board']),
+                       'section': t['section'], 'channels': list(t['channels'])}
+                for name, t in sched['targets'].items()}
+    return {'_default': {'board': sched['board'], 'section': sched['section'],
+                         'channels': list(sched['channels'])}}
 
+
+def _open_board(sched, ip=None):
+    """Connect (+ login) to `ip` (default: the schedule's top-level board).
+    Old-firmware boards serve get/set WITHOUT a login and return False from login();
+    set `"require_login": false` in the schedule for those. Writes are still guarded
+    by read-back verify, so proceeding login-less is safe."""
     N1081B = _board_module()
-    section = getattr(N1081B.Section, sec_name)
+    ip = ip or sched['board']
     d = N1081B(ip)
     if not d.connect():
-        raise RuntimeError(f'connect to {ip} failed')
-    try:
-        d.ws.settimeout(8)
-        if not d.login(sched.get('password', 'password')):
-            raise RuntimeError(f'login to {ip} failed')
-        verified = {}
-        for ch in channels:
-            cin = d.get_input_channel_configuration(section, ch)['data']
-            d.set_input_channel_configuration(
-                section, ch, input_status, cin['enable_gd'], cin['gate'], delay, cin['invert'])
-            cout = d.get_output_channel_configuration(section, ch)['data']
-            d.set_output_channel_configuration(
-                section, ch, output_status, cout['enable_mono'], cout['mono_value'], cout['invert'])
-            # read-back verify
-            rin = d.get_input_channel_configuration(section, ch)['data']
-            rout = d.get_output_channel_configuration(section, ch)['data']
-            if rin['delay'] != delay or rin['status'] != input_status or rout['status'] != output_status:
-                raise RuntimeError(
-                    f'verify FAILED ch{ch}: wanted delay={delay}/in_status={input_status}/'
-                    f'out_status={output_status}, got delay={rin["delay"]}/in_status={rin["status"]}/'
-                    f'out_status={rout["status"]}')
-            verified[ch] = {'delay': rin['delay'], 'in_status': rin['status'], 'status': rout['status']}
-        return verified
-    finally:
-        try:
-            d.disconnect()
-        except Exception:
-            pass
+        raise RuntimeError(f"connect to {ip} failed")
+    d.ws.settimeout(8)
+    logged_in = d.login(sched.get('password', 'password'))
+    if not logged_in:
+        if sched.get('require_login', True):
+            raise RuntimeError(f"login to {ip} failed")
+        log(f"  login returned False on {ip} — proceeding "
+            f"(old-fw board; get/set work without login, writes are verified by read-back)")
+    return d, N1081B
 
 
-def apply_with_retry(sched, delay, output_status, input_status, dry_run, retries=3):
+def _apply_channel(d, section, ch, override):
+    """Apply `override` (any subset of input_status/delay/enable_gd/gate/output_status)
+    to one channel, reading + preserving every other field. Only the requested
+    direction(s) are touched: an input field present -> re-write the input channel;
+    output_status present -> re-write the output channel. Returns (ok, detail) where
+    ok is the read-back verify result.
+
+    NOTE: a `delay` only takes effect when the channel's Gate&Delay is enabled —
+    pass `enable_gd` (+ a sane `gate` ≥ the incoming pulse width) alongside it."""
+    in_keys = ('input_status', 'delay', 'enable_gd', 'gate')
+    touch_in = any(k in override for k in in_keys)
+    touch_out = ('output_status' in override)
+    ok, detail = True, {}
+    if touch_in:
+        cin = d.get_input_channel_configuration(section, ch)['data']
+        new_status = override.get('input_status', cin['status'])
+        new_gd = override.get('enable_gd', cin['enable_gd'])
+        new_gate = override.get('gate', cin['gate'])
+        new_delay = override.get('delay', cin['delay'])
+        d.set_input_channel_configuration(
+            section, ch, new_status, new_gd, new_gate, new_delay, cin['invert'])
+        rin = d.get_input_channel_configuration(section, ch)['data']
+        ok = ok and (rin['status'] == new_status and rin['delay'] == new_delay
+                     and rin['enable_gd'] == new_gd and rin['gate'] == new_gate)
+        detail['in_status'] = rin['status']
+        detail['delay'] = rin['delay']
+        if 'enable_gd' in override or 'gate' in override:
+            detail['gd'] = rin['enable_gd']
+            detail['gate'] = rin['gate']
+    if touch_out:
+        cout = d.get_output_channel_configuration(section, ch)['data']
+        new_status = override['output_status']
+        d.set_output_channel_configuration(
+            section, ch, new_status, cout['enable_mono'], cout['mono_value'], cout['invert'])
+        rout = d.get_output_channel_configuration(section, ch)['data']
+        ok = ok and rout['status'] == new_status
+        detail['out_status'] = rout['status']
+    return ok, detail
+
+
+def _strip_notes(scan_cfg):
+    """Drop '_'-prefixed annotation keys (e.g. _note) from a scan config."""
+    return {k: v for k, v in scan_cfg.items() if not k.startswith('_')}
+
+
+def apply_scan(sched, scan_cfg, dry_run=False, retries=3):
+    """Apply one scan's per-target overrides to all target channels, verifying by
+    read-back. `scan_cfg` = {target_name: {input_status?, delay?, enable_gd?, gate?,
+    output_status?}}; '_'-prefixed keys are annotations and ignored.
+    Opens one connection per board per attempt. Returns True only if every channel
+    verified. Raising is avoided; the caller decides what to do with False."""
+    scan_cfg = _strip_notes(scan_cfg)
+    targets = resolve_targets(sched)
+    if dry_run:
+        for tname, ov in scan_cfg.items():
+            t = targets[tname]
+            log(f"  [dry-run] {tname} {t['section']} ch{t['channels']}: {ov}")
+        return True
     last = None
+    boards = sorted({targets[tname]['board'] for tname in scan_cfg})
     for attempt in range(1, retries + 1):
         try:
-            v = apply_module_config(sched, delay, output_status, input_status, dry_run)
-            log(f'  applied & verified: {v}')
+            all_ok = True
+            for board in boards:
+                d, N1081B = _open_board(sched, board)
+                try:
+                    for tname, ov in scan_cfg.items():
+                        t = targets[tname]
+                        if t['board'] != board:
+                            continue
+                        section = getattr(N1081B.Section, t['section'])
+                        for ch in t['channels']:
+                            ok, detail = _apply_channel(d, section, ch, ov)
+                            log(f"  {tname} {board} {t['section']} ch{ch}: {detail}"
+                                f"{'' if ok else '  <-- VERIFY FAILED'}")
+                            all_ok = all_ok and ok
+                finally:
+                    try:
+                        d.disconnect()
+                    except Exception:
+                        pass
+            if not all_ok:
+                raise RuntimeError('read-back verify failed for one or more channels')
             return True
         except Exception as e:  # noqa: BLE001
             last = e
@@ -126,13 +202,108 @@ def apply_with_retry(sched, delay, output_status, input_status, dry_run, retries
     return False
 
 
+def snapshot_targets(sched):
+    """Read the FULL live input+output config of every target channel. Returns
+    {target: {ch: {'in': {...}, 'out': {...}}}} for exact restoration on exit."""
+    targets = resolve_targets(sched)
+    snap = {}
+    for board in sorted({t['board'] for t in targets.values()}):
+        d, N1081B = _open_board(sched, board)
+        try:
+            for tname, t in targets.items():
+                if t['board'] != board:
+                    continue
+                section = getattr(N1081B.Section, t['section'])
+                snap[tname] = {}
+                for ch in t['channels']:
+                    cin = d.get_input_channel_configuration(section, ch)['data']
+                    cout = d.get_output_channel_configuration(section, ch)['data']
+                    snap[tname][ch] = {'in': cin, 'out': cout}
+        finally:
+            try:
+                d.disconnect()
+            except Exception:
+                pass
+    return snap
+
+
+def restore_snapshot(sched, snap, dry_run=False, retries=3):
+    """Re-apply a full snapshot (every field, both directions) to every target channel
+    and verify. Used on exit to return the board to the exact found state."""
+    if dry_run:
+        log('  [dry-run] would restore captured snapshot')
+        return True
+    targets = resolve_targets(sched)
+    last = None
+    boards = sorted({targets[tname]['board'] for tname in snap})
+    for attempt in range(1, retries + 1):
+        try:
+            all_ok = True
+            for board in boards:
+                d, N1081B = _open_board(sched, board)
+                try:
+                    for tname, chans in snap.items():
+                        if targets[tname]['board'] != board:
+                            continue
+                        section = getattr(N1081B.Section, targets[tname]['section'])
+                        for ch, cfg in chans.items():
+                            ci, co = cfg['in'], cfg['out']
+                            d.set_input_channel_configuration(
+                                section, int(ch), ci['status'], ci['enable_gd'], ci['gate'],
+                                ci['delay'], ci['invert'])
+                            d.set_output_channel_configuration(
+                                section, int(ch), co['status'], co['enable_mono'],
+                                co['mono_value'], co['invert'])
+                            ri = d.get_input_channel_configuration(section, int(ch))['data']
+                            ro = d.get_output_channel_configuration(section, int(ch))['data']
+                            ok = (ri['status'] == ci['status'] and ri['delay'] == ci['delay']
+                                  and ri['enable_gd'] == ci['enable_gd']
+                                  and ri['gate'] == ci['gate']
+                                  and ro['status'] == co['status'])
+                            all_ok = all_ok and ok
+                finally:
+                    try:
+                        d.disconnect()
+                    except Exception:
+                        pass
+            if not all_ok:
+                raise RuntimeError('restore read-back verify failed')
+            log('  snapshot restored & verified')
+            return True
+        except Exception as e:  # noqa: BLE001
+            last = e
+            log(f'  !! restore attempt {attempt}/{retries} failed: {e!r}')
+            time.sleep(2)
+    log(f'  !! ALL restore attempts failed: {last!r}')
+    return False
+
+
+# ----------------------------------------------------------------------- summaries
+def _summ(scan_cfg):
+    """(delay, out, in) strings for the flask card's `[scan] active=` line, summarised
+    across targets: first target that sets each field wins; 'keep' if none does."""
+    delay = out = inp = 'keep'
+    for ov in _strip_notes(scan_cfg).values():
+        if 'delay' in ov and delay == 'keep':
+            delay = str(ov['delay'])
+        if 'output_status' in ov and out == 'keep':
+            out = str(ov['output_status'])
+        if 'input_status' in ov and inp == 'keep':
+            inp = str(ov['input_status'])
+    return delay, out, inp
+
+
+def _fmt_cfg(scan_cfg):
+    return '  '.join(f'{name}{{{", ".join(f"{k}={v}" for k, v in ov.items())}}}'
+                     for name, ov in _strip_notes(scan_cfg).items())
+
+
 # ----------------------------------------------------------------------- run plan
 def load_plan(schedule_path, runconfig_path):
     """Build the ordered scan plan from the active run config + schedule JSON.
 
-    Returns (sched, plan) where plan is a list of scan dicts in order:
-      {tag, cfg, boundary_marker, next_tag, is_last}
-    plus 'final_marker' (last sub-run of the whole run) attached to the plan list.
+    Returns (sched, plan, run_out_dir, final_marker) where plan is a list of scan dicts:
+      {tag, cfg, boundary_name, boundary_marker, next_tag, is_last}.
     """
     with open(schedule_path) as f:
         sched = json.load(f)
@@ -191,17 +362,19 @@ def clear_flag(dry_run):
 
 def announce_active(tag, cfg):
     """Machine-parseable line the flask card keys off for the current scan."""
-    log(f'[scan] active={tag} delay={cfg["delay"]} out={cfg["output_status"]} '
-        f'in={cfg.get("input_status", True)}')
+    delay, out, inp = _summ(cfg)
+    log(f'[scan] active={tag} delay={delay} out={out} in={inp}')
 
 
 def restore_baseline(sched, dry_run):
-    b = sched['baseline']
-    in_status = b.get('input_status', True)
+    """Reset to the schedule's fixed `baseline` config (per-target overrides)."""
+    b = sched.get('baseline')
+    if not b:
+        log('[scan] no baseline block in schedule; nothing to reset')
+        return False
     log('[scan] restoring baseline')
-    log(f'Restoring baseline: delay={b["delay"]}, output_status={b["output_status"]}, '
-        f'input_status={in_status}')
-    apply_with_retry(sched, b['delay'], b['output_status'], in_status, dry_run)
+    log(f'Restoring baseline: {_fmt_cfg(b)}')
+    return apply_scan(sched, b, dry_run)
 
 
 def main():
@@ -211,7 +384,7 @@ def main():
     ap.add_argument('--poll', type=float, default=POLL_S)
     ap.add_argument('--dry-run', action='store_true', help='log actions only; no board writes / no .pause_run')
     ap.add_argument('--restore-baseline', action='store_true', help='apply baseline config and exit')
-    ap.add_argument('--no-restore', action='store_true', help='do NOT restore baseline on exit')
+    ap.add_argument('--no-restore', action='store_true', help='do NOT restore on exit')
     args = ap.parse_args()
 
     sched, plan, run_out_dir, final_marker = load_plan(args.schedule, args.run_config)
@@ -220,15 +393,31 @@ def main():
         restore_baseline(sched, args.dry_run)
         return 0
 
+    targets = resolve_targets(sched)
+
     # ---- print the plan for eyeballing ----
-    log(f'Board {sched["board"]} {sched["section"]} ch{sched["channels"]}  '
-        f'run_out_dir={run_out_dir}')
+    tgt_desc = '  '.join(f'{n}:{t["board"].split(".")[-1]}.{t["section"]}ch{t["channels"]}'
+                         for n, t in targets.items())
+    log(f'Default board {sched["board"]}  targets: {tgt_desc}  run_out_dir={run_out_dir}')
     log(f'{len(plan)} scans:')
     for p in plan:
-        c = p['cfg']
-        log(f'   {p["tag"]}: delay={c["delay"]} out={c["output_status"]} in={c.get("input_status", True)}  '
-            f'-> boundary sub-run {p["boundary_name"]}'
+        log(f'   {p["tag"]}: {_fmt_cfg(p["cfg"])}  -> boundary sub-run {p["boundary_name"]}'
             + ('  (final)' if p['is_last'] else f'  -> {p["next_tag"]}'))
+
+    # ---- restore strategy: snapshot live state (default) or fixed baseline ----
+    restore_mode = sched.get('restore', 'snapshot')
+    snap = None
+    if not args.dry_run and restore_mode == 'snapshot':
+        try:
+            snap = snapshot_targets(sched)
+            log(f'Snapshotted live config of {sum(len(c) for c in snap.values())} target '
+                f'channel(s) for exact restore on exit.')
+        except Exception as e:  # noqa: BLE001
+            log(f'!! startup snapshot FAILED ({e!r}) — aborting so we never touch the board '
+                f'without a restore path.')
+            return 2
+    elif restore_mode == 'snapshot':
+        log('[dry-run] would snapshot live config for restore-on-exit')
 
     # ---- startup sync: how many scan boundaries are already complete? ----
     handled = 0
@@ -240,8 +429,7 @@ def main():
     cur = plan[min(handled, len(plan) - 1)]
     log(f'Startup: {handled} scan boundary(ies) already complete -> current scan {cur["tag"]}')
     log(f'Applying current scan config ({cur["tag"]}) now.')
-    apply_with_retry(sched, cur['cfg']['delay'], cur['cfg']['output_status'],
-                     cur['cfg'].get('input_status', True), args.dry_run)
+    apply_scan(sched, cur['cfg'], args.dry_run)
     announce_active(cur['tag'], cur['cfg'])
 
     run_seen_active = handled > 0 or os.path.isdir(os.path.join(run_out_dir, plan[0]['boundary_name']))
@@ -265,13 +453,10 @@ def main():
                 run_seen_active = True
                 nxt = plan[i + 1]
                 log(f'BOUNDARY: {p["tag"]} complete ({p["boundary_name"]}). '
-                    f'Holding DAQ and switching to {nxt["tag"]} '
-                    f'(delay={nxt["cfg"]["delay"]}, out={nxt["cfg"]["output_status"]}, '
-                    f'in={nxt["cfg"].get("input_status", True)}).')
+                    f'Holding DAQ and switching to {nxt["tag"]} ({_fmt_cfg(nxt["cfg"])}).')
                 log(f'[scan] switching {p["tag"]}->{nxt["tag"]}')
                 set_flag(args.dry_run)
-                ok = apply_with_retry(sched, nxt['cfg']['delay'], nxt['cfg']['output_status'],
-                                      nxt['cfg'].get('input_status', True), args.dry_run)
+                ok = apply_scan(sched, nxt['cfg'], args.dry_run)
                 if not ok:
                     log('  !! module config NOT applied — LEAVING DAQ PAUSED (.pause_run held). '
                         'Will retry next poll. Fix the board or resume manually.')
@@ -292,10 +477,13 @@ def main():
 
             time.sleep(args.poll)
     finally:
-        if not args.no_restore:
-            restore_baseline(sched, args.dry_run)
-        else:
+        if args.no_restore:
             log('--no-restore: leaving board as-is.')
+        elif snap is not None:
+            log('[scan] restoring snapshot (returning board to found state)')
+            restore_snapshot(sched, snap, args.dry_run)
+        else:
+            restore_baseline(sched, args.dry_run)
     log('watcher done.')
     return exit_code
 

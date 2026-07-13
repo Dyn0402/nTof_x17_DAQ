@@ -44,9 +44,9 @@ def _remove_flag(path):
 def _snapshot_n1081b(out_path, label):
     """Fire a read-only background snapshot of the N1081B trigger modules for this
     sub-run (see n1081b/poll_modules.py). Fully guarded: any import/runtime problem
-    is logged and swallowed so it can never disturb the run. The poll waits for the
-    scan watcher's .pause_run to clear before reading, so it never races an in-flight
-    config change."""
+    is logged and swallowed so it can never disturb the run. Fired AFTER the inline
+    N1081B config apply (see _apply_n1081b_with_retry) so it records the as-built
+    trigger state; the .pause_run wait remains as a guard against a manual pause."""
     try:
         _n1081b_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'n1081b')
         if _n1081b_dir not in sys.path:
@@ -55,6 +55,64 @@ def _snapshot_n1081b(out_path, label):
         poll_in_background(out_path, label=label, wait_flag=PAUSE_FLAG)
     except Exception as e:  # noqa: BLE001 - snapshotting must never break the run
         print(f'[n1081b] snapshot skipped ({e!r})')
+
+
+def _make_scan_control(config):
+    """Build the in-process N1081B scan controller (replaces the standalone
+    n1081b_scan_watcher.py process). Construction is board-free — it only reads the
+    schedule and the run's sub-run tags — so it is safe for every run type; a run
+    that needs no trigger modulation yields a controller whose .needed is False.
+    Returns None only if the controller module itself cannot be imported (a code
+    problem), which is surfaced loudly rather than silently proceeding."""
+    try:
+        _n1081b_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'n1081b')
+        if _n1081b_dir not in sys.path:
+            sys.path.insert(0, _n1081b_dir)
+        from scan_control import N1081BScanControl
+        mode = getattr(config, 'n1081b_scan', 'auto')  # 'auto' | 'on' | 'off'
+        ctl = N1081BScanControl(getattr(config, 'sub_runs', []), mode=mode)
+        print(f'[n1081b] scan control: {ctl.summary()}')
+        unknown = ctl.unknown_tags()
+        if unknown:
+            print(f'[n1081b] WARNING: sub-run tag(s) {unknown} have no schedule entry — '
+                  f'those sub-runs run with the trigger AS-IS.')
+        return ctl
+    except Exception as e:  # noqa: BLE001
+        print(f'[n1081b] !! scan control unavailable ({e!r}). If this run needs '
+              f'trigger modulation, STOP and fix before taking data.')
+        return None
+
+
+def _apply_n1081b_with_retry(scan_ctl, sub_run):
+    """Apply the sub-run's N1081B trigger/mesh config, verified by read-back. On
+    failure, HOLD the run with the PAUSE flag and retry until it verifies or a Stop
+    Run is requested — so we never take data with an unverified trigger (the safety
+    property the standalone watcher provided by holding .pause_run). Returns True
+    once applied (or not needed); False only if a stop ended the wait."""
+    if scan_ctl is None or not getattr(scan_ctl, 'needed', False):
+        return True
+    announced = False
+    i_held = False   # did WE arm the pause? (only then may we clear it)
+    while not scan_ctl.apply_for(sub_run):
+        if os.path.exists(STOP_RUN_FLAG):
+            return False
+        if not announced:
+            print('[n1081b] !! trigger/mesh config did NOT verify — HOLDING the run '
+                  '(paused). Fix the board, then Resume to retry. Refusing to take '
+                  'data with an unverified trigger.')
+            announced = True
+        with open(PAUSE_FLAG, 'w') as f:
+            f.write('n1081b config apply failed — fix board and Resume to retry\n')
+        i_held = True
+        while os.path.exists(PAUSE_FLAG) and not os.path.exists(STOP_RUN_FLAG):
+            sleep(1)
+        if os.path.exists(STOP_RUN_FLAG):
+            return False
+    # Clear ONLY a hold we armed — never an operator's GUI pause that was set after
+    # the top-of-loop pause check (that pause must survive to the next boundary).
+    if i_held:
+        _remove_flag(PAUSE_FLAG)
+    return True
 
 
 def _sleep_unless_stop(seconds):
@@ -81,6 +139,11 @@ def main():
         elif config_path.endswith('.py'):
             pass
     config.start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # In-process N1081B scan control (replaces the standalone scan-watcher process):
+    # daq_control applies each sub-run's trigger/mesh config itself, so it can never
+    # be forgotten. No-op for runs that need no modulation.
+    scan_ctl = _make_scan_control(config)
 
     hv_ip, hv_port = config.hv_control_info['ip'], config.hv_control_info['port']
     if config.process_on_fly:
@@ -123,8 +186,36 @@ def main():
         _remove_flag(STOP_RUN_FLAG)  # clear any stale stop requests from a previous run
         _remove_flag(STOP_SUBRUN_FLAG)
         _remove_flag(PAUSE_FLAG)     # never start a run already paused
+
         try:
-            for sub_run in config.sub_runs:
+            # N1081B trigger-control pre-flight — FAIL CLOSED. A run that needs
+            # trigger modulation must never silently take data without it (the
+            # run_30/run_33 corruption). Inside the try so restore-on-exit always
+            # covers a snapshot that partially applied.
+            ok_to_run = True
+            if scan_ctl is None:
+                print('[n1081b] !! scan control could not be built — REFUSING to start. '
+                      'Fix the error above, or set n1081b_scan="off" in the run config '
+                      'to deliberately run WITHOUT trigger modulation.')
+                ok_to_run = False
+            elif scan_ctl.needed:
+                unknown = scan_ctl.unknown_tags()
+                if unknown:
+                    print(f'[n1081b] !! sub-run tag(s) {unknown} have no schedule entry '
+                          f'— REFUSING to start (those sub-runs would take data with an '
+                          f'uncontrolled / leftover trigger). Fix the schedule or the '
+                          f'sub-run names.')
+                    ok_to_run = False
+                else:
+                    try:
+                        scan_ctl.start()   # snapshot boards for restore-on-exit
+                    except Exception as e:  # noqa: BLE001
+                        print(f'[n1081b] !! could not snapshot the trigger boards '
+                              f'({e!r}) — REFUSING to start a scan run without trigger '
+                              f'control. Fix the board network and relaunch.')
+                        ok_to_run = False
+
+            for sub_run in (config.sub_runs if ok_to_run else []):
                 if os.path.exists(STOP_RUN_FLAG):
                     print('[stop] Stop-run requested — ending run before next sub-run.')
                     break
@@ -178,6 +269,17 @@ def main():
                     if settle_time and not os.path.exists(STOP_RUN_FLAG):
                         print(f'HV ramp complete, settling for {settle_time} seconds before starting DAQ')
                         sleep(settle_time)
+
+                    # Apply this sub-run's N1081B trigger/mesh config INLINE (replaces
+                    # the standalone scan watcher). Verified by read-back; the run is
+                    # held paused on failure so we never take data with a wrong trigger.
+                    if not _apply_n1081b_with_retry(scan_ctl, sub_run):
+                        if config.hv_info['hv_monitoring']:
+                            hv.send('End Monitoring')
+                            hv.receive()
+                            hv.receive()
+                        print('[stop] Stop requested while applying N1081B config — ending run.')
+                        break
 
                     print(f'Prepping DAQs for {sub_run_name}')
 
@@ -238,6 +340,11 @@ def main():
         finally:
             _remove_flag(STOP_RUN_FLAG)
             _remove_flag(STOP_SUBRUN_FLAG)
+            _remove_flag(PAUSE_FLAG)   # clear any apply-failure hold so the run
+                                       # doesn't end leaving a stale 'paused' state
+            # Return the N1081B boards to the exact state found at run start.
+            if scan_ctl is not None:
+                scan_ctl.restore()
         print('Run complete, closing down subsystems')
         if config.power_off_hv_at_end:
             hv.send('Power Off')

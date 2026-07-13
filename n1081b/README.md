@@ -1,6 +1,6 @@
 # N1081B Trigger Modules
 
-Tooling and notes for the five CAEN **N1081B** programmable-logic units that make
+Tooling and notes for the six CAEN **N1081B** programmable-logic units that make
 up the DAQ trigger. This directory is for exploring, snapshotting, homogenizing,
 and (eventually) run-control integration of those units.
 
@@ -10,23 +10,45 @@ and (eventually) run-control integration of those units.
 
 ## The units
 
-All five sit on the **private DAQ network**, reachable only from the DAQ server
+All six sit on the **private DAQ network**, reachable only from the DAQ server
 (`ssh daq_lxplus`, host `mx17-daq`) — *not* from a dev laptop. WebSocket API on
 `ws://<ip>:8080/`, default login password `password`.
 
-| IP | Serial | SW version | Clock-out | Current role (A/B/C/D) |
-|----|--------|-----------|-----------|------------------------|
-| 192.168.10.240 | 49323 | 2025.3.27.0 | on | pulse_gen / counter / counter / counter |
-| 192.168.10.241 | 22428 | 2025.3.27.0 | on | pulse_gen / counter / counter / counter |
-| 192.168.10.242 | 49325 | 2025.3.27.0 | on | fanout / pulse_gen (Poisson) / and / or |
-| 192.168.10.243 | 49326 | 2025.3.27.0 | on | or / or / counter / or (mixed DISCR/NIM) |
-| 192.168.10.244 | 32429 | 2025.3.27.0 | **off** | majority / counter / or_veto / counter |
+**As of 2026-07-09 the trigger logic is racked:** trigger "Module N" =
+`192.168.10.(239+N)` — the mapping is consecutive. Full as-built state + fix
+list: `~/Documents/ntof_trigger_logic/TRIGGER_SETUP_2026-07.md` §0.5, snapshot
+`snapshots/dump_2026-07-09_six_modules.json`.
+
+| IP | Module | Serial | SW version | Role (A/B/C/D) as of 2026-07-09 |
+|----|--------|--------|-----------|----------------------------------|
+| 192.168.10.240 | 1 | 49323 | 2025.3.27.0 | SiPM wall OR ×4 (DISCR, th +30 mV) |
+| 192.168.10.241 | 2 | 22428 | 2025.3.27.0 | plastic-pair OR ×4 (DISCR, th −80 mV; temp. plastics, later liq. scint.) |
+| 192.168.10.242 | 3 | 49325 | 2025.3.27.0 | sector AND ×4 (wall_i × scint_i) |
+| 192.168.10.243 | 4 | 49326 | 2025.3.27.0 | Singles `or` / Doubles `majority` / `or_veto` / final `or` |
+| 192.168.10.244 | 5 | 32429 | 2025.3.27.0 | scalers: counter ×4 |
+| 192.168.10.245 | 6 | 23011 | 2025.3.27.0 | fanout (PS/T0) / fanout → **mesh charge-injection** (4 outs) / fanout → **SiPM enable** (TTL inv., 2 outs) / **pulse_gen** Poisson 667 Hz → Module 4.C p5 |
+
+**Coincidence timing as-built 2026-07-11** (details in TRIGGER_SETUP §0.5 item 11;
+trigger rates are **beam-driven**, tracked in `config/beam_state.json`): the 20 ns
+sector-AND window is imposed at **M3 (.242) input Gate&Delay** — both legs gate=20 ns,
+delay=0, all sectors — because **Module 1 (.240) is OFFLINE** (network dead; still
+outputs walls but unreconfigurable). Per-sector residual skew ≤7 ns (delay scan
+`timing_scan_run2.*`) → no per-sector delay; four walls aligned ≤11 ns (`walls_tt_v1.*`).
+**M3 output monos 30 ns**, **M4.B Doubles window 50 ns**. Final dump
+`snapshots/dump_2026-07-11_timing_final.json`. *TODO: restore M1 mono thinning once
+.240's network is power-cycled back.*
 
 Board layout: 4 **sections** A–D (enum 0–3), each with 6 LEMO inputs (0–5). One
 *function* is assigned per section.
 
-All five now run the same firmware `2025.3.27.0` (242 was upgraded 2026-07-08; it
-previously ran the older `2023.12.4.0`).
+All six boards run firmware `2025.3.27.0` (242 upgraded 2026-07-08; **245
+upgraded 2026-07-11** during the switch-outage recovery — the old-fw SDK
+quirks no longer apply anywhere). 245 is the ex veto-test rig (see
+`VETO_TEST_RESULTS_2026-07-02.md`), moved from the CERN net onto the DAQ net.
+
+**Run modes + full trigger IO layout (canonical): `RUN_MODES_2026-07.md`** —
+the three DREAM run configurations (flash / flash+random / scint) with tuned
+latencies, switched via `trigger_mode.py`.
 
 **Homogenized 2026-07-01:** boards **240, 241, 242, 243** were reset to a uniform
 state — all 4 sections = `wire`, input NIM / 50 Ω / threshold 0, all 6 input
@@ -64,6 +86,10 @@ mv "$SP/n1081b-sdk" "$SP/n1081b_sdk"
 | `dump_module_info.py` | Read-only: dumps *everything* readable from all 5 boards to one JSON on stdout. Doubles as a pre-change backup. | server (board net) |
 | `summarize_dump.py` | Local: turns a `snapshots/*.json` dump into a human-readable per-board / per-section comparison. | anywhere |
 | `homogenize.py` | Backs up each board (on-board `backup_pre_homog.json`), then sets all sections to wire + NIM/50Ω/th0. **Skips 244** unless `--include-244`. Re-run safe (won't clobber the backup). | server (board net) |
+| `mod5_timetag_logger.py` | Streams per-edge timestamps from Module 5 (.244) to CSV via the Time Tag function — one row per input edge (host time, section, panel channel, board ns). `--section A..D` for one section, `--section cycle --dwell N` to rotate through all four (only one section can stream at a time — see Time-tag facts below). Restores the counter config on exit. | server (board net) |
+| `poll_modules.py` | Read-only per-**sub-run** config snapshot, wired into `daq_control.py`: a background thread dumps each module's full state to `<run>/<sub_run>/n1081b_config.json` at DAQ-start, in parallel with data-taking. Fired right after the inline trigger apply so it records the as-built state; still waits on `.pause_run` (now only set by a manual pause). **Scope: all six** (`POLL_IPS`); drop `.244` if a time-tag run is concurrent. Full write-up: `SUBRUN_CONFIG_SNAPSHOT.md`. | server (board net) |
+| `scan_control.py` | **In-process** per-sub-run trigger/mesh modulation, imported by `daq_control.py` (`N1081BScanControl`). For each sub-run it maps the leading name tag → `config/n1081b_scan_schedule.json` `scans[tag]` and applies it, verified by read-back, BEFORE taking data; snapshots the boards at run start and restores on exit. `mode='auto'` (run-config `n1081b_scan`) enables it whenever a sub-run tag matches a scan entry, else it's a no-op. **This replaced the standalone watcher process** — the modulation is now part of the run and can't be forgotten (the run_30/run_33 corruption). Does NOT set function types / pulser — that's `setup_run30_trigger.py`, still a one-time pre-run step. | server (board net) |
+| `n1081b_scan_watcher.py` | **Legacy / manual only.** The old standalone watcher that synced the board via `.subrun_complete` + `.pause_run`. Superseded by `scan_control.py` for data runs — do NOT run it during a daq_control run (both would drive the board). Still useful standalone for `--restore-baseline`, `--dry-run`, and as the home of the shared board primitives `scan_control` imports. | server (board net) |
 
 Typical flow (from the dev laptop):
 
@@ -75,6 +101,37 @@ python n1081b/summarize_dump.py n1081b/snapshots/dump.json
 
 `snapshots/` holds captured board state (JSON). Keep at least one pre-change dump
 as the restore reference.
+
+## Time-tag streaming facts (measured 2026-07-10 on .244, fw 2025.3.27.0)
+
+- `configure_time_tagging` returns **`Result: False` but the config applies
+  anyway** — cosmetic firmware bug, ignore the return value.
+- Tag element = `[channel, timestamp]`: channel = **panel number 1–6**
+  (= SDK lemo + 1), timestamp in **ns** (10 ns granularity) from a
+  **free-running board clock** (does not reset on `reset_channel`).
+- Time Tag sees **all 6 lemos** of a section; counter/scaler only cover lemo 0–3.
+- `send_data` packets carry **no section id**, and the board **broadcasts every
+  packet to every connected websocket client**. Consequences:
+  - only **one section can stream at a time** per board (two at once → merged,
+    unattributable tags); cover all 24 inputs by cycling sections;
+  - **don't run any other SDK connection against a board while it streams** —
+    the broadcasts interleave with that client's replies and desync it.
+- The SDK's `start_acquisition`/`stop_acquisition` for TT send two commands but
+  read one reply → desync. Send `reset_channel` + `start_tt_data` /
+  `stop_tt_data` raw and consume replies tolerantly (see `mod5_timetag_logger.py`).
+- Throughput: ~1 kHz aggregate verified live; 10 kHz verified in the 2026-07-02
+  veto test. Higher rates untested (websocket + JSON per packet).
+- **Push model, not polling:** after `start_tt_data` the board emits `send_data`
+  packets on its own; the client just `recv()`s. Measured at ~800 Hz: the board
+  flushes every ~10–100 ms (median 12 ms), each packet batching whatever
+  accumulated (median 8 tags; up to 1028 seen in one packet — the internal FIFO
+  is likely 1024 tags deep).
+- **Stalled reader is safe for a while:** with the stream running at ~750 Hz and
+  the client deliberately not reading for 20 s, **zero tags were lost** — TCP
+  backpressure buffered ~15 k tags (~300 kB) end-to-end and they arrived in a
+  catch-up burst (≥4.5 k tags/s drain rate). So there is no required poll
+  frequency; the client only needs to keep up *on average*. Behavior once the
+  TCP buffers actually fill (board blocks vs. drops) is untested.
 
 ## Password
 
@@ -144,4 +201,6 @@ time-tag logger (incl. the CH 1,2,4,5 / T0 caveats).
 - [x] Docs downloaded; time-tag resolution confirmed (10 ns).
 - [ ] **244**: homogenize it too once it's free (`homogenize.py --include-244`).
 - [x] **242 firmware** upgraded to `2025.3.27.0` (2026-07-08).
-- [ ] Run-control integration (watcher-style, like `qa_watcher.py`).
+- [x] Run-control integration, phase 1: per-sub-run read-only config snapshot of
+  all six boards (`poll_modules.py` → `daq_control.py`). See
+  `SUBRUN_CONFIG_SNAPSHOT.md`.
