@@ -1553,7 +1553,7 @@ def is_dream_daq_running():
     try:
         # Increase the buffer slightly to ensure we don't miss the transition
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-20", "-t", "daq_control:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-20", "-t", "daq_control:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:

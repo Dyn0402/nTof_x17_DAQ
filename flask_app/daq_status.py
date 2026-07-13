@@ -36,7 +36,7 @@ HE3_PRESSURE_STATE_FILE = os.path.join(_REPO_DIR, "config", "he3_pressure_state.
 def get_dream_daq_status():
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-500", "-t", "dream_daq:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-500", "-t", "dream_daq:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
@@ -96,7 +96,7 @@ def get_dream_daq_status():
 def get_hv_control_status():
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-50", "-t", "hv_control:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-50", "-t", "hv_control:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
@@ -138,7 +138,7 @@ def get_hv_control_status():
 def get_daq_control_status():
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-50", "-t", "daq_control:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-50", "-t", "daq_control:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
@@ -183,7 +183,7 @@ def get_daq_control_status():
 def get_processor_watcher_status():
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-50", "-t", "processor_watcher:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-50", "-t", "processor_watcher:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
@@ -239,7 +239,7 @@ def get_processor_watcher_status():
 def get_qa_watcher_status():
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-50", "-t", "qa_watcher:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-50", "-t", "qa_watcher:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
@@ -279,7 +279,7 @@ def get_qa_watcher_status():
 def get_backup_watcher_status():
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-50", "-t", "backup_watcher:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-50", "-t", "backup_watcher:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
@@ -341,7 +341,7 @@ def get_pedestal_watcher_status():
     """
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-50", "-t", "pedestal_watcher:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-50", "-t", "pedestal_watcher:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
@@ -376,7 +376,7 @@ def get_n1081b_watcher_status():
         # stderr -> DEVNULL so tmux's "can't find session" note doesn't spam the
         # flask console every poll while the watcher session isn't running.
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-50", "-t", "n1081b_watcher:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-50", "-t", "n1081b_watcher:0.0"],
             text=True, stderr=subprocess.DEVNULL
         )
     except subprocess.CalledProcessError:
@@ -417,7 +417,7 @@ def get_n1081b_watcher_status():
 def get_decoder_status():
     try:
         output = subprocess.check_output(
-            ["tmux", "capture-pane", "-pS", "-10", "-t", "decoder:0.0"],
+            ["tmux", "capture-pane", "-pJS", "-10", "-t", "decoder:0.0"],
             text=True
         )
     except subprocess.CalledProcessError:
