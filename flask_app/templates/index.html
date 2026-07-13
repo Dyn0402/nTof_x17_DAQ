@@ -44,6 +44,7 @@
               <button id="stop-sub-run" class="btn btn-warning">Stop Sub-Run</button>
               <button id="pause-toggle" class="btn btn-outline-warning">Pause After Subrun</button>
               <button id="restart-all" class="btn btn-outline-danger">Restart All</button>
+              <button id="restart-flask" class="btn btn-outline-secondary">GUI Reset</button>
               <button id="take-pedestals" class="btn btn-secondary">Take Pedestals</button>
             </div>
           </div>
@@ -352,6 +353,62 @@
     </div>
   </div>
 
+  <!-- Bottle usage (estimated from integrated flow history) -->
+  <div class="panel mt-3">
+    <div class="panel-header">
+      <span class="panel-title">Bottle Usage (estimated)</span>
+      <span id="gas-usage-updated" class="ms-auto panel-header-note"></span>
+    </div>
+    <div class="panel-body">
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <div class="status-card s-info">
+            <div class="status-top">
+              <span class="status-name">Argon</span>
+              <span class="status-state font-monospace" id="gas-argon-pressure" style="font-size:1.3rem;">—</span>
+            </div>
+            <div class="progress my-2" style="height:8px;background:#242e39;">
+              <div id="gas-argon-bar" class="progress-bar bg-info" style="width:0%;"></div>
+            </div>
+            <div class="status-fields">
+              <div class="status-field"><span>Drawn</span><span id="gas-argon-drawn">—</span></div>
+              <div class="status-field"><span>Remaining</span><span id="gas-argon-remaining">—</span></div>
+              <div class="status-field"><span>Recent draw</span><span id="gas-argon-rate">—</span></div>
+              <div class="status-field"><span>Est. to empty</span><span id="gas-argon-empty">—</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="status-card s-warning">
+            <div class="status-top">
+              <span class="status-name">Isobutane</span>
+              <span class="status-state font-monospace" id="gas-iso-liquid" style="font-size:1.3rem;">—</span>
+            </div>
+            <div class="progress my-2" style="height:8px;background:#242e39;">
+              <div id="gas-iso-bar" class="progress-bar bg-warning" style="width:0%;"></div>
+            </div>
+            <div class="status-fields">
+              <div class="status-field"><span>Drawn</span><span id="gas-iso-drawn">—</span></div>
+              <div class="status-field"><span>Head pressure</span><span id="gas-iso-pressure">—</span></div>
+              <div class="status-field"><span>Recent draw</span><span id="gas-iso-rate">—</span></div>
+              <div class="status-field"><span>Est. to empty</span><span id="gas-iso-empty">—</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="text-muted small mb-0 mt-3" id="gas-usage-note">
+        Normal litres drawn = integral of the logged flow since logging began.
+        <strong>Argon</strong> (compressed): pressure falls ~linearly with gas
+        removed — starting assumption 50 L bottle @ 220 bar (real-gas
+        compressibility adds ~10 % level error). <strong>Isobutane</strong>
+        (liquefied): head pressure stays at its ~vapour pressure until the liquid
+        is gone, so the gauge here is liquid remaining — starting assumption 50 L
+        bottle, 80 % liquid. Edit assumptions in
+        <span class="font-monospace">gas_mixer_control/bottle_usage.py</span>.
+      </p>
+    </div>
+  </div>
+
   <!-- Live trend -->
   <div class="panel mt-3">
     <div class="panel-header">
@@ -555,6 +612,32 @@ document.getElementById("restart-all").addEventListener("click", () => {
   fetch("/restart_all", { method: "POST" })
     .then(res => res.json())
     .then(data => alert(data.message))
+    .catch(err => alert("Error: " + err));
+});
+
+// GUI Reset: restart only the Flask server (this page). The request returns
+// before the server is killed ~2 s later, so we show a banner and auto-reload
+// once it's back up (retrying until the server answers again).
+document.getElementById("restart-flask").addEventListener("click", () => {
+  if (!confirm("Restart the GUI server? The page will be unavailable for a few seconds; the DAQ and watchers keep running.")) return;
+  fetch("/restart_flask", { method: "POST" })
+    .then(res => res.json())
+    .then(data => {
+      if (data.view_only) { alert(data.message || "View-only mode"); return; }
+      showPopup(data.message || "GUI restarting…", "#4dabe8");
+      // The old server is killed ~2 s after the request; wait past that before
+      // polling so we don't reload against the server that's about to die, then
+      // reload as soon as the fresh server answers again.
+      setTimeout(() => {
+        let tries = 0;
+        const wait = setInterval(() => {
+          if (++tries > 30) { clearInterval(wait); location.reload(); return; }
+          fetch("/", { method: "HEAD", cache: "no-store" })
+            .then(() => { clearInterval(wait); location.reload(); })
+            .catch(() => {});
+        }, 1000);
+      }, 4000);
+    })
     .catch(err => alert("Error: " + err));
 });
 
@@ -2065,10 +2148,49 @@ document.getElementById("gas-zero").addEventListener("click", async () => {
 
 // Gas plots appear on both the Overview and Gas Mixer tabs. Plotly can't size a plot
 // while its tab is hidden (display:none -> 0 width), so (re)render when either tab is
+// Bottle usage: estimated from the integrated flow history (heavier server call,
+// so it refreshes on tab-show + a slow timer rather than every 2 s).
+function gasDaysToEmpty(d) {
+  if (d == null) return "steady? —";
+  if (d >= 365) return `${(d / 365).toFixed(1)} yr`;
+  if (d >= 60) return `${(d / 30).toFixed(1)} mo`;
+  return `${d.toFixed(0)} d`;
+}
+async function gasUpdateUsage() {
+  let u;
+  try { u = await (await fetch("/gas/usage")).json(); } catch (e) { return; }
+  if (!u || !u.success) return;
+  const a = u.argon, i = u.iso;
+
+  document.getElementById("gas-argon-pressure").textContent =
+    `${gasNum(a.pressure_bar, 0)} bar`;
+  document.getElementById("gas-argon-bar").style.width = `${(a.frac_remaining * 100).toFixed(1)}%`;
+  document.getElementById("gas-argon-drawn").textContent =
+    `${gasNum(a.drawn_L, 0)} L (of ${gasNum(a.content_start_L, 0)})`;
+  document.getElementById("gas-argon-remaining").textContent =
+    `${gasNum(a.remaining_L, 0)} L · ${(a.frac_remaining * 100).toFixed(1)}%`;
+  document.getElementById("gas-argon-rate").textContent = `${gasNum(a.rate_lnh, 2)} ln/h`;
+  document.getElementById("gas-argon-empty").textContent = gasDaysToEmpty(a.days_to_empty);
+
+  document.getElementById("gas-iso-liquid").textContent =
+    `${gasNum(i.liquid_remaining_L, 1)} L liq`;
+  document.getElementById("gas-iso-bar").style.width = `${(i.frac_remaining * 100).toFixed(1)}%`;
+  document.getElementById("gas-iso-drawn").textContent =
+    `${gasNum(i.drawn_L, 0)} L (of ${gasNum(i.content_start_L, 0)})`;
+  document.getElementById("gas-iso-pressure").textContent =
+    i.vapor_pressure_bar > 0 ? `~${gasNum(i.vapor_pressure_bar, 1)} bar (vapour)` : "empty";
+  document.getElementById("gas-iso-rate").textContent = `${gasNum(i.rate_lnh, 3)} ln/h`;
+  document.getElementById("gas-iso-empty").textContent = gasDaysToEmpty(i.days_to_empty);
+
+  const el = document.getElementById("gas-usage-updated");
+  if (el) el.textContent = u.start ? `since ${u.start} · ${gasNum(u.logged_hours, 0)} h logged` : "";
+}
+
 // shown — the container then has real dimensions. Plots pull history from the CSV, so
 // they come up fully populated rather than filling in live.
 ["#overview", "#gas-mixer"].forEach(sel =>
   document.querySelector(`a[href="${sel}"]`).addEventListener("shown.bs.tab", gasRenderPlot));
+document.querySelector('a[href="#gas-mixer"]').addEventListener("shown.bs.tab", gasUpdateUsage);
 
 // Refresh the history plots on a timer, but only while a tab that shows them is visible.
 setInterval(() => {
@@ -2080,6 +2202,10 @@ setInterval(() => {
 gasUpdateStatus();
 setInterval(gasUpdateStatus, 2000);
 gasRenderPlot();   // initial draw (Overview is the default-active tab at load)
+gasUpdateUsage();
+setInterval(() => {
+  if (document.getElementById("gas-mixer").classList.contains("active")) gasUpdateUsage();
+}, 30000);
 
 // ---------------------------------------------------------------------------
 // 3He target pressure  (Keithley 2000 over GPIB, read-only)

@@ -503,6 +503,18 @@ def restart_all():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/restart_flask", methods=["POST"])
+def restart_flask():
+    """Restart ONLY the Flask GUI server (tmux `flask_server`), leaving the DAQ,
+    HV, and watcher sessions running. The restart runs detached (screen) since it
+    kills the process serving this request; the GUI drops for ~3 s and returns."""
+    try:
+        subprocess.Popen([f"{BASH_DIR}/restart_flask.sh"])
+        return jsonify({"success": True, "message": "GUI restarting — reconnecting in a few seconds…"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/update_run_config_py", methods=['POST'])
 def update_run_config_py():
     try:
@@ -1404,6 +1416,19 @@ def gas_history():
             "total_flow": df["total_flow_lnh"].round(4).tolist(),
             "iso_pct": df["iso_pct_meas"].round(3).tolist(),
         })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/gas/usage")
+def gas_usage():
+    """Estimated bottle usage: integrate the whole logged flow history to get the
+    normal litres drawn from each bottle, then convert to remaining argon pressure
+    / isobutane liquid and an extrapolated time-to-empty. Starting assumptions
+    (bottle size, argon 220 bar, iso 80 % liquid) live in bottle_usage.py."""
+    from gas_mixer_control.bottle_usage import compute_bottle_usage
+    try:
+        return jsonify(compute_bottle_usage(GAS_LOG_DIR))
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
