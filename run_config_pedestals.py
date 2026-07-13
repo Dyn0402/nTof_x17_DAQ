@@ -39,6 +39,13 @@ class Config(RunConfigBase):
         self.power_off_hv_at_end = False
         self.start_time = None
 
+        # Pedestals are internally triggered (PedThrRun) and never use the N1081B
+        # veto-gated random trigger, so there is no trigger modulation to apply. The
+        # beam config's n1081b_scan='on' is inherited via the __dict__ copy above and
+        # would fail-closed here (the 'pedestals' sub-run tag has no scan-schedule
+        # entry), so force it off — the bulletproof no-op escape hatch.
+        self.n1081b_scan = 'off'
+
         # dream_daq_info: inherit from beam, then force pedestal-mode settings.
         # Reuse the beam data-run .cfg template and flip Sys Action PedThrRun on
         # the fly (do_pedestal_threshold_run) instead of pointing at a separate

@@ -69,7 +69,11 @@ def _make_scan_control(config):
         if _n1081b_dir not in sys.path:
             sys.path.insert(0, _n1081b_dir)
         from scan_control import N1081BScanControl
-        mode = getattr(config, 'n1081b_scan', 'auto')  # 'auto' | 'on' | 'off'
+        # Default OFF: a config must OPT IN to N1081B trigger modulation ('on' =
+        # fail-closed scan run, 'auto' = best-effort). A config that doesn't declare
+        # n1081b_scan never touches the trigger boards. Scan runs set 'on' explicitly
+        # (run_config_beam.py), so this default does not weaken their protection.
+        mode = getattr(config, 'n1081b_scan', 'off')  # 'off' | 'auto' | 'on'
         ctl = N1081BScanControl(getattr(config, 'sub_runs', []), mode=mode)
         print(f'[n1081b] scan control: {ctl.summary()}')
         unknown = ctl.unknown_tags()
