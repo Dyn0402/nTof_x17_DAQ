@@ -1,8 +1,148 @@
 {% extends "base.html" %}
 
 {% block content %}
+<!-- Shift Overview Tab: everything a shifter needs at a glance, no scrolling,
+     no controls except Emergency Stop. Shifters (view-only) land here. -->
+<div class="tab-pane fade {% if not authorized %}show active{% endif %}" id="shift">
+
+  <!-- Run-state banner + Emergency Stop -->
+  <div class="row g-3">
+    <div class="col-12 col-lg-9">
+      <div class="shift-banner lv-idle h-100" id="shift-banner">
+        <div>
+          <div class="shift-state" id="shift-state">…</div>
+          <div class="shift-substate" id="shift-substate">connecting…</div>
+        </div>
+        <div class="shift-stats">
+          <div class="stat">
+            <div class="stat-label">Run</div>
+            <div class="stat-value" id="shift-run" style="font-size:1.15rem;">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Subrun</div>
+            <div class="stat-value" id="shift-subrun" style="font-size:1.15rem;">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Progress</div>
+            <div class="stat-value" id="shift-progress" style="font-size:1.15rem;">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Events</div>
+            <div class="stat-value" id="shift-events" style="font-size:1.15rem;">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Trigger rate</div>
+            <div class="stat-value" id="shift-rate" style="font-size:1.15rem;">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Time</div>
+            <div class="shift-clock" id="shift-clock">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-3">
+      <button id="shift-estop" class="estop-btn">
+        Emergency Stop
+        <span class="estop-sub">stops gas · run · HV</span>
+      </button>
+      <div id="shift-estop-note" class="shift-note text-center"></div>
+    </div>
+  </div>
+
+  <!-- Health cards: beam / gas / HV / 3He / system -->
+  <div class="row g-3 mt-0">
+    <div class="col-12 col-md-6 col-xl">
+      <div class="shift-card lv-idle" id="shift-beam-card">
+        <div class="shift-card-head">
+          <span class="shift-card-title">n_TOF Beam</span>
+          <span class="shift-card-state" id="shift-beam-state">—</span>
+        </div>
+        <div id="shift-beam-body" class="shift-rows"></div>
+        <div class="shift-note" id="shift-beam-note"></div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl">
+      <div class="shift-card lv-idle" id="shift-gas-card">
+        <div class="shift-card-head">
+          <span class="shift-card-title">Gas Mixer</span>
+          <span class="shift-card-state" id="shift-gas-state">—</span>
+        </div>
+        <div id="shift-gas-body" class="shift-rows"></div>
+        <div class="shift-note" id="shift-gas-note"></div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl">
+      <div class="shift-card lv-idle" id="shift-hv-card">
+        <div class="shift-card-head">
+          <span class="shift-card-title">High Voltage</span>
+          <span class="shift-card-state" id="shift-hv-state">—</span>
+        </div>
+        <div id="shift-hv-body" class="shift-rows"></div>
+        <div class="shift-note" id="shift-hv-note"></div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl">
+      <div class="shift-card lv-idle" id="shift-he3-card">
+        <div class="shift-card-head">
+          <span class="shift-card-title">3He Pressure</span>
+          <span class="shift-card-state" id="shift-he3-state">—</span>
+        </div>
+        <div id="shift-he3-body" class="shift-rows"></div>
+        <div class="shift-note" id="shift-he3-note"></div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl">
+      <div class="shift-card lv-idle" id="shift-sys-card">
+        <div class="shift-card-head">
+          <span class="shift-card-title">System</span>
+          <span class="shift-card-state" id="shift-sys-state">—</span>
+        </div>
+        <div id="shift-sys-body" class="sys-rows"></div>
+        <div class="shift-note">DAQ machine. If the SSD (system) or HDD (run data) fills up,
+          data taking stops — if one passes 80&#37;, warn the expert.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trend plots: enough history to see drifts, small enough to keep one screen -->
+  <div class="row g-3 mt-0">
+    <div class="col-12 col-xl-4">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Beam intensity — last 6 h</span>
+        </div>
+        <div class="panel-body" style="padding:0.4rem 0.6rem;">
+          <div id="shift-beam-plot" style="width:100%;height:230px;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-4">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Gas total flow — last 6 h</span>
+        </div>
+        <div class="panel-body" style="padding:0.4rem 0.6rem;">
+          <div id="shift-gas-plot" style="width:100%;height:230px;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-4">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">HV voltages — current subrun</span>
+        </div>
+        <div class="panel-body" style="padding:0.4rem 0.6rem;">
+          <div id="shift-hv-plot" style="width:100%;height:230px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <!-- DAQ Overview Tab -->
-<div class="tab-pane fade show active" id="overview">
+<div class="tab-pane fade {% if authorized %}show active{% endif %}" id="overview">
 
   <!-- Top row: run control (left) + system monitor (right) -->
   <div class="row g-3">
@@ -33,6 +173,10 @@
               <div class="stat-label">3He Pressure</div>
               <div class="stat-value" id="run-he3-pressure" style="font-size:1.1rem;">—</div>
             </div>
+            <div class="stat">
+              <div class="stat-label">Beam</div>
+              <div class="stat-value" id="run-beam" style="font-size:1.1rem;">—</div>
+            </div>
           </div>
 
           <select id="run-select" class="form-select d-none" style="width:auto;"></select>
@@ -59,6 +203,7 @@
               <button id="n1081b-toggle" class="btn btn-primary btn-sm">Start N1081B</button>
               <button id="gas-watcher-toggle" class="btn btn-info btn-sm">Start Gas Watcher</button>
               <button id="he3-pressure-watcher-toggle" class="btn btn-info btn-sm">Start 3He Pressure Watcher</button>
+              <button id="beam-watcher-toggle" class="btn btn-info btn-sm">Start Beam Watcher</button>
               <button id="rerun-qa" class="btn btn-outline-warning btn-sm ms-auto">Rerun QA</button>
             </div>
           </div>
@@ -141,6 +286,17 @@
           <div id="gas-plot-overview-flows" style="width:100%;height:340px;"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- n_TOF beam summary (mirrors the Beam tab plot) -->
+  <div class="panel mt-3">
+    <div class="panel-header">
+      <span class="panel-title">n_TOF Beam Intensity</span>
+      <span class="panel-header-note">per-pulse intensity, avg &amp; protons/min delivery — last 6 h from NXCALS/Timber</span>
+    </div>
+    <div class="panel-body">
+      <div id="beam-plot-overview" style="width:100%;height:300px;"></div>
     </div>
   </div>
 
@@ -476,6 +632,73 @@
         </div>
         <div class="panel-body">
           <div id="he3-pressure-plot" style="width:100%;height:380px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Beam Tab: live n_TOF beam intensity from NXCALS/Timber -->
+<div class="tab-pane fade" id="beam">
+  <div class="row g-3">
+    <!-- Current state -->
+    <div class="col-12 col-xl-4">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">n_TOF Beam</span>
+          <span id="beam-conn" class="ms-auto panel-header-note">…</span>
+        </div>
+        <div class="panel-body">
+          <div class="run-stats mb-0">
+            <div class="stat">
+              <div class="stat-label">Beam status</div>
+              <div class="stat-value" id="beam-state-big" style="font-size:1.6rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Last pulse</div>
+              <div class="stat-value" id="beam-last-pulse" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <div class="run-stats mb-0 mt-2">
+            <div class="stat">
+              <div class="stat-label">Pulses / 10 min</div>
+              <div class="stat-value" id="beam-pulses-10m" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Protons / 10 min</div>
+              <div class="stat-value" id="beam-protons-10m" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Avg pulse</div>
+              <div class="stat-value" id="beam-avg-10m" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <p class="text-muted small mb-0 mt-3">
+            <span class="font-monospace">FTN.BCT477</span> — the last beam-current
+            transformer before the n_TOF target (upstream BCTs can show beam that never
+            reaches the target), one point per TOF cycle, read from NXCALS (Timber)
+            every 30&nbsp;s. Beam counts as OFF after 3&nbsp;min without a pulse. Logged to
+            <span class="font-monospace" id="beam-csv-path">beam_monitor/logs/</span>.
+          </p>
+          <p class="text-muted small mb-0 mt-2">
+            <span id="beam-krb"></span>
+          </p>
+          <p class="text-muted small mb-0 mt-2">
+            <span id="beam-updated"></span>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trend -->
+    <div class="col-12 col-xl-8">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Beam Intensity Trend</span>
+          <span class="panel-header-note">protons per pulse — last 6 h from the log</span>
+        </div>
+        <div class="panel-body">
+          <div id="beam-plot" style="width:100%;height:380px;"></div>
         </div>
       </div>
     </div>
@@ -1236,6 +1459,9 @@ const WATCHER_TOGGLES = [
     { name: "he3_pressure_watcher", btn: "he3-pressure-watcher-toggle", label: "3He Pressure Watcher",
       start: "/start_he3_pressure_watcher", stop: "/stop_he3_pressure_watcher",
       confirm: "Stop the 3He pressure watcher? (pressure logging pauses)" },
+    { name: "beam_watcher", btn: "beam-watcher-toggle", label: "Beam Watcher",
+      start: "/start_beam_watcher", stop: "/stop_beam_watcher",
+      confirm: "Stop the beam watcher? (n_TOF intensity logging pauses)" },
 ];
 const watcherStopped = {};  // name -> bool, tracked from /status
 
@@ -1517,17 +1743,30 @@ document.getElementById("monitor-toggle").addEventListener("click", async () => 
 async function renderMonitorRules() {
   const res = await fetch("/monitor/rules");
   const d = await res.json();
+  const defaultLabel = d.default_resend_minutes == null ? "never" : `${d.default_resend_minutes}m`;
   const container = document.getElementById("monitor-rules");
   container.innerHTML = (d.rules || []).map(r => {
     const stateTxt = r.enabled ? "On" : "Off";
     const stateCls = r.enabled ? "text-success" : "text-muted";
     const btnTxt = r.enabled ? "Disable" : "Enable";
     const btnCls = r.enabled ? "btn-outline-danger" : "btn-outline-success";
+    const mode = r.resend_mode || "default";
     return `
-      <div class="d-flex align-items-start gap-2 py-1 border-bottom">
-        <div class="flex-grow-1">
+      <div class="d-flex align-items-start gap-2 py-1 border-bottom flex-wrap">
+        <div class="flex-grow-1" style="min-width:220px;">
           <div class="small fw-bold">${r.label}</div>
           <div class="text-muted small">${r.description || ""}</div>
+          <div class="d-flex align-items-center gap-1 mt-1">
+            <span class="text-muted small">Repeat:</span>
+            <select class="form-select form-select-sm w-auto" data-resend-mode="${r.name}">
+              <option value="default" ${mode === "default" ? "selected" : ""}>Default (${defaultLabel})</option>
+              <option value="minutes" ${mode === "minutes" ? "selected" : ""}>Every…</option>
+              <option value="never" ${mode === "never" ? "selected" : ""}>Never (only on change)</option>
+            </select>
+            <input type="number" min="1" step="1" placeholder="min"
+                   class="form-control form-control-sm" style="width:5em; ${mode === "minutes" ? "" : "display:none;"}"
+                   data-resend-minutes="${r.name}" value="${r.resend_minutes ?? ""}">
+          </div>
         </div>
         <span class="fw-bold small ${stateCls}" style="min-width:2.2em;text-align:right;">${stateTxt}</span>
         <button class="btn btn-sm ${btnCls}" data-rule="${r.name}" data-enabled="${r.enabled}">${btnTxt}</button>
@@ -1546,6 +1785,49 @@ document.getElementById("monitor-rules").addEventListener("click", async (e) => 
   });
   await renderMonitorRules();
 });
+
+document.getElementById("monitor-rules").addEventListener("change", async (e) => {
+  const sel = e.target.closest("select[data-resend-mode]");
+  const inp = e.target.closest("input[data-resend-minutes]");
+
+  if (sel) {
+    const name = sel.dataset.resendMode;
+    const mode = sel.value;
+    const numInput = resendMinutesInput(name);
+    if (numInput) numInput.style.display = mode === "minutes" ? "" : "none";
+    if (mode === "minutes") {
+      if (numInput && numInput.value) {
+        await fetch("/monitor/rule_resend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, mode, minutes: numInput.value }),
+        });
+      }
+      return; // wait for a minutes value before persisting
+    }
+    await fetch("/monitor/rule_resend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, mode }),
+    });
+    await renderMonitorRules();
+    return;
+  }
+
+  if (inp) {
+    const name = inp.dataset.resendMinutes;
+    if (!inp.value) return;
+    await fetch("/monitor/rule_resend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, mode: "minutes", minutes: inp.value }),
+    });
+  }
+});
+
+function resendMinutesInput(name) {
+  return document.querySelector(`#monitor-rules input[data-resend-minutes="${name}"]`);
+}
 
 // Refresh the rule list whenever the Setup panel is opened.
 document.getElementById("monitor-setup-collapse").addEventListener("shown.bs.collapse", renderMonitorRules);
@@ -2331,5 +2613,515 @@ setInterval(() => {
 
 he3PressureUpdateStatus();
 setInterval(he3PressureUpdateStatus, 2000);
+
+// ---------------------------------------------------------------------------
+// n_TOF beam intensity (Beam tab + Overview mirror). The NXCALS session is owned
+// by the beam_watcher process; the GUI reads /beam/status (state file) and
+// /beam/history (per-day CSV). New data lands every ~30 s, so polling is relaxed.
+
+// intensity in 1e10 protons -> "6.8e12 p"
+function beamFmtP(e10) {
+  return e10 == null ? "—" : (e10 * 1e10).toExponential(1).replace("+", "") + " p";
+}
+
+function beamFmtAge(s) {
+  if (s == null) return "";
+  return s < 120 ? `${Math.round(s)} s ago` : `${Math.round(s / 60)} min ago`;
+}
+
+async function beamUpdateStatus() {
+  let d;
+  try { d = await (await fetch("/beam/status")).json(); } catch (e) { return; }
+
+  const conn = document.getElementById("beam-conn");
+  const big = document.getElementById("beam-state-big");
+  const runStat = document.getElementById("run-beam");
+
+  if (!d.connected) {
+    conn.textContent = "disconnected" + (d.last_error ? ` — ${String(d.last_error).split("\n")[0]}` : "");
+    conn.style.color = "var(--bad)";
+    big.textContent = "NO DATA";
+    big.style.color = "var(--muted)";
+    ["beam-last-pulse", "beam-pulses-10m", "beam-protons-10m", "beam-avg-10m"]
+      .forEach(id => document.getElementById(id).textContent = "—");
+    document.getElementById("beam-updated").textContent = "";
+    runStat.textContent = "—";
+    return;
+  }
+  conn.textContent = "connected";
+  conn.style.color = "var(--ok)";
+
+  big.textContent = d.beam_on ? "BEAM ON" : "BEAM OFF";
+  big.style.color = d.beam_on ? "var(--ok)" : "var(--bad)";
+
+  document.getElementById("beam-last-pulse").textContent =
+    d.last_pulse_e10 != null ? `${beamFmtP(d.last_pulse_e10)} · ${beamFmtAge(d.seconds_since_pulse)}` : "—";
+  document.getElementById("beam-pulses-10m").textContent = d.pulses_10min ?? "—";
+  document.getElementById("beam-protons-10m").textContent = beamFmtP(d.protons_10min_e10);
+  document.getElementById("beam-avg-10m").textContent = beamFmtP(d.avg_pulse_e10);
+  if (d.csv_path) document.getElementById("beam-csv-path").textContent = d.csv_path;
+  document.getElementById("beam-updated").textContent =
+    d.timestamp ? `updated ${d.timestamp.split("T")[1] || ""} · query ${d.query_s ?? "?"} s` : "";
+
+  // Kerberos expiry is the one silent failure mode — show it, red when < 12 h left.
+  const krb = document.getElementById("beam-krb");
+  if (d.krb_valid_until) {
+    const hoursLeft = (new Date(d.krb_valid_until) - Date.now()) / 3.6e6;
+    krb.textContent = `Kerberos ticket valid until ${d.krb_valid_until.replace("T", " ")} `
+                    + `(${hoursLeft.toFixed(0)} h) — reseed with kinit on the DAQ PC.`;
+    krb.style.color = hoursLeft < 12 ? "var(--bad)" : "";
+  } else {
+    krb.textContent = "";
+  }
+
+  // Mirror into the Run Control header (Overview tab): show the duty-cycle-aware
+  // delivery RATE (protons in the last 10 min / 10) rather than a single pulse.
+  const pPerMin = d.protons_10min_e10 != null
+    ? beamFmtP(d.protons_10min_e10 / 10) + "/min" : "—";
+  runStat.innerHTML = d.beam_on
+    ? `<span style="color:var(--ok);">ON</span> · ${pPerMin}`
+    : `<span style="color:var(--bad);">OFF</span> · ${beamFmtAge(d.seconds_since_pulse)}`;
+}
+
+async function beamRenderPlot() {
+  if (typeof Plotly === "undefined") return;
+  let h;
+  try { h = await (await fetch("/beam/history?hours=6&max_points=3000")).json(); } catch (e) { return; }
+  if (!h || !h.success) return;
+  const axis = { gridcolor: '#242e39', zerolinecolor: '#38434f', linecolor: '#38434f' };
+  const win = h.delivery_window_min || 10;
+  const layout = {
+    hovermode: "closest",
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: "#8b96a5" }, hoverlabel: { bgcolor: "#1b222b", bordercolor: "#38434f" },
+    legend: { orientation: "h", y: -0.22, yanchor: "top" },
+    margin: { t: 20, r: 64, b: 48, l: 60 }, xaxis: { ...axis },
+    yaxis: { title: { text: "Intensity (10¹⁰ p / pulse)", font: { size: 14, color: "#4dabe8" } },
+             ...axis, rangemode: "tozero" },
+    // Right axis: proton delivery RATE (trailing-window sum / window), a different
+    // quantity from per-pulse intensity, so it gets its own scale.
+    yaxis2: { title: { text: "Protons / min (10¹⁰)", font: { size: 14, color: "#5cc98a" } },
+              ...axis, overlaying: "y", side: "right", rangemode: "tozero", showgrid: false },
+  };
+  // One marker per TOF cycle (zeros included, so beam-off gaps are visible) —
+  // markers, not lines: pulses are discrete and a line just draws noise.
+  // Plain SVG scatter (not scattergl): ~3000 points is light, and it keeps the
+  // plot working on machines/browsers without WebGL.
+  const markers = { x: h.time, y: h.intensity, name: "Pulse intensity",
+                    type: "scatter", mode: "markers", marker: { color: "#4dabe8", size: 4 } };
+  // Per-pulse rolling mean — beam QUALITY (blind to duty cycle). Beam tab only.
+  const avgLine = (h.avg_time && h.avg_time.length)
+    ? { x: h.avg_time, y: h.avg_intensity, name: `${h.avg_window_min || 10}-min avg pulse`,
+        mode: "lines", line: { color: "#c98500", width: 2 } }
+    : null;
+  // Duty-cycle-aware delivery as a per-minute rate: the trailing-window proton
+  // sum divided by the window. Falls to zero during beam-off, unlike avg pulse.
+  const rateLine = (h.delivery_time && h.delivery_time.length)
+    ? { x: h.delivery_time, y: h.delivery_intensity.map(v => v / win),
+        name: "Protons / min", mode: "lines", yaxis: "y2",
+        line: { color: "#5cc98a", width: 2 } }
+    : null;
+  // Beam tab and Overview mirror show the same three: per-pulse markers, the
+  // per-pulse average (quality), and the protons/min delivery rate (right axis).
+  const traces = [markers, avgLine, rateLine].filter(Boolean);
+  ["beam-plot", "beam-plot-overview"].forEach(id => {
+    if (document.getElementById(id)) {
+      Plotly.react(id, traces, { ...layout, uirevision: id }, { responsive: true, displaylogo: false });
+    }
+  });
+}
+
+// Plotly can't size a plot while its tab is hidden (display:none -> 0 width), so
+// (re)render when a tab showing a beam plot is shown.
+["#beam", "#overview"].forEach(sel =>
+  document.querySelector(`a[href="${sel}"]`).addEventListener("shown.bs.tab", beamRenderPlot));
+
+// Refresh the history plot on a timer, but only while a tab that shows it is visible.
+setInterval(() => {
+  const vis = document.getElementById("overview").classList.contains("active") ||
+              document.getElementById("beam").classList.contains("active");
+  if (vis) beamRenderPlot();
+}, 15000);
+
+beamUpdateStatus();
+setInterval(beamUpdateStatus, 5000);
+beamRenderPlot();   // initial draw (Overview is the default-active tab at load)
+
+// ---------------------------------------------------------------------------
+// Shift Overview tab
+// One /shift/status poll drives the banner + health cards; the two trend plots
+// reuse /gas/history and /hv_data. Only control: the two-step Emergency Stop.
+// ---------------------------------------------------------------------------
+
+function shiftVisible() { return document.getElementById("shift").classList.contains("active"); }
+function shNum(x, d = 2) { return (x == null || isNaN(x)) ? "—" : Number(x).toFixed(d); }
+function shFlag(ok) {
+  if (ok === true)  return '<span class="shift-flag-ok">✓</span>';
+  if (ok === false) return '<span class="shift-flag-bad">✗</span>';
+  return '<span class="shift-flag-na">·</span>';
+}
+function shFmtMin(m) {
+  if (m == null) return "—";
+  const t = Math.round(m), h = Math.floor(t / 60);
+  return h ? `${h}h${String(t % 60).padStart(2, "0")}m` : `${t % 60}m`;
+}
+function shFmtGap(s) {
+  if (s == null) return "—";
+  const t = Math.round(s), m = Math.floor(t / 60);
+  return m ? `${m}m ${t % 60}s` : `${t}s`;
+}
+function shSetLevel(el, level) {
+  el.className = el.className.replace(/\blv-\w+\b/g, "").trim() + " lv-" + level;
+}
+
+let shiftGasNominal = null;   // {argon_lnh, iso_pct} — for the plot's target line
+
+function shiftRenderBanner(d) {
+  const r = d.run;
+  const banner = document.getElementById("shift-banner");
+  shSetLevel(banner, r.color);
+  document.getElementById("shift-state").textContent = r.label;
+
+  let sub = `DAQ: ${r.daq_status} · Dream: ${r.dream_status} · HV: ${d.hv.state}`;
+  if (r.state === "TRANSITION") {
+    sub += ` — no data for ${shFmtGap(r.gap_s)} (normal up to ${shFmtGap(r.gap_ok_s)} between sub-runs)`;
+  } else if (r.state === "STALLED") {
+    sub += ` — NO DATA for ${shFmtGap(r.gap_s)} — get help / call the expert`;
+  }
+  document.getElementById("shift-substate").textContent = sub;
+
+  document.getElementById("shift-run").textContent = r.run_name;
+  document.getElementById("shift-subrun").textContent =
+    r.subrun_idx ? `${r.subrun_idx}/${r.subrun_total}` : (r.subrun || "—");
+  document.getElementById("shift-progress").textContent =
+    r.total_min ? `${shFmtMin(r.elapsed_min)} / ${shFmtMin(r.total_min)}` : "—";
+  document.getElementById("shift-events").textContent =
+    r.events != null ? r.events.toLocaleString() : "—";
+  document.getElementById("shift-rate").textContent = r.int_rate || "—";
+}
+
+function shiftRenderGas(g) {
+  const card = document.getElementById("shift-gas-card");
+  const state = document.getElementById("shift-gas-state");
+  const body = document.getElementById("shift-gas-body");
+  const note = document.getElementById("shift-gas-note");
+  shiftGasNominal = g.nominal || null;
+
+  if (!g.connected) {
+    shSetLevel(card, "bad");
+    state.textContent = "DISCONNECTED";
+    body.innerHTML = "";
+    note.textContent = g.last_error || "gas watcher not running";
+    return;
+  }
+  const lvl = g.level === "stale" ? "stale" : g.level;
+  shSetLevel(card, lvl);
+  state.textContent = { ok: "OK", bad: "CHECK GAS", stale: "STALE" }[g.level] || g.level;
+
+  const c = g.checks || {};
+  const argonOk = (c.argon_meas_ok === false || c.argon_set_ok === false) ? false
+                : (c.argon_meas_ok == null ? null : true);
+  const isoOk = (c.iso_meas_ok === false || c.iso_set_ok === false) ? false
+              : (c.iso_meas_ok == null ? null : true);
+  // measured / setpoint / nominal side by side, one row per quantity
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:auto 1fr 1fr 1fr auto;gap:2px 10px;">
+      <span class="k"></span><span class="k" style="text-align:right;">meas</span>
+      <span class="k" style="text-align:right;">set</span>
+      <span class="k" style="text-align:right;">nominal</span><span></span>
+      <span class="k">Argon ln/h</span>
+      <span style="text-align:right;">${shNum(g.argon.flow_lnh)}</span>
+      <span style="text-align:right;">${shNum(g.argon.set_lnh)}</span>
+      <span class="exp" style="text-align:right;">${shNum(g.nominal.argon_lnh, 1)}</span>
+      ${shFlag(argonOk)}
+      <span class="k">Iso %</span>
+      <span style="text-align:right;">${shNum(g.iso_pct_meas)}</span>
+      <span style="text-align:right;">${shNum(g.iso_pct_set)}</span>
+      <span class="exp" style="text-align:right;">${shNum(g.nominal.iso_pct, 1)}</span>
+      ${shFlag(isoOk)}
+      <span class="k">Total ln/h</span>
+      <span style="text-align:right;">${shNum(g.total_flow_lnh)}</span>
+      <span></span><span></span><span></span>
+    </div>`;
+  note.textContent = g.level === "stale"
+    ? `readback stale (${shFmtGap(g.age_s)} old) — is the gas watcher running?`
+    : `tolerance ±${g.tol.flow_lnh} ln/h, ±${g.tol.iso_pct} % · nominals in config/shift_expected.json`;
+}
+
+function shiftRenderHV(h) {
+  const card = document.getElementById("shift-hv-card");
+  const state = document.getElementById("shift-hv-state");
+  const body = document.getElementById("shift-hv-body");
+  const note = document.getElementById("shift-hv-note");
+
+  const stateTxt = { ok: "OK", warn: "RAMPING", bad: "CHECK HV", stale: "NO LIVE DATA", none: "NO DATA" };
+  shSetLevel(card, h.level === "none" ? "idle" : h.level);
+  state.textContent = stateTxt[h.level] || h.state;
+
+  if (!h.channels.length) {
+    body.innerHTML = "";
+    note.textContent = "no HV monitor data yet — appears once a run's HV monitoring starts";
+    return;
+  }
+  body.innerHTML = h.channels.map(ch => `
+    <div class="shift-row">
+      <span class="k">${ch.label}</span>
+      <span class="v">${shNum(ch.vmon, 1)} <span class="exp">/ ${ch.v0 == null ? "man" : shNum(ch.v0, 0)} V</span>
+        ${shFlag(ch.ok)}</span>
+    </div>`).join("");
+  const age = h.age_s != null ? `${shFmtGap(h.age_s)} old` : "";
+  note.textContent = h.level === "stale"
+    ? `last reading ${age} (${h.csv}) — HV is only monitored during a sub-run`
+    : `vmon / set, ±${h.tol_v} V · ${h.state} · ${h.csv} · ${age}`;
+}
+
+function shiftRenderHe3(p) {
+  const card = document.getElementById("shift-he3-card");
+  const state = document.getElementById("shift-he3-state");
+  const body = document.getElementById("shift-he3-body");
+  const note = document.getElementById("shift-he3-note");
+
+  if (!p.connected) {
+    // Placeholder until the gauge is hooked up — idle grey, not an alarm.
+    shSetLevel(card, "idle");
+    state.textContent = "NOT CONNECTED";
+    body.innerHTML = `
+      <div class="shift-row"><span class="k">Pressure</span><span class="v">—</span></div>`;
+    note.textContent = "gauge not installed yet — placeholder";
+    return;
+  }
+  shSetLevel(card, "ok");
+  state.textContent = "OK";
+  body.innerHTML = `
+    <div class="shift-row"><span class="k">Pressure</span>
+      <span class="v">${shNum(p.pressure, 3)} ${p.unit}</span></div>
+    ${p.expected != null ? `<div class="shift-row"><span class="k">Expected</span>
+      <span class="v exp">${shNum(p.expected, 3)} ${p.unit}</span></div>` : ""}`;
+  note.textContent = "";
+}
+
+function shiftRenderBeam(b) {
+  const card = document.getElementById("shift-beam-card");
+  const state = document.getElementById("shift-beam-state");
+  const body = document.getElementById("shift-beam-body");
+  const note = document.getElementById("shift-beam-note");
+
+  // intensity in 1e10 protons -> "8.2e12 p"
+  const p = e10 => e10 == null ? "—" : (e10 * 1e10).toExponential(1).replace("+", "") + " p";
+
+  if (!b || !b.connected) {
+    shSetLevel(card, "idle");
+    state.textContent = "NOT RUNNING";
+    body.innerHTML = `
+      <div class="shift-row"><span class="k">Last pulse</span><span class="v">—</span></div>`;
+    note.textContent = (b && b.last_error) || "beam watcher not running";
+    return;
+  }
+  shSetLevel(card, b.level);
+  state.textContent = { ok: "BEAM ON", warn: "BEAM OFF", stale: "STALE" }[b.level] || b.level;
+
+  const pulseAge = b.seconds_since_pulse != null ? ` · ${shFmtGap(b.seconds_since_pulse)} ago` : "";
+  body.innerHTML = `
+    <div class="shift-row"><span class="k">Last pulse</span>
+      <span class="v">${p(b.last_pulse_e10)}<span class="exp">${pulseAge}</span></span></div>
+    <div class="shift-row"><span class="k">Last 10 min</span>
+      <span class="v">${p(b.protons_10min_e10)}<span class="exp"> · ${b.pulses_10min ?? "—"} pulses</span></span></div>`;
+
+  if (b.level === "stale") {
+    note.textContent = `no fresh NXCALS data (${shFmtGap(b.age_s)} old) — check the beam watcher / Kerberos`;
+  } else if (b.krb_hours_left != null && b.krb_hours_left < 12) {
+    note.innerHTML = `<span class="shift-flag-bad">Kerberos ticket expires in ${b.krb_hours_left} h — run kinit on the DAQ PC</span>`;
+  } else if (b.level === "warn") {
+    note.textContent = "no protons on target — check the n_TOF status displays / CCC";
+  } else {
+    note.textContent = "FTN BCT477 (last BCT before target) via NXCALS";
+  }
+}
+
+function shiftRenderSystem(s) {
+  const card = document.getElementById("shift-sys-card");
+  const state = document.getElementById("shift-sys-state");
+  const body = document.getElementById("shift-sys-body");
+  if (!s || !s.mem) { state.textContent = "—"; return; }
+
+  const rows = [["Mem", s.mem], ["SSD", s.ssd], ["HDD", s.hdd]];
+  let worst = 0;
+  body.innerHTML = rows.map(([label, d]) => {
+    if (!d) return sysMakeBar(label, 0, "n/a");
+    worst = Math.max(worst, d.percent);
+    return sysMakeBar(label, d.percent, sysFormatBytes(d.used) + "/" + sysFormatBytes(d.total));
+  }).join("");
+  const lvl = worst < 80 ? "ok" : worst < 90 ? "warn" : "bad";
+  shSetLevel(card, lvl);
+  state.textContent = { ok: "OK", warn: "FILLING UP", bad: "NEARLY FULL" }[lvl];
+}
+
+async function shiftUpdate() {
+  let d;
+  try { d = await (await fetch("/shift/status")).json(); } catch (e) { return; }
+  if (!d.success) return;
+  shiftRenderBanner(d);
+  shiftRenderBeam(d.beam);
+  shiftRenderGas(d.gas);
+  shiftRenderHV(d.hv);
+  shiftRenderHe3(d.he3);
+  shiftRenderSystem(d.system);
+}
+
+// --- Trend plots (small; reuse the existing history endpoints + dark styling) ---
+async function shiftRenderPlots() {
+  if (typeof Plotly === "undefined") return;
+  const axis = { gridcolor: "#242e39", zerolinecolor: "#38434f", linecolor: "#38434f" };
+  const base = {
+    hovermode: "x unified",
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: "#8b96a5" }, hoverlabel: { bgcolor: "#1b222b", bordercolor: "#38434f" },
+    // Legend below the date tick labels (yanchor top so it hangs downward).
+    legend: { orientation: "h", y: -0.28, yanchor: "top" },
+    margin: { t: 8, r: 14, b: 44, l: 46 },
+  };
+  const cfg = { responsive: true, displaylogo: false };
+
+  // Beam: per-pulse intensity (markers so beam-off gaps show) + N-min average
+  // line. Same data/colors as the dedicated Beam tab, compact styling here.
+  try {
+    const h = await (await fetch("/beam/history?hours=6&max_points=3000")).json();
+    if (h && h.success) {
+      const win = h.delivery_window_min || 10;
+      const traces = [
+        { x: h.time, y: h.intensity, name: "Pulse intensity",
+          type: "scatter", mode: "markers", marker: { color: "#4dabe8", size: 4 } },
+      ];
+      if (h.avg_time && h.avg_time.length) {
+        traces.push({ x: h.avg_time, y: h.avg_intensity, mode: "lines",
+                      name: `${h.avg_window_min || 10}-min avg`,
+                      line: { color: "#c98500", width: 2 } });
+      }
+      // Duty-cycle-aware delivery rate on the right axis (see the Beam tab).
+      if (h.delivery_time && h.delivery_time.length) {
+        traces.push({ x: h.delivery_time, y: h.delivery_intensity.map(v => v / win),
+                      name: "Protons / min", mode: "lines", yaxis: "y2",
+                      line: { color: "#5cc98a", width: 2 } });
+      }
+      Plotly.react("shift-beam-plot", traces, {
+        ...base, uirevision: "shift-beam", xaxis: { ...axis },
+        margin: { ...base.margin, r: 52 },
+        yaxis: { title: { text: "10¹⁰ p / pulse", font: { size: 13, color: "#4dabe8" } },
+                 ...axis, rangemode: "tozero" },
+        yaxis2: { title: { text: "p/min (10¹⁰)", font: { size: 13, color: "#5cc98a" } },
+                  ...axis, overlaying: "y", side: "right", rangemode: "tozero", showgrid: false },
+      }, cfg);
+    }
+  } catch (e) { /* best-effort */ }
+
+  // Gas: total flow + isobutane % (second axis, like the Gas Mixer tab plot),
+  // with the nominal total flow as a dashed reference line.
+  try {
+    const h = await (await fetch("/gas/history?hours=6")).json();
+    if (h && h.success) {
+      const traces = [
+        { x: h.time, y: h.total_flow, name: "Total flow", mode: "lines",
+          line: { color: "#4dabe8", width: 2 } },
+        { x: h.time, y: h.iso_pct, name: "Iso %", yaxis: "y2", mode: "lines",
+          line: { color: "#199e70", width: 2, dash: "dot" } },
+      ];
+      if (shiftGasNominal && shiftGasNominal.argon_lnh != null && h.time.length) {
+        // nominal total = argon / (1 - iso%/100)
+        const tot = shiftGasNominal.argon_lnh / (1 - (shiftGasNominal.iso_pct || 0) / 100);
+        traces.push({ x: [h.time[0], h.time[h.time.length - 1]], y: [tot, tot],
+                      name: "Nominal", mode: "lines",
+                      line: { color: "#8b96a5", width: 1.5, dash: "dash" }, hoverinfo: "skip" });
+      }
+      const rng = gasNiceRange(h.total_flow, { includeZero: true });
+      const rngIso = gasNiceRange(h.iso_pct, { includeZero: true });
+      Plotly.react("shift-gas-plot", traces, {
+        ...base, uirevision: "shift-gas", margin: { ...base.margin, r: 40 },
+        xaxis: { ...axis },
+        yaxis: { title: { text: "ln/h", font: { size: 13, color: "#4dabe8" } }, ...axis,
+                 ...(rng ? { range: rng, autorange: false } : {}) },
+        yaxis2: { title: { text: "Iso %", font: { size: 13, color: "#199e70" } },
+                  overlaying: "y", side: "right", showgrid: false,
+                  zerolinecolor: "#38434f", linecolor: "#38434f",
+                  ...(rngIso ? { range: rngIso, autorange: false } : {}) },
+      }, cfg);
+    }
+  } catch (e) { /* best-effort */ }
+
+  // HV: voltages of the current subrun (same data/colors as the Overview plot).
+  try {
+    const data = await fetchHVData();
+    if (data) {
+      const traces = Object.entries(data.voltage).map(([key, values]) => ({
+        x: data.time, y: values, mode: "lines", name: key,
+        line: { color: hvTraceColor(key), width: 2 },
+      }));
+      Plotly.react("shift-hv-plot", traces, {
+        ...base, uirevision: "shift-hv", xaxis: { ...axis },
+        yaxis: { title: { text: "V", font: { size: 13, color: "#cbd5e1" } }, ...axis },
+      }, cfg);
+    }
+  } catch (e) { /* best-effort */ }
+}
+
+// --- Emergency Stop: two-step (arm, then confirm within 5 s) ---
+let estopArmed = false, estopDisarmTimer = null;
+const estopBtn = document.getElementById("shift-estop");
+const estopNote = document.getElementById("shift-estop-note");
+
+function estopDisarm() {
+  estopArmed = false;
+  clearTimeout(estopDisarmTimer);
+  estopBtn.classList.remove("armed");
+  estopBtn.innerHTML = 'Emergency Stop<span class="estop-sub">stops gas · run · HV</span>';
+}
+
+estopBtn.addEventListener("click", async () => {
+  if (!estopArmed) {
+    estopArmed = true;
+    estopBtn.classList.add("armed");
+    estopBtn.innerHTML = 'Confirm STOP<span class="estop-sub">click again — cancels in 5 s</span>';
+    estopDisarmTimer = setTimeout(estopDisarm, 5000);
+    return;
+  }
+  // Second click: fire.
+  estopDisarm();
+  estopBtn.disabled = true;
+  estopBtn.textContent = "STOPPING…";
+  estopNote.textContent = "";
+  let d = null;
+  try {
+    d = await (await fetch("/shift/emergency_stop", { method: "POST" })).json();
+  } catch (e) { /* handled below */ }
+  estopBtn.disabled = false;
+  estopDisarm();
+  if (!d) {
+    estopNote.innerHTML = '<span class="shift-flag-bad">✗ request failed — is the server up?</span>';
+    showPopup("Emergency stop request failed!", "#dc3545");
+    return;
+  }
+  const r = d.results || {};
+  const line = (name, x) => `${name} ${x && x.ok ? '<span class="shift-flag-ok">✓</span>'
+                                                : '<span class="shift-flag-bad">✗</span>'}`;
+  estopNote.innerHTML =
+    `${new Date().toLocaleTimeString()} — ${line("gas", r.gas)} · ${line("run", r.run)} · ${line("HV", r.hv)}`;
+  showPopup(d.message, d.success ? "#dc3545" : "#fd7e14");
+  shiftUpdate();
+});
+
+// --- Polling: banner/cards every 3 s, plots every 15 s, only while visible ---
+setInterval(() => { if (shiftVisible()) shiftUpdate(); }, 3000);
+setInterval(() => { if (shiftVisible()) shiftRenderPlots(); }, 15000);
+setInterval(() => {
+  document.getElementById("shift-clock").textContent =
+    new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}, 1000);
+
+// Plotly can't size plots in a hidden tab, so (re)draw on tab-show; also do the
+// initial draw when Shift is the landing tab (view-only users).
+document.querySelector('a[href="#shift"]').addEventListener("shown.bs.tab", () => {
+  shiftUpdate();
+  shiftRenderPlots();
+});
+if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
 </script>
 {% endblock %}

@@ -2,9 +2,17 @@
 """
 DAQ monitor: periodically checks session statuses and sends Telegram alerts.
 
-Rules are defined as methods named rule_<name>(self) -> (bool, str).
-  bool : True = currently in alert state
-  str  : human-readable description of the current state
+Rules are defined as methods named rule_<name>(self) -> (alert, str).
+  alert : falsy (False/None/"")  = no alert
+          True                   = alert at the default "alert" severity
+          a severity name        = alert at that severity ("warning", "alert",
+                                   "critical", "emergency")
+  str   : human-readable description of the current state
+
+Returning a plain bool keeps the old behaviour (True -> "alert"), so existing
+rules need no changes. A rule that wants a graded response returns the severity
+name instead of True; escalating from one severity to a higher one forces an
+immediate re-send even if the resend interval has not elapsed.
 
 To add a rule, add a rule_* method to DaqMonitor.
 To disable a rule without deleting it, add  "rule_<name>": false  to the
@@ -13,6 +21,7 @@ To disable a rule without deleting it, add  "rule_<name>": false  to the
 
 import os
 import json
+import shutil
 import threading
 from datetime import datetime
 
@@ -21,9 +30,41 @@ import requests
 from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_daq_control_status, get_processor_watcher_status,
                         get_qa_watcher_status, get_gas_watcher_status,
-                        GAS_STATE_FILE)
+                        get_beam_watcher_status, get_run_progress, status_field,
+                        GAS_STATE_FILE, BEAM_STATE_FILE)
 
 TELEGRAM_URL = "https://api.telegram.org/bot{token}/{method}"
+
+# Sentinel distinguishing "no per-rule resend override in config" from an
+# override explicitly set to null (which means "never repeat").
+_UNSET = object()
+
+# Alert severities, lowest to highest. rank drives escalation (a higher rank
+# than the last sent forces an immediate re-send); emoji/label drive the message.
+SEVERITY_META = {
+    "warning":   {"rank": 1, "emoji": "🟡", "label": "WARNING"},
+    "alert":     {"rank": 2, "emoji": "⚠️", "label": "ALERT"},
+    "critical":  {"rank": 3, "emoji": "🔴", "label": "CRITICAL"},
+    "emergency": {"rank": 4, "emoji": "🚨", "label": "EMERGENCY"},
+}
+
+
+def _severity_rank(severity):
+    return SEVERITY_META.get(severity, SEVERITY_META["alert"])["rank"]
+
+
+def normalize_alert(ret):
+    """Turn a rule's (alert, detail) return into (severity|None, detail).
+
+    falsy alert -> None (no alert); True -> "alert"; a known severity name ->
+    itself; any other truthy value -> "alert" (fail safe, still notifies)."""
+    alert, detail = ret
+    if not alert:
+        return None, detail
+    if alert is True:
+        return "alert", detail
+    sev = str(alert).lower()
+    return (sev if sev in SEVERITY_META else "alert"), detail
 
 
 # ---------------------------------------------------------------------------
@@ -83,17 +124,28 @@ def get_bot_username(token):
 # ---------------------------------------------------------------------------
 
 class DaqMonitor:
+    # Edge/event rules fire once on a transition and clear on the very next check.
+    # They must NOT emit a "RECOVERED" message (there is nothing to recover from) and
+    # their resend gap is irrelevant because they self-clear. See rule_run_ended /
+    # rule_long_run_warning.
+    _EVENT_RULES = {"rule_run_ended", "rule_long_run_warning"}
+
     def __init__(self, config_path):
         self.config_path = config_path
         self.config = self._load_config()
+
+        # State for the edge/event rules (see _EVENT_RULES).
+        self._prev_daq_status = None    # last daq_control status seen by rule_run_ended
+        self._long_run_warned = set()   # run names already given the 10-min warning
 
         self._thread = None
         self._stop_event = threading.Event()
 
         # Per-rule state
-        self._alert_active = {}   # rule_name → bool
-        self._alert_sent_at = {}  # rule_name → datetime
-        self._pending_since = {}  # rule_name → datetime | None (condition first went True)
+        self._alert_active = {}    # rule_name → bool
+        self._alert_severity = {}  # rule_name → severity name of the last alert sent
+        self._alert_sent_at = {}   # rule_name → datetime
+        self._pending_since = {}   # rule_name → datetime | None (condition first went True)
 
         self.last_check_time = None
         self.last_alert_time = None
@@ -136,8 +188,19 @@ class DaqMonitor:
         return self.config.get("check_interval_seconds", 60)
 
     @property
+    def default_resend_minutes(self):
+        """Raw resend_interval_minutes config value (None means repeats are
+        disabled by default)."""
+        return self.config.get("resend_interval_minutes", 30)
+
+    @property
     def resend_interval(self):
-        return self.config.get("resend_interval_minutes", 30) * 60
+        """Seconds between repeated alerts, used by rules with no per-rule
+        override. None means repeats are disabled by default (a re-send only
+        happens if the alert's severity changes, e.g. warning -> critical or
+        critical -> warning; see `escalated` in _check_all_rules)."""
+        minutes = self.config.get("resend_interval_minutes", 30)
+        return minutes * 60 if minutes is not None else None
 
     def _is_rule_enabled(self, name):
         return self.config.get("rules", {}).get(name, True)
@@ -161,11 +224,29 @@ class DaqMonitor:
             first_para = doc.split("\n\n", 1)[0]
             description = " ".join(first_para.split())
             label = name[len("rule_"):].replace("_", " ")
+
+            raw = self._rule_resend_minutes_raw(name)
+            if raw is _UNSET:
+                resend_mode = "default"
+                resend_minutes = None
+            elif raw is None:
+                resend_mode = "never"
+                resend_minutes = None
+            else:
+                resend_mode = "minutes"
+                resend_minutes = raw
+            effective_secs = self._rule_resend_interval_secs(name)
+
             rules.append({
                 "name": name,
                 "label": label,
                 "description": description,
                 "enabled": self._is_rule_enabled(name),
+                "resend_mode": resend_mode,
+                "resend_minutes": resend_minutes,
+                "resend_effective_minutes": (
+                    None if effective_secs is None else effective_secs / 60
+                ),
             })
         return rules
 
@@ -177,6 +258,7 @@ class DaqMonitor:
         # Clear any live alert state so a just-disabled rule stops nagging and a
         # re-enabled one starts fresh rather than firing on stale state.
         self._alert_active.pop(name, None)
+        self._alert_severity.pop(name, None)
         self._alert_sent_at.pop(name, None)
         self._pending_since.pop(name, None)
         self.save_config()
@@ -186,12 +268,49 @@ class DaqMonitor:
         """Seconds the condition must be True before an alert is sent (default 0)."""
         return self.config.get("rule_options", {}).get(name, {}).get("min_duration_seconds", 0)
 
+    def _rule_resend_minutes_raw(self, name):
+        """This rule's raw resend_minutes override: a number, None (explicitly
+        set to "never repeat"), or _UNSET (no override -> use the global default)."""
+        return self.config.get("rule_options", {}).get(name, {}).get("resend_minutes", _UNSET)
+
     def _rule_resend_interval_secs(self, name):
-        """Seconds between repeated alerts for this rule (default: global resend_interval)."""
-        minutes = self.config.get("rule_options", {}).get(name, {}).get("resend_minutes", None)
-        if minutes is not None:
-            return minutes * 60
-        return self.resend_interval
+        """Seconds between repeated alerts for this rule, or None if repeats are
+        disabled (a re-send only happens on recovery+re-trigger, or on a severity
+        change for graded rules — see `escalated` in _check_all_rules). Falls back
+        to the global resend_interval when the rule has no override."""
+        minutes = self._rule_resend_minutes_raw(name)
+        if minutes is _UNSET:
+            return self.resend_interval
+        if minutes is None:
+            return None
+        return minutes * 60
+
+    def set_rule_resend(self, name, mode, minutes=None):
+        """Set a rule's repeat behavior. mode is one of:
+          "default" - use the global resend_interval (clears any override)
+          "never"   - no periodic re-sends; still re-notifies immediately on a
+                      severity change (graded rules) or on recovery+re-trigger
+          "minutes" - repeat every `minutes` minutes (must be > 0)
+        Returns (ok, error)."""
+        if name not in self._rule_names():
+            return False, f"Unknown rule: {name}"
+        opts = self.config.setdefault("rule_options", {}).setdefault(name, {})
+        if mode == "default":
+            opts.pop("resend_minutes", None)
+        elif mode == "never":
+            opts["resend_minutes"] = None
+        elif mode == "minutes":
+            try:
+                minutes = float(minutes)
+            except (TypeError, ValueError):
+                return False, "minutes must be a number"
+            if minutes <= 0:
+                return False, "minutes must be positive"
+            opts["resend_minutes"] = minutes
+        else:
+            return False, f"Unknown mode: {mode}"
+        self.save_config()
+        return True, None
 
     # ---------------------------------------------------------------
     # Thread control
@@ -250,11 +369,12 @@ class DaqMonitor:
             if not self._is_rule_enabled(name):
                 continue
             try:
-                is_alert, detail = fn()
+                severity, detail = normalize_alert(fn())
             except Exception as e:
                 print(f"[monitor] Rule {name} raised: {e}")
                 continue
 
+            is_alert = severity is not None
             was_alert = self._alert_active.get(name, False)
             last_sent = self._alert_sent_at.get(name)
             now = datetime.now()
@@ -268,30 +388,42 @@ class DaqMonitor:
                 min_dur = self._rule_min_duration(name)
 
                 if elapsed >= min_dur:
+                    prev_severity = self._alert_severity.get(name)
                     resend_secs = self._rule_resend_interval_secs(name)
-                    resend_due = last_sent is None or (now - last_sent).total_seconds() > resend_secs
-                    if not was_alert or resend_due:
-                        self._send_alert(name, detail)
+                    # resend_secs is None -> repeats disabled: only the first send
+                    # in an episode is due; escalation (below) can still resend.
+                    resend_due = last_sent is None or (
+                        resend_secs is not None and (now - last_sent).total_seconds() > resend_secs
+                    )
+                    # Escalating to a higher severity notifies immediately, so a
+                    # slow slide (warning → critical) is not masked by the resend gap.
+                    escalated = severity != prev_severity
+                    if not was_alert or resend_due or escalated:
+                        self._send_alert(name, detail, severity)
                     self._alert_active[name] = True
+                    self._alert_severity[name] = severity
                 else:
                     pending_remaining = int(min_dur - elapsed)
                     print(f"[monitor] {name} in alert state — waiting {pending_remaining}s more before alerting.")
             else:
-                if was_alert:
+                # Event rules self-clear each check; a "RECOVERED" for them is spurious.
+                if was_alert and name not in self._EVENT_RULES:
                     self._send_recovery(name)
                 self._alert_active[name] = False
+                self._alert_severity.pop(name, None)
                 self._pending_since[name] = None  # reset pending timer
 
     # ---------------------------------------------------------------
     # Sending
     # ---------------------------------------------------------------
 
-    def _send_alert(self, rule_name, detail):
+    def _send_alert(self, rule_name, detail, severity="alert"):
         if not self.token or not self.chat_id:
             print(f"[monitor] Alert triggered ({rule_name}) but Telegram not configured.")
             return
+        meta = SEVERITY_META.get(severity, SEVERITY_META["alert"])
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"⚠️ <b>DAQ ALERT</b>\n<code>{rule_name}</code>\n{detail}\n<i>{ts}</i>"
+        msg = f"{meta['emoji']} <b>DAQ {meta['label']}</b>\n<code>{rule_name}</code>\n{detail}\n<i>{ts}</i>"
         ok, err = send_telegram(self.token, self.chat_id, msg)
         if ok:
             self._alert_sent_at[rule_name] = datetime.now()
@@ -324,7 +456,18 @@ class DaqMonitor:
     # ---------------------------------------------------------------
 
     def status_dict(self):
-        active = [name for name, v in self._alert_active.items() if v]
+        # Annotate each active alert with its severity label, highest first, so the
+        # UI strip reads e.g. "ssd disk space [CRITICAL]". Kept as plain strings so
+        # the existing join()-based rendering still works.
+        active_pairs = sorted(
+            ((name, self._alert_severity.get(name, "alert"))
+             for name, v in self._alert_active.items() if v),
+            key=lambda p: _severity_rank(p[1]), reverse=True,
+        )
+        active = [
+            f"{name[len('rule_'):].replace('_', ' ')} [{SEVERITY_META.get(sev, SEVERITY_META['alert'])['label']}]"
+            for name, sev in active_pairs
+        ]
         return {
             "running": self.is_running,
             "enabled": self.enabled,
@@ -392,6 +535,60 @@ class DaqMonitor:
             return True, "gas_watcher is not publishing fresh readings (state file is stale)."
         return False, f"gas_watcher: {status}"
 
+    def rule_beam_watcher_dead(self):
+        """Alert if the beam-intensity watcher is not running or not producing fresh
+        NXCALS data (dead session, failing queries, or an expired Kerberos ticket) —
+        in that state beam logging is down and rule_beam_off below is blind."""
+        info = get_beam_watcher_status()
+        status = info["status"]
+        if status == "STOPPED":
+            return True, "beam_watcher is not running — beam intensity logging is down."
+        if status == "No NXCALS":
+            return True, ("beam_watcher is up but NXCALS queries are failing — "
+                          "likely an expired Kerberos ticket (kinit on the DAQ PC).")
+        if status == "Stale":
+            return True, "beam_watcher is not publishing fresh data (state file is stale)."
+        return False, f"beam_watcher: {status}"
+
+    def rule_beam_off(self):
+        """Warn when the n_TOF beam has been off for a while (no proton pulse on
+        target). Purely informational — beam availability is the facility's doing,
+        not ours — but shifters want to know without watching the vistar. Graded:
+        escalates to a higher severity the longer the beam stays off.
+
+        Tunable via rule_options.rule_beam_off in monitor_config.json:
+          thresholds — {severity: off_minutes} gradient, e.g.
+                       {"warning": 1, "alert": 10}. The highest severity whose
+                       minute threshold has been reached wins. Default: {"warning":
+                       10} (must be comfortably above normal supercycle gaps and
+                       NXCALS latency).
+          off_minutes — legacy single-level form (used only if "thresholds" is
+                        absent): pulse gap that counts as "beam down" at "warning".
+        """
+        opts = self.config.get("rule_options", {}).get("rule_beam_off", {})
+        thresholds = opts.get("thresholds") or {"warning": opts.get("off_minutes", 10)}
+        try:
+            with open(BEAM_STATE_FILE) as f:
+                st = json.load(f)
+        except Exception:
+            return False, "beam state not available (watcher not running)"
+        if not st.get("connected"):
+            return False, "beam watcher disconnected (covered by rule_beam_watcher_dead)"
+        gap = st.get("seconds_since_pulse")
+        if gap is None:
+            return False, "no beam pulse seen yet since the watcher started"
+        gap_min = gap / 60
+
+        # Highest severity whose minute threshold has been reached.
+        severity = None
+        for sev, thr in sorted(thresholds.items(), key=lambda kv: kv[1]):
+            if gap_min >= float(thr):
+                severity = sev
+        if severity:
+            return severity, (f"n_TOF beam has been OFF for {gap_min:.0f} min "
+                              f"(last pulse {st.get('last_pulse_time')}).")
+        return False, f"beam on (last pulse {gap:.0f}s ago)"
+
     def rule_gas_flow_starved(self):
         """Alert if a gas channel's measured flow stays far below its setpoint while
         the valve is wound open — the signature of an empty bottle / lost supply
@@ -447,3 +644,103 @@ class DaqMonitor:
         if starved:
             return True, "Gas flow starved (check supply bottle/pressure) — " + "; ".join(starved)
         return False, "gas flow OK"
+
+    # ---- Disk space ----------------------------------------------------
+
+    # Default gradient: percent-full at/above which each severity kicks in.
+    # Override per rule via rule_options.<rule>.thresholds in monitor_config.json,
+    # e.g. {"warning": 75, "critical": 92}. Missing keys fall back to these.
+    _DISK_THRESHOLDS = {"warning": 70, "alert": 80, "critical": 90, "emergency": 95}
+
+    def _disk_space_alert(self, rule_name, path, label):
+        """Graded disk-space check: returns (severity|False, detail) for `path`."""
+        opts = self.config.get("rule_options", {}).get(rule_name, {})
+        thresholds = dict(self._DISK_THRESHOLDS, **(opts.get("thresholds") or {}))
+
+        try:
+            usage = shutil.disk_usage(path)
+        except Exception as e:
+            # Not an alert (avoid nagging if a mount is briefly absent); just log.
+            return False, f"{label}: disk usage unavailable ({e})"
+
+        pct = usage.used / usage.total * 100 if usage.total else 0
+        gb = 1024 ** 3
+        detail = (f"{label} is {pct:.0f}% full — "
+                  f"{usage.used / gb:.0f}/{usage.total / gb:.0f} GB used, "
+                  f"{usage.free / gb:.0f} GB free.")
+
+        # Highest severity whose threshold the usage has reached.
+        severity = None
+        for sev, thr in sorted(thresholds.items(), key=lambda kv: kv[1]):
+            if pct >= thr:
+                severity = sev
+        if severity:
+            return severity, detail
+        return False, f"{label} OK — {pct:.0f}% full"
+
+    def rule_ssd_disk_space(self):
+        """Alert as the OS/system SSD (/) fills up. Graded: warning at 70%, then
+        alert / critical / emergency as it climbs (thresholds configurable via
+        rule_options.rule_ssd_disk_space.thresholds)."""
+        return self._disk_space_alert("rule_ssd_disk_space", "/", "SSD (/)")
+
+    def rule_hdd_disk_space(self):
+        """Alert as the data HDD (/mnt/data) fills up. Graded: warning at 70%, then
+        alert / critical / emergency as it climbs (thresholds configurable via
+        rule_options.rule_hdd_disk_space.thresholds)."""
+        return self._disk_space_alert("rule_hdd_disk_space", "/mnt/data", "HDD (/mnt/data)")
+
+    # ---- Run lifecycle (one-shot events, see _EVENT_RULES) -------------
+
+    def rule_run_ended(self):
+        """Notify once when a run finishes — daq_control transitions into "Run
+        Complete" (the end-of-run "donzo"). One-shot event: it fires on the
+        transition and clears immediately, so it neither nags nor sends a recovery.
+
+        The very first check after the monitor starts never fires (no prior state),
+        so a DAQ already sitting idle in "Run Complete" at startup won't false-trip."""
+        info = get_daq_control_status()
+        status = info["status"]
+        prev = self._prev_daq_status
+        self._prev_daq_status = status
+        if status == "Run Complete" and prev is not None and prev != "Run Complete":
+            run = status_field(info, "Run") or "?"
+            return True, f"Run <b>{run}</b> has ended (DAQ reported Run Complete)."
+        return False, f"daq_control: {status}"
+
+    def rule_long_run_warning(self):
+        """For a run scheduled to last longer than an hour, send a single warning
+        ~10 min before it is due to finish, so the shift crew can prep the next run.
+        One-shot event keyed on run name (fires at most once per run).
+
+        The scheduled length is the sum of the run's sub-run run_times (from its
+        run_config.json); "remaining" is that total minus elapsed, so it counts down
+        across all sub-runs, not per sub-run.
+
+        Tunable via rule_options.rule_long_run_warning in monitor_config.json:
+          min_run_minutes — only warn for runs scheduled longer than this (default 60)
+          warn_before_min — minutes-before-end at which to warn (default 10)
+        """
+        opts = self.config.get("rule_options", {}).get("rule_long_run_warning", {})
+        min_run = float(opts.get("min_run_minutes", 60))
+        warn_before = float(opts.get("warn_before_min", 10))
+
+        prog = get_run_progress()
+        total = prog.get("total_min")
+        elapsed = prog.get("elapsed_min")
+        run = prog.get("run")
+        if total is None or elapsed is None:
+            # No active run, or between sub-runs (ramp/prep) — nothing to warn about,
+            # and drop stale warned-run names so a re-run of the same name can warn again.
+            if run is None:
+                self._long_run_warned.clear()
+            return False, "no active run progress"
+        if total <= min_run:
+            return False, f"run scheduled {total:.0f} min (<= {min_run:.0f} min)"
+
+        remaining = total - elapsed
+        if 0 < remaining <= warn_before and run not in self._long_run_warned:
+            self._long_run_warned.add(run)
+            return "warning", (f"Run <b>{run}</b> ends in ~{remaining:.0f} min "
+                               f"({elapsed:.0f}/{total:.0f} min elapsed).")
+        return False, f"run {run}: {remaining:.0f} min left of {total:.0f} min"

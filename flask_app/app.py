@@ -29,7 +29,8 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_daq_control_status, get_processor_watcher_status,
                         get_qa_watcher_status, get_backup_watcher_status,
                         get_pedestal_watcher_status, get_n1081b_watcher_status,
-                        get_gas_watcher_status, get_he3_pressure_watcher_status)
+                        get_gas_watcher_status, get_he3_pressure_watcher_status,
+                        get_beam_watcher_status)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
 from run_config_beam import Config, BASE_DATA_DIR
@@ -42,6 +43,9 @@ from he3_pressure_reader.he3_pressure_controller import (HE3_PRESSURE_LOG_DIR,
                                                          PRESS_UNIT, clamp_period,
                                                          MIN_SAMPLE_PERIOD_S,
                                                          MAX_SAMPLE_PERIOD_S)
+from beam_monitor.beam_intensity_controller import (BEAM_LOG_DIR, BEAM_STATE_PATH,
+                                                    NXCALS_PYTHON, BEAM_UNIT,
+                                                    PULSE_THRESHOLD_E10)
 
 # BASE_DIR = "/home/dylan/PycharmProjects/nTof_x17_DAQ"
 BASE_DIR = "/home/mx17/PycharmProjects/nTof_x17_DAQ"
@@ -66,8 +70,12 @@ CURRENT_RUN_STATE_PATH = f"{BASE_DIR}/config/current_run_state.json"
 PAUSE_FLAG_PATH = f"{BASE_DIR}/.pause_run"
 # ANALYSIS_DIR = "/media/dylan/data/x17"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
-ANALYSIS_DIR = f'{BASE_DATA_DIR}analysis'
+# Online QA Viewer tab serves the per-run QA plots detector_qa.py writes under
+# analysis/online_qa/<run>/<subrun>/<detector>/.
+ANALYSIS_DIR = f'{BASE_DATA_DIR}analysis/online_qa'
 RUN_DIR = f'{BASE_DATA_DIR}runs'
+# Analysis Browser tab browses the whole analysis tree (manual/offline analyses
+# plus the online_qa/ subtree).
 GENERAL_ANALYSIS_DIR = f'{BASE_DATA_DIR}analysis'
 HV_TAIL = 1000  # number of most recent rows to show
 
@@ -76,6 +84,9 @@ LOG_FILE = f"{LOG_DIR}/daq_events.log"
 
 MONITOR_CONFIG_PATH = f"{BASE_DIR}/config/monitor_config.json"
 monitor = DaqMonitor(MONITOR_CONFIG_PATH)
+
+# Nominal targets + tolerances for the Shift Overview page (editable JSON).
+SHIFT_EXPECTED_PATH = f"{BASE_DIR}/config/shift_expected.json"
 
 # Gas mixer: the serial bus is owned by a SEPARATE process (gas_watcher.py / the
 # gas_watcher tmux session), not by Flask. Flask reads the watcher's published state
@@ -131,8 +142,9 @@ app.permanent_session_lifetime = timedelta(days=30)
 
 # Endpoints reachable even in view-only mode: the auth handshake and static
 # assets. Any other endpoint using a non-GET method is treated as control.
-# gas_zero is a safety action (emergency gas shutoff) — allowed even in view-only mode.
-_AUTH_EXEMPT_ENDPOINTS = {"control_login", "control_logout", "auth_status", "static", "gas_zero"}
+# gas_zero and emergency_stop are safety actions — allowed even in view-only mode.
+_AUTH_EXEMPT_ENDPOINTS = {"control_login", "control_logout", "auth_status", "static",
+                          "gas_zero", "emergency_stop"}
 
 
 def _client_ip():
@@ -224,7 +236,8 @@ def auth_status():
 
 
 TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
-                 "pedestal_watcher", "n1081b_watcher", "gas_watcher", "he3_pressure_watcher"]
+                 "pedestal_watcher", "n1081b_watcher", "gas_watcher", "he3_pressure_watcher",
+                 "beam_watcher"]
 # TEMPORARY: N1081B scan watcher (syncs .243 SecB module config to the HV scans).
 N1081B_WATCHER_TMUX = "n1081b_watcher"
 N1081B_WATCHER_SCRIPT = f"{BASE_DIR}/n1081b/n1081b_scan_watcher.py"
@@ -387,6 +400,8 @@ def status_all():
             info = get_gas_watcher_status()
         elif s == "he3_pressure_watcher":
             info = get_he3_pressure_watcher_status()
+        elif s == "beam_watcher":
+            info = get_beam_watcher_status()
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 
@@ -688,6 +703,38 @@ def stop_he3_pressure_watcher():
     try:
         subprocess.run(["tmux", "kill-session", "-t", "he3_pressure_watcher"], capture_output=True)
         return jsonify({"success": True, "message": "3He pressure watcher stopped"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/start_beam_watcher", methods=["POST"])
+def start_beam_watcher():
+    """Start the n_TOF beam-intensity watcher (sole owner of the NXCALS/Spark session:
+    pulls F16.BCT372.TOF:INTENSITY, logs it, and publishes beam on/off). Needs a valid
+    Kerberos ticket (kinit dneff@CERN.CH — same one as the EOS backup)."""
+    try:
+        # NOT sys.executable: pytimber + PySpark live in their own venv, not flask's.
+        if not os.path.exists(NXCALS_PYTHON):
+            return jsonify({"success": False,
+                            "message": f"NXCALS venv missing: {NXCALS_PYTHON} "
+                                       f"(see beam_monitor/README.md)"}), 500
+        subprocess.run(["tmux", "kill-session", "-t", "beam_watcher"], capture_output=True)
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", "beam_watcher",
+            NXCALS_PYTHON, f"{BASE_DIR}/beam_watcher.py"
+        ])
+        return jsonify({"success": True,
+                        "message": "Beam watcher started (first NXCALS query takes ~1 min)"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stop_beam_watcher", methods=["POST"])
+def stop_beam_watcher():
+    """Stop the beam watcher. Beam-intensity logging pauses until it restarts."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", "beam_watcher"], capture_output=True)
+        return jsonify({"success": True, "message": "Beam watcher stopped"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
@@ -1176,7 +1223,10 @@ def monitor_status():
 
 @app.route("/monitor/rules")
 def monitor_rules():
-    return jsonify({"rules": monitor.list_rules()})
+    return jsonify({
+        "rules": monitor.list_rules(),
+        "default_resend_minutes": monitor.default_resend_minutes,
+    })
 
 
 @app.route("/monitor/rule_toggle", methods=["POST"])
@@ -1190,6 +1240,20 @@ def monitor_rule_toggle():
     if not ok:
         return jsonify({"success": False, "message": err})
     return jsonify({"success": True, "name": name, "enabled": bool(enabled)})
+
+
+@app.route("/monitor/rule_resend", methods=["POST"])
+def monitor_rule_resend():
+    data = request.get_json(silent=True) or {}
+    name = data.get("name")
+    mode = data.get("mode")
+    minutes = data.get("minutes")
+    if name is None or mode is None:
+        return jsonify({"success": False, "message": "name and mode required."})
+    ok, err = monitor.set_rule_resend(name, mode, minutes)
+    if not ok:
+        return jsonify({"success": False, "message": err})
+    return jsonify({"success": True})
 
 
 @app.route("/monitor/fetch_chat_id", methods=["POST"])
@@ -1487,6 +1551,88 @@ def he3_pressure_history():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+# The NXCALS session is owned by the separate beam_watcher process (see
+# beam_monitor/beam_intensity_controller.py). Flask only reads the watcher's
+# published state and CSV history. Intensity is in 1e10 protons per pulse.
+
+def _beam_read_state():
+    """The beam watcher's latest published state, or a disconnected stub if it isn't
+    running yet / hasn't written the file."""
+    try:
+        with open(BEAM_STATE_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {"connected": False, "last_error": "beam watcher not running",
+                "unit": BEAM_UNIT, "beam_on": None}
+
+
+@app.route("/beam/status")
+def beam_status():
+    """Latest n_TOF beam-intensity summary published by the beam_watcher process."""
+    return jsonify(_beam_read_state())
+
+
+@app.route("/beam/history")
+def beam_history():
+    """Logged beam-pulse history from the per-day CSV(s) for a plot. Same shape as
+    /he3_pressure/history: `hours` trims the window, striding keeps the payload light."""
+    import glob
+    hours = request.args.get("hours", default=6.0, type=float)
+    max_points = request.args.get("max_points", default=1500, type=int)
+    try:
+        files = sorted(glob.glob(os.path.join(BEAM_LOG_DIR, "beam_intensity_*.csv")))
+        if not files:
+            return jsonify({"success": True, "time": [], "intensity": [], "unit": BEAM_UNIT})
+        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        # Early watcher versions could re-log the lookback window on restart:
+        # sort + dedup so old files still plot cleanly.
+        df = df.sort_values("timestamp").drop_duplicates(subset=["timestamp"])
+        avg_window_min = 10
+        # Compute the rolling series on the FULL loaded frame and trim to the
+        # display window afterwards: a trailing sum/mean can't see cycles before
+        # the left edge, so trimming first would undercount the first
+        # avg_window_min of the window.
+        #
+        # Two complementary measures, same window:
+        #  * avg — rolling mean of REAL pulses only (empty cycles excluded). Beam
+        #    QUALITY: how hot each pulse is when beam is on. Blind to duty cycle.
+        #  * delivery — rolling SUM over ALL cycles (empty ones included, so they
+        #    count as zero). Protons on target in the trailing window; this DROPS
+        #    to zero during beam-off, so it reflects duty cycle, not just quality.
+        pulses = df[df["intensity_e10"] >= PULSE_THRESHOLD_E10]
+        avg = (pulses.set_index("timestamp")["intensity_e10"]
+               .rolling(f"{avg_window_min}min").mean().reset_index())
+        delivery = (df.set_index("timestamp")["intensity_e10"]
+                    .rolling(f"{avg_window_min}min").sum().reset_index())
+        if hours and hours > 0:
+            cutoff = datetime.now() - timedelta(hours=hours)
+            df = df[df["timestamp"] >= cutoff]
+            avg = avg[avg["timestamp"] >= cutoff]
+            delivery = delivery[delivery["timestamp"] >= cutoff]
+        if len(avg) > max_points:
+            avg = avg.iloc[:: (len(avg) // max_points) + 1]
+        if len(delivery) > max_points:
+            delivery = delivery.iloc[:: (len(delivery) // max_points) + 1]
+        if len(df) > max_points:
+            df = df.iloc[:: (len(df) // max_points) + 1]
+        return jsonify({
+            "success": True,
+            "time": df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "intensity": df["intensity_e10"].round(3).tolist(),
+            "avg_time": avg["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "avg_intensity": avg["intensity_e10"].round(3).tolist(),
+            "avg_window_min": avg_window_min,
+            "delivery_time": delivery["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "delivery_intensity": delivery["intensity_e10"].round(1).tolist(),
+            "delivery_window_min": avg_window_min,
+            "unit": BEAM_UNIT,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/he3_pressure/config", methods=["GET", "POST"])
 def he3_pressure_config():
     """Get/set the pressure sample rate. The value is written to a config file the
@@ -1540,6 +1686,373 @@ def he3_pressure_config():
     return jsonify({"success": True, "poll_s": round(clamped, 3),
                     "sample_hz": round(1.0 / clamped, 4),
                     "min_hz": min_hz, "max_hz": max_hz, "warning": warning})
+
+
+# --- Shift Overview ---
+# One aggregate endpoint (/shift/status) so the shifter page needs a single poll,
+# plus the Emergency Stop action. Expected values: gas nominals come from
+# shift_expected.json (so a mistyped setpoint is flagged too); HV expected = the
+# v0 the HV monitor itself logs for the current subrun.
+
+_SHIFT_EXPECTED_DEFAULTS = {
+    "gas": {"argon_lnh": 7.0, "iso_pct": 5.0, "flow_tol_lnh": 0.25, "iso_tol_pct": 0.5},
+    "hv": {"tol_v": 5.0, "stale_s": 30},
+    "he3": {"expected_bar": None, "tol_bar": None},
+}
+
+# "Taking data happily" tracking: last time dream_daq was seen RUNNING. Between
+# subruns (HV ramp, file copy) this goes stale for a few minutes — that's normal,
+# so the page only alarms after a 5 min cushion. Baseline = server start, so a
+# fresh flask restart mid-transition doesn't immediately alarm either.
+SHIFT_DATA_GAP_OK_S = 300
+_shift_last_data_ts = None
+_shift_baseline_ts = time.time()
+
+
+def _shift_expected():
+    exp = json.loads(json.dumps(_SHIFT_EXPECTED_DEFAULTS))  # deep copy
+    try:
+        with open(SHIFT_EXPECTED_PATH) as f:
+            user = json.load(f)
+        for key, val in user.items():
+            if isinstance(val, dict) and isinstance(exp.get(key), dict):
+                exp[key].update(val)
+            elif not key.startswith("_"):
+                exp[key] = val
+    except Exception:
+        pass
+    return exp
+
+
+def _csv_last_row(path, max_tail=16384):
+    """(header_cols, last_complete_row_cols) of a CSV, reading only the tail.
+    Row is None if no complete data line is found. Tolerates a partial last
+    line (file mid-write) by requiring the field count to match the header."""
+    with open(path, 'rb') as f:
+        header = f.readline().decode(errors='replace')
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(max(len(header.encode()), size - max_tail))
+        tail = f.read().decode(errors='replace').strip().splitlines()
+    cols = [c.strip() for c in header.strip().split(',')]
+    for line in reversed(tail):
+        vals = line.split(',')
+        if len(vals) == len(cols) and vals[0] != cols[0]:
+            return cols, vals
+    return cols, None
+
+
+def _shift_latest_hv_csv(run_name, daq_subrun):
+    """Path of the hv_monitor.csv to read: the daq-reported subrun's if it exists,
+    else the most recently modified one in the current run. None if nothing."""
+    if not run_name:
+        return None
+    run_dir = os.path.join(RUN_DIR, run_name)
+    if not os.path.isdir(run_dir):
+        return None
+    if daq_subrun:
+        p = os.path.join(run_dir, daq_subrun, "hv_monitor.csv")
+        if os.path.isfile(p):
+            return p
+    newest, newest_t = None, 0
+    try:
+        for sub in os.listdir(run_dir):
+            p = os.path.join(run_dir, sub, "hv_monitor.csv")
+            if os.path.isfile(p):
+                t = os.path.getmtime(p)
+                if t > newest_t:
+                    newest, newest_t = p, t
+    except OSError:
+        pass
+    return newest
+
+
+def _shift_hv(run_name, daq_subrun, hv_status, exp):
+    """Per-channel expected-vs-measured HV from the latest hv_monitor.csv row.
+    Expected = the v0 the monitor logs (what hv_control is holding); tolerance and
+    staleness from shift_expected.json. level: ok / warn / bad / stale / none."""
+    tol = float(exp["hv"].get("tol_v", 5.0))
+    stale_s = float(exp["hv"].get("stale_s", 30))
+    out = {"channels": [], "age_s": None, "level": "none", "csv": None,
+           "state": hv_status.get("status", "?"), "tol_v": tol}
+
+    csv_path = _shift_latest_hv_csv(run_name, daq_subrun)
+    if not csv_path:
+        return out
+    out["csv"] = os.path.basename(os.path.dirname(csv_path))
+    try:
+        cols, row = _csv_last_row(csv_path)
+        out["age_s"] = round(time.time() - os.path.getmtime(csv_path), 1)
+    except Exception:
+        return out
+    if not row:
+        return out
+
+    # Map "slot:channel" -> "A_Drift" labels from the run's config json.
+    labels = {}
+    try:
+        with open(os.path.join(RUN_DIR, run_name, "run_config.json")) as f:
+            labels = _hv_channel_labels(json.load(f))
+    except Exception:
+        pass
+
+    def fnum(s):
+        try:
+            return float(s)
+        except (TypeError, ValueError):
+            return None
+
+    vals = dict(zip(cols, row))
+    keys = sorted({c.rsplit(' ', 1)[0] for c in cols if c.endswith(' vmon')})
+    ramping = hv_status.get("status") == "Ramping HV"
+    n_bad = 0
+    for key in keys:
+        v0 = fnum(vals.get(f"{key} v0"))
+        vmon = fnum(vals.get(f"{key} vmon"))
+        imon = fnum(vals.get(f"{key} imon"))
+        power = vals.get(f"{key} power", "").strip()
+        powered = power in ("1", "1.0", "True")
+        if v0 is None or vmon is None:
+            ok = None          # manual / unreadable channel: shown, not judged
+        elif v0 == 0:
+            ok = (not powered) or abs(vmon) <= tol
+        else:
+            ok = powered and abs(vmon - v0) <= tol
+        if ok is False:
+            n_bad += 1
+        out["channels"].append({
+            "key": key, "label": labels.get(key, key), "v0": v0, "vmon": vmon,
+            "imon": imon, "powered": powered, "ok": ok,
+        })
+    out["channels"].sort(key=lambda c: c["label"])
+
+    if out["age_s"] is not None and out["age_s"] > stale_s:
+        # Monitor only writes during a subrun — stale between subruns is normal.
+        out["level"] = "stale"
+    elif n_bad == 0:
+        out["level"] = "ok"
+    elif ramping:
+        out["level"] = "warn"   # differences expected mid-ramp
+    else:
+        out["level"] = "bad"
+    return out
+
+
+def _shift_gas(exp):
+    """Gas measured vs setpoint vs nominal, with pass/fail per comparison."""
+    st = _gas_read_state()
+    g = exp["gas"]
+    flow_tol = float(g.get("flow_tol_lnh", 0.25))
+    iso_tol = float(g.get("iso_tol_pct", 0.5))
+    nom_argon, nom_iso = g.get("argon_lnh"), g.get("iso_pct")
+
+    out = {"connected": bool(st.get("connected")), "level": "bad",
+           "nominal": {"argon_lnh": nom_argon, "iso_pct": nom_iso},
+           "tol": {"flow_lnh": flow_tol, "iso_pct": iso_tol},
+           "last_error": st.get("last_error")}
+    if not out["connected"]:
+        return out
+
+    argon, iso, der = st.get("argon", {}), st.get("iso", {}), st.get("derived", {})
+
+    def near(a, b, tol):
+        if a is None or b is None:
+            return None
+        return abs(a - b) <= tol
+
+    checks = {
+        "argon_meas_ok": near(argon.get("flow_lnh"), argon.get("set_lnh"), flow_tol),
+        "argon_set_ok":  near(argon.get("set_lnh"), nom_argon, flow_tol),
+        "iso_meas_ok":   near(der.get("iso_pct_meas"), der.get("iso_pct_set"), iso_tol),
+        "iso_set_ok":    near(der.get("iso_pct_set"), nom_iso, iso_tol),
+    }
+    try:
+        age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
+    except Exception:
+        age = None
+
+    out.update({
+        "argon": {"flow_lnh": argon.get("flow_lnh"), "set_lnh": argon.get("set_lnh")},
+        "iso": {"flow_lnh": iso.get("flow_lnh"), "set_lnh": iso.get("set_lnh")},
+        "total_flow_lnh": der.get("total_flow_lnh"),
+        "iso_pct_meas": der.get("iso_pct_meas"),
+        "iso_pct_set": der.get("iso_pct_set"),
+        "age_s": age, "checks": checks,
+    })
+    if age is not None and age > 15:
+        out["level"] = "stale"
+    elif all(v is not False for v in checks.values()):
+        out["level"] = "ok"
+    else:
+        out["level"] = "bad"
+    return out
+
+
+def _shift_beam():
+    """Beam on/off + intensity summary for the shift card, from the beam watcher's
+    published state. level: ok (beam on) / warn (beam off — facility, not us) /
+    stale (watcher down or data old) / none."""
+    st = _beam_read_state()
+    out = {"connected": bool(st.get("connected")), "level": "stale",
+           "beam_on": st.get("beam_on"),
+           "last_pulse_time": st.get("last_pulse_time"),
+           "last_pulse_e10": st.get("last_pulse_e10"),
+           "seconds_since_pulse": st.get("seconds_since_pulse"),
+           "pulses_10min": st.get("pulses_10min"),
+           "protons_10min_e10": st.get("protons_10min_e10"),
+           "avg_pulse_e10": st.get("avg_pulse_e10"),
+           "unit": st.get("unit", BEAM_UNIT),
+           "krb_valid_until": st.get("krb_valid_until"),
+           "last_error": st.get("last_error")}
+    if not out["connected"]:
+        return out
+    try:
+        age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
+    except Exception:
+        age = None
+    out["age_s"] = age
+    # Kerberos running out is the one silent failure mode (queries start failing when
+    # the ticket dies) — surface it while there is still time to reseed.
+    krb_hours_left = None
+    try:
+        krb_hours_left = (datetime.fromisoformat(st["krb_valid_until"])
+                          - datetime.now()).total_seconds() / 3600.0
+    except Exception:
+        pass
+    out["krb_hours_left"] = round(krb_hours_left, 1) if krb_hours_left is not None else None
+    if age is not None and age > 300:
+        out["level"] = "stale"
+    elif st.get("beam_on"):
+        out["level"] = "ok"
+    else:
+        out["level"] = "warn"
+    return out
+
+
+@app.route("/shift/status")
+def shift_status():
+    """Everything the Shift Overview page shows, in one poll."""
+    global _shift_last_data_ts
+    now = time.time()
+    exp = _shift_expected()
+
+    daq_info = get_daq_control_status()
+    dream_info = get_dream_daq_status()
+    hv_status = get_hv_control_status()
+    _save_current_run(_extract_daq_run(daq_info))
+
+    run_name = _current_run_cache
+    daq_state = daq_info.get("status", "?")
+    taking_data = dream_info.get("status") == "RUNNING"
+    run_active = daq_state not in ("WAITING", "Run Complete", "ERROR")
+    if taking_data:
+        _shift_last_data_ts = now
+    gap_s = now - (_shift_last_data_ts or _shift_baseline_ts)
+
+    if taking_data:
+        state, label, color = "TAKING_DATA", "Taking data", "ok"
+    elif run_active and gap_s < SHIFT_DATA_GAP_OK_S:
+        state, label, color = "TRANSITION", "Between sub-runs", "warn"
+    elif run_active:
+        state, label, color = "STALLED", "NOT taking data", "bad"
+    else:
+        state, label, color = "NO_RUN", "No run in progress", "idle"
+
+    prog = _run_progress(daq_info, dream_info)
+    events = (_ondisk_run_events(run_name) + _live_events_from(dream_info)) if run_name else 0
+
+    run = {
+        "state": state, "label": label, "color": color,
+        "run_name": run_name or "None",
+        "daq_status": daq_state,
+        "dream_status": dream_info.get("status", "?"),
+        "subrun": _status_field(daq_info, "Subrun"),
+        "subrun_idx": prog.get("subrun_idx"),
+        "subrun_total": prog.get("subrun_total"),
+        "elapsed_min": prog.get("elapsed_min"),
+        "total_min": prog.get("total_min"),
+        "events": events,
+        "int_rate": _status_field(dream_info, "Int Rate"),
+        "gap_s": round(gap_s, 1),
+        "gap_ok_s": SHIFT_DATA_GAP_OK_S,
+    }
+
+    he3 = _he3_pressure_read_state()
+    he3_out = {"connected": bool(he3.get("connected")),
+               "pressure": he3.get("pressure"), "unit": he3.get("unit", "bar"),
+               "expected": exp["he3"].get("expected_bar")}
+
+    system = {}
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+
+        def d(path):
+            try:
+                u = psutil.disk_usage(path)
+                return {"total": u.total, "used": u.used, "percent": u.percent}
+            except Exception:
+                return None
+        system = {"mem": {"total": mem.total, "used": mem.used, "percent": mem.percent},
+                  "ssd": d('/'), "hdd": d('/mnt/data')}
+    except Exception:
+        pass
+
+    return jsonify({
+        "success": True,
+        "time": datetime.now().strftime('%H:%M:%S'),
+        "run": run,
+        "gas": _shift_gas(exp),
+        "hv": _shift_hv(run_name, _status_field(daq_info, "Subrun"), hv_status, exp),
+        "he3": he3_out,
+        "beam": _shift_beam(),
+        "system": system,
+    })
+
+
+@app.route("/shift/emergency_stop", methods=["POST"])
+def emergency_stop():
+    """EMERGENCY STOP (shifter-accessible, no login — like /gas/zero):
+    1. zero the gas mixer, 2. stop the run, 3. power off the controlled HV
+    channels directly on the CAEN crate (emergency_hv_off.py, own session)."""
+    log_event('EMERGENCY_STOP', 'shift_page', remote_addr=_client_ip())
+    results = {}
+
+    # 1. Gas to zero (waits up to ~3 s for the gas_watcher's ack).
+    try:
+        r, _ = _gas_send_command({"cmd": "zero"})
+        results["gas"] = {"ok": bool(r.get("success")), "detail": r.get("message", "zeroed")}
+    except Exception as e:
+        results["gas"] = {"ok": False, "detail": str(e)}
+
+    # 2. Stop the whole run (flag + stop_dream; daq_control shuts down cleanly).
+    try:
+        subprocess.Popen([f"{BASH_DIR}/stop_run.sh"])
+        results["run"] = {"ok": True, "detail": "stop_run dispatched"}
+    except Exception as e:
+        results["run"] = {"ok": False, "detail": str(e)}
+
+    # 3. HV off, direct to the crate. Runs in the background (needs a CAEN login);
+    # output goes to logs/emergency_hv_off.log. cwd=BASE_DIR: Config() reads
+    # hv_creds.txt by relative path.
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        hv_log = open(f"{LOG_DIR}/emergency_hv_off.log", "a")
+        hv_log.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} from "
+                     f"{_client_ip()} =====\n")
+        hv_log.flush()
+        subprocess.Popen([sys.executable, f"{BASE_DIR}/emergency_hv_off.py"],
+                         cwd=BASE_DIR, stdout=hv_log, stderr=subprocess.STDOUT)
+        results["hv"] = {"ok": True, "detail": "HV power-off dispatched"}
+    except Exception as e:
+        results["hv"] = {"ok": False, "detail": str(e)}
+
+    ok = all(v["ok"] for v in results.values())
+    log_event('EMERGENCY_DONE', 'shift_page', remote_addr=_client_ip(),
+              gas=results["gas"]["ok"], run=results["run"]["ok"], hv=results["hv"]["ok"])
+    return jsonify({"success": ok, "results": results,
+                    "message": "Emergency stop: gas zeroed, run stopping, HV powering off"
+                               if ok else "Emergency stop dispatched with errors — check details"})
 
 
 def is_dream_daq_running():
