@@ -239,7 +239,7 @@ class Config(RunConfigBase):
                 'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
                 'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
-                    'x': -32.7,  # mm  tangential pinwheel shift (-X)
+                    'x': -16.35,  # mm  tangential pinwheel shift (-X)
                     'y': 0,  # mm
                     'z': 234.6,  # mm  +Z normal: mylar 204.5 + 30.1 (drift gap to mesh)
                 },
@@ -319,7 +319,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
                     'x': -234.1,  # mm  -X normal: mylar 204.0 + 30.1 (drift gap to mesh)
                     'y': 0,  # mm
-                    'z': -31.5,  # mm  tangential pinwheel shift (-Z)
+                    'z': -15.75,  # mm  tangential pinwheel shift (-Z)
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
@@ -397,7 +397,7 @@ class Config(RunConfigBase):
                 'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
                 'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
-                    'x': 34.6,  # mm  tangential pinwheel shift (+X)
+                    'x': 17.3,  # mm  tangential pinwheel shift (+X)
                     'y': 0,  # mm
                     'z': -234.6,  # mm  -Z normal: mylar 204.5 + 30.1 (drift gap to mesh)
                 },
@@ -478,7 +478,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
                     'x': 234.1,  # mm  +X normal: mylar 204.0 + 30.1 (drift gap to mesh)
                     'y': 0,  # mm
-                    'z': 31.0,  # mm  tangential pinwheel shift (+Z)
+                    'z': 15.5,  # mm  tangential pinwheel shift (+Z)
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
