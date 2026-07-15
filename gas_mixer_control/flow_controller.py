@@ -53,7 +53,9 @@ except ImportError:  # keep import-safe so the Flask app still boots without the
 # the per-day CSVs. Paths are resolved relative to the repo so watcher + Flask agree.
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_DIR = os.path.dirname(_MODULE_DIR)
-GAS_LOG_DIR = os.path.join(_MODULE_DIR, "logs")
+# Per-day flow CSVs live with the other slow-control logs (3He pressure, beam) under
+# ~/beam_july/slow_control/ on the data disk, not in the repo.
+GAS_LOG_DIR = os.path.expanduser("~/beam_july/slow_control/gas_flow")
 GAS_STATE_PATH = os.path.join(_REPO_DIR, "config", "gas_state.json")
 GAS_COMMAND_PATH = os.path.join(_REPO_DIR, "config", "gas_command.json")
 

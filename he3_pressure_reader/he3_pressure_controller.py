@@ -48,7 +48,9 @@ except ImportError:  # keep import-safe so the Flask app still boots without the
 # to the repo so watcher + Flask agree.
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_DIR = os.path.dirname(_MODULE_DIR)
-HE3_PRESSURE_LOG_DIR = os.path.join(_MODULE_DIR, "logs")
+# Per-day pressure CSVs live with the other slow-control logs (gas, beam) under
+# ~/beam_july/slow_control/ on the data disk, not in the repo. See gas/beam controllers.
+HE3_PRESSURE_LOG_DIR = os.path.expanduser("~/beam_july/slow_control/he3_pressure")
 HE3_PRESSURE_STATE_PATH = os.path.join(_REPO_DIR, "config", "he3_pressure_state.json")
 # The Flask app writes the desired sample period here; the watcher reads it each loop
 # and applies it within one cycle (read-only monitor, so a plain config file — no
@@ -134,6 +136,13 @@ class He3PressureController:
             # Configure the measurement function once; return the reading only.
             inst.write(f":CONFigure:{self.func}".encode())
             inst.write(b":FORMat:ELEMents READing")
+            # Silence the front-panel beeper. This is a headless, read-only monitor:
+            # the beeper only causes the ~1 Hz nuisance beep (a limit test left enabled
+            # on the box beeps once per reading). Re-applied on every reconnect because
+            # the 2000 resets the beeper to ON on power-up. Verified 2026-07-15: the
+            # watcher's command sequence generates no SCPI errors, so this is the sole
+            # beep source.
+            inst.write(b":SYSTem:BEEPer:STATe OFF")
         except Exception as e:
             self.last_error = (f"could not open/configure Keithley on board {self.board} "
                                f"@ pad {self.pad}: {e}")

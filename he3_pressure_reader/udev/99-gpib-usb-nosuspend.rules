@@ -1,0 +1,15 @@
+# Keep the NI GPIB-USB-HS (3923:709b) powered on — never let the USB port
+# autosuspend it. A suspended GPIB-USB-HS frequently comes back WEDGED: the
+# device re-enumerates but its GPIB chip stalls every register write
+# (kernel log: "unexpected data buffer=0xff", usb_control_msg -32,
+# receive_bulk_msg -110, "register write failed"), so gpib_config exits 255
+# and /dev/gpib0 is unusable (watcher sees dev() EINVAL / errno 22).
+#
+# Install (one-time, needs root):
+#   sudo cp he3_pressure_reader/udev/99-gpib-usb-nosuspend.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload
+#   sudo udevadm trigger -s usb --attr-match=idVendor=3923
+#
+# Applies at plug-in and at every boot. No sudo needed thereafter.
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="3923", ATTR{idProduct}=="709b", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="3923", ATTR{idProduct}=="709b", TEST=="power/autosuspend", ATTR{power/autosuspend}="-1"
