@@ -500,7 +500,7 @@
         "backup-toggle", "gas-watcher-toggle", "he3-pressure-watcher-toggle",
         "monitor-toggle", "monitor-test", "monitor-fetch-chat-id", "monitor-set-chat-id",
         "gas-apply", "gas-max-argon", "he3-pressure-hz-apply",
-        "ds-delete",   // Disk Space: delete is control-only (safety check stays open to viewers)
+        "ds-delete", "ds-restore-go",  // Disk Space: delete + restore are control-only (checks stay open to viewers)
     ];
 
     function _authToast(msg) {

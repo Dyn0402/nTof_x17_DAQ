@@ -805,9 +805,9 @@
 <div class="tab-pane fade" id="disk-space">
   <div class="panel mb-3">
     <div class="panel-header">
-      <span class="panel-title">Disk Space — clear backed-up DREAM runs</span>
-      <span class="panel-header-note">A run is deletable only when its data is
-        verified elsewhere: HDD run &rarr; EOS, SSD raw run &rarr; HDD &rarr; EOS.</span>
+      <span class="panel-title">Disk Space</span>
+      <span class="panel-header-note">Clear runs that are safely backed up, or restore
+        runs back from lxplus (EOS).</span>
     </div>
     <div class="panel-body">
       <!-- disk usage bars -->
@@ -815,7 +815,14 @@
         <div class="text-muted">Loading disk usage…</div>
       </div>
 
-      <div class="d-flex align-items-end gap-3 flex-wrap">
+      <!-- mode toggle -->
+      <div class="btn-group btn-group-sm mb-3" role="group">
+        <button id="ds-mode-free" class="btn btn-info">Free space</button>
+        <button id="ds-mode-restore" class="btn btn-outline-info">Restore from lxplus</button>
+      </div>
+
+      <!-- free-space controls (inline flex so JS display toggling works) -->
+      <div id="ds-free-controls" style="display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap;">
         <div class="btn-group-block mb-0">
           <label class="form-label" for="ds-disk">Disk</label>
           <select id="ds-disk" class="form-select form-select-sm" style="width:auto;">
@@ -827,6 +834,18 @@
           <button id="ds-check" class="btn btn-info btn-sm">Run safety check</button>
         </div>
         <div class="btn-group-block mb-0 ms-auto text-muted" id="ds-scan-meta" style="font-size:0.8rem;"></div>
+      </div>
+
+      <!-- restore controls -->
+      <div id="ds-restore-controls" style="display:none; align-items:flex-end; gap:1rem; flex-wrap:wrap;">
+        <div class="btn-group-block mb-0">
+          <button id="ds-restore-check" class="btn btn-info btn-sm">Check lxplus for runs</button>
+        </div>
+        <div class="btn-group-block mb-0" style="max-width:520px;">
+          <span class="text-muted" style="font-size:0.8rem;">Pulls runs from EOS back onto the
+            HDD (/mnt/data). Only files missing or size-mismatched locally are fetched.</span>
+        </div>
+        <div class="btn-group-block mb-0 ms-auto text-muted" id="ds-restore-meta" style="font-size:0.8rem;"></div>
       </div>
     </div>
   </div>
@@ -860,28 +879,58 @@
       <p id="ds-empty" class="text-muted d-none mb-0 mt-2">No runs found on this disk.</p>
     </div>
   </div>
+
+  <!-- Restore results panel -->
+  <div class="panel" id="ds-restore-panel" style="display:none;">
+    <div class="panel-header">
+      <span class="panel-title">Runs on lxplus (EOS)</span>
+      <span id="ds-restore-summary" class="panel-header-note"></span>
+      <div class="ms-auto d-flex gap-2 align-items-center">
+        <button id="ds-restore-select" class="btn btn-outline-secondary btn-sm">Select all restorable</button>
+        <button id="ds-restore-clear" class="btn btn-outline-secondary btn-sm">Clear</button>
+        <button id="ds-restore-go" class="btn btn-info btn-sm" disabled>Restore selected…</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <p class="text-muted mb-2" style="font-size:0.8rem;">
+        Tip: tick a run, then <b>Shift-click</b> another to select the range. Only runs
+        missing or incomplete on the HDD can be restored; complete runs are already local.</p>
+      <div class="table-responsive">
+        <table class="table table-dark table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th style="width:2.2rem;"></th>
+              <th>Run</th><th class="text-end">On EOS</th>
+              <th>Local (HDD) status</th><th class="text-end">To fetch</th>
+            </tr>
+          </thead>
+          <tbody id="ds-restore-tbody"></tbody>
+        </table>
+      </div>
+      <p id="ds-restore-empty" class="text-muted d-none mb-0 mt-2">No runs found on lxplus.</p>
+    </div>
+  </div>
 </div>
 
-<!-- Disk Space: delete confirmation modal -->
+<!-- Disk Space: confirm + progress modal (shared by delete and restore) -->
 <div id="ds-confirm-modal" style="position:fixed; inset:0; background:rgba(0,0,0,0.6);
      display:none; align-items:center; justify-content:center; z-index:2000;">
-  <div style="background:var(--panel); border:1px solid var(--bad); border-radius:10px;
+  <div style="background:var(--panel); border:1px solid var(--border); border-radius:10px;
        padding:1.2rem 1.3rem; width:min(480px,94vw);">
-    <div style="font-weight:600; margin-bottom:0.5rem; color:var(--bad);">Permanently delete runs</div>
+    <div id="ds-modal-title" style="font-weight:600; margin-bottom:0.5rem; color:var(--bad);">Permanently delete runs</div>
 
     <!-- confirm phase -->
     <div id="ds-confirm-section">
-      <p class="text-muted" style="font-size:0.83rem; margin-bottom:0.5rem;">
-        You are about to delete the following from <b id="ds-confirm-disk"></b>. Each run is
-        re-verified on the server immediately before deletion; anything not provably backed
-        up will be skipped.</p>
+      <p id="ds-confirm-intro" class="text-muted" style="font-size:0.83rem; margin-bottom:0.5rem;"></p>
       <ul id="ds-confirm-list" style="font-family:var(--mono); font-size:0.82rem; max-height:180px;
           overflow:auto; margin-bottom:0.6rem;"></ul>
-      <div style="font-size:0.83rem; margin-bottom:0.35rem;">Total to free:
+      <div style="font-size:0.83rem; margin-bottom:0.35rem;"><span id="ds-confirm-sizelabel">Total to free:</span>
         <b id="ds-confirm-size" style="font-family:var(--mono);"></b></div>
-      <label class="form-label" for="ds-confirm-input">Type <b>DELETE</b> to confirm</label>
-      <input id="ds-confirm-input" type="text" class="form-control" autocomplete="off" placeholder="DELETE">
-      <div id="ds-confirm-err" style="color:var(--bad); font-size:0.8rem; min-height:1.1rem; margin-top:0.4rem;"></div>
+      <div id="ds-confirm-typewrap">
+        <label class="form-label" for="ds-confirm-input">Type <b>DELETE</b> to confirm</label>
+        <input id="ds-confirm-input" type="text" class="form-control" autocomplete="off" placeholder="DELETE">
+        <div id="ds-confirm-err" style="color:var(--bad); font-size:0.8rem; min-height:1.1rem; margin-top:0.4rem;"></div>
+      </div>
     </div>
 
     <!-- progress phase -->
@@ -3544,90 +3593,89 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
 <!-- ===== Disk Space tab JS ===== -->
 <script>
 (function () {
-  let lastScan = null;              // last /space/scan result
-  const selected = new Set();       // run names checked for deletion
-
   const $ = (id) => document.getElementById(id);
-  const diskSel   = $("ds-disk");
-  const usageBox  = $("ds-usage");
-  const resultsP  = $("ds-results-panel");
-  const tbody     = $("ds-tbody");
+  const gb = (n) => (n / 1073741824).toFixed(1) + " GB";
 
+  const usageBox = $("ds-usage");
+  const diskSel  = $("ds-disk");
+  let mode = "free";              // 'free' | 'restore'
+  let lastScan = null;           // last /space/scan (delete side)
+  let lastRestore = null;        // last /space/restore_scan
+  const delSel = new Set();      // runs selected for deletion
+  const resSel = new Set();      // runs selected for restore
+  let delTable = null, resTable = null;
+
+  // ---- disk usage bars ----
   function fmtBar(u) {
     if (!u || u.error) return `<div class="text-muted">unavailable (${u ? u.error : '—'})</div>`;
     const pct = u.pct || 0;
     const color = pct >= 90 ? "var(--bad)" : pct >= 75 ? "var(--warn)" : "var(--ok)";
-    const gb = (n) => (n / 1073741824).toFixed(0) + " GB";
+    const g = (n) => (n / 1073741824).toFixed(0) + " GB";
     return `
       <div class="sys-bar-row">
         <span class="sys-bar-label" style="width:auto; padding-right:10px;">${u.label}</span>
         <span class="sys-bar-track"><span class="sys-bar-fill" style="width:${pct}%; background:${color};"></span></span>
         <span class="sys-bar-pct" style="min-width:auto;">${pct}%</span>
-        <span class="sys-bar-extra">${gb(u.free)} free / ${gb(u.total)}</span>
+        <span class="sys-bar-extra">${g(u.free)} free / ${g(u.total)}</span>
       </div>`;
   }
-
   async function loadUsage() {
     try {
-      const r = await fetch("/space/usage");
-      const d = await r.json();
+      const d = await (await fetch("/space/usage")).json();
       usageBox.innerHTML = fmtBar(d.hdd) + fmtBar(d.ssd);
     } catch (e) { usageBox.innerHTML = `<div class="text-muted">could not load usage</div>`; }
   }
 
-  let lastIdx = null;   // index (within the safe-checkbox list) of the last click, for shift-range
-
-  function renderRows(scan) {
-    tbody.innerHTML = "";
-    selected.clear();
-    lastIdx = null;
-    updateDeleteBtn();
-    if (!scan.runs.length) { $("ds-empty").classList.remove("d-none"); return; }
-    $("ds-empty").classList.add("d-none");
-    for (const r of scan.runs) {
-      const tr = document.createElement("tr");
-      const safe = r.safe;
-      const badge = r.active
-        ? `<span class="shift-flag-na">● acquiring</span>`
-        : safe ? `<span class="shift-flag-ok">✓ SAFE</span>`
-               : `<span class="shift-flag-bad">✗ not safe</span>`;
-      tr.innerHTML = `
-        <td>${safe ? `<input type="checkbox" class="form-check-input ds-cb" data-run="${r.run}">`
-                   : `<input type="checkbox" class="form-check-input" disabled title="not safe to delete">`}</td>
-        <td><b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}</td>
-        <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
-        <td style="font-size:0.82rem; color:var(--muted);">${r.reason}</td>
-        <td>${badge}</td>`;
-      tbody.appendChild(tr);
-    }
-    // Wire the safe checkboxes with shift-click range support. We use "click"
-    // (not "change") because only the click event carries shiftKey.
-    const cbs = [...tbody.querySelectorAll(".ds-cb")];
+  // ---- generic table selection with shift-click range ----
+  // Returns {all(), clear()}. Uses "click" (not "change") because only the click
+  // event carries shiftKey. selSet is filled with the checked runs' names.
+  function wireTable(tbodyEl, cbClass, selSet, onChange) {
+    let lastIdx = null;
+    const cbs = [...tbodyEl.querySelectorAll("." + cbClass)];
+    const sync = () => { selSet.clear(); cbs.forEach(c => { if (c.checked) selSet.add(c.dataset.run); }); onChange(); };
     cbs.forEach((cb, i) => {
       cb.addEventListener("click", (e) => {
         if (e.shiftKey && lastIdx !== null && lastIdx !== i) {
-          // Apply this checkbox's new state to every safe checkbox in the range.
           const [lo, hi] = [Math.min(lastIdx, i), Math.max(lastIdx, i)];
           for (let j = lo; j <= hi; j++) cbs[j].checked = cb.checked;
         }
         lastIdx = i;
-        syncSelection(cbs);
+        sync();
       });
     });
+    return {
+      all()   { cbs.forEach(c => c.checked = true);  lastIdx = cbs.length ? cbs.length - 1 : null; sync(); },
+      clear() { cbs.forEach(c => c.checked = false); lastIdx = null; sync(); },
+    };
   }
 
-  function syncSelection(cbs) {
-    selected.clear();
-    cbs.forEach(cb => { if (cb.checked) selected.add(cb.dataset.run); });
-    updateDeleteBtn();
+  // ================= FREE SPACE (delete) =================
+  function updateDelBtn() {
+    const b = $("ds-delete");
+    b.disabled = delSel.size === 0;
+    b.textContent = delSel.size ? `Delete selected (${delSel.size})…` : "Delete selected…";
   }
-
-  function updateDeleteBtn() {
-    const btn = $("ds-delete");
-    btn.disabled = selected.size === 0;
-    btn.textContent = selected.size ? `Delete selected (${selected.size})…` : "Delete selected…";
+  function renderDeleteRows(scan) {
+    const tb = $("ds-tbody"); tb.innerHTML = ""; delSel.clear();
+    if (!scan.runs.length) { $("ds-empty").classList.remove("d-none"); updateDelBtn(); return; }
+    $("ds-empty").classList.add("d-none");
+    for (const r of scan.runs) {
+      const tr = document.createElement("tr");
+      const badge = r.active ? `<span class="shift-flag-na">● acquiring</span>`
+        : r.safe ? `<span class="shift-flag-ok">✓ SAFE</span>`
+                 : `<span class="shift-flag-bad">✗ not safe</span>`;
+      tr.innerHTML = `
+        <td>${r.safe ? `<input type="checkbox" class="form-check-input ds-cb" data-run="${r.run}">`
+                     : `<input type="checkbox" class="form-check-input" disabled title="not safe to delete">`}</td>
+        <td><b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}</td>
+        <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
+        <td style="font-size:0.82rem; color:var(--muted);">${r.reason}</td>
+        <td>${badge}</td>`;
+      tb.appendChild(tr);
+    }
+    delTable = wireTable(tb, "ds-cb", delSel, updateDelBtn);
+    updateDelBtn();
   }
-
   async function runCheck() {
     const disk = diskSel.value;
     const btn = $("ds-check");
@@ -3638,8 +3686,8 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       const d = await r.json();
       if (!r.ok || d.success === false) throw new Error(d.message || "scan failed");
       lastScan = d;
-      resultsP.style.display = "";
-      renderRows(d);
+      $("ds-results-panel").style.display = "";
+      renderDeleteRows(d);
       $("ds-summary").innerHTML =
         `${d.n_safe}/${d.n_runs} safe · would free <b>${d.safe_bytes_h}</b>` +
         (d.active_run ? ` · active: ${d.active_run}` : "");
@@ -3652,14 +3700,67 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     }
   }
 
-  // ---- confirmation + progress modal ----
+  // ================= RESTORE (from lxplus) =================
+  function updateResBtn() {
+    const b = $("ds-restore-go");
+    b.disabled = resSel.size === 0;
+    b.textContent = resSel.size ? `Restore selected (${resSel.size})…` : "Restore selected…";
+  }
+  function restoreStatus(r) {
+    if (r.active)               return `<span class="shift-flag-na">● acquiring</span>`;
+    if (r.status === "complete")return `<span class="shift-flag-ok">✓ complete (local)</span>`;
+    if (r.status === "missing") return `<span style="color:var(--warn);">missing locally</span>`;
+    if (r.status === "partial") return `<span style="color:var(--warn);">partial (${r.have}/${r.total})</span>`;
+    return `<span class="shift-flag-bad">EOS error</span>`;
+  }
+  function renderRestoreRows(scan) {
+    const tb = $("ds-restore-tbody"); tb.innerHTML = ""; resSel.clear();
+    if (!scan.runs.length) { $("ds-restore-empty").classList.remove("d-none"); updateResBtn(); return; }
+    $("ds-restore-empty").classList.add("d-none");
+    for (const r of scan.runs) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${r.restorable ? `<input type="checkbox" class="form-check-input ds-rcb" data-run="${r.run}">`
+                           : `<input type="checkbox" class="form-check-input" disabled title="nothing to restore">`}</td>
+        <td><b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}</td>
+        <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
+        <td>${restoreStatus(r)}</td>
+        <td class="text-end" style="font-family:var(--mono);">${r.fetch_files ? r.fetch_h : '—'}</td>`;
+      tb.appendChild(tr);
+    }
+    resTable = wireTable(tb, "ds-rcb", resSel, updateResBtn);
+    updateResBtn();
+  }
+  async function runRestoreCheck() {
+    const btn = $("ds-restore-check");
+    btn.disabled = true; btn.textContent = "Checking lxplus…";
+    $("ds-restore-meta").textContent = "";
+    try {
+      const r = await fetch("/space/restore_scan");
+      const d = await r.json();
+      if (!r.ok || d.success === false) throw new Error(d.message || "scan failed");
+      lastRestore = d;
+      $("ds-restore-panel").style.display = "";
+      renderRestoreRows(d);
+      $("ds-restore-summary").innerHTML =
+        `${d.n_restorable}/${d.n_runs} restorable · would fetch <b>${d.fetch_bytes_total_h}</b>` +
+        (d.active_run ? ` · active: ${d.active_run}` : "");
+      $("ds-restore-meta").textContent = `Checked ${d.n_runs} EOS runs at ${d.scanned_at}`;
+      loadUsage();
+    } catch (e) {
+      $("ds-restore-meta").innerHTML = `<span style="color:var(--bad);">Check failed: ${e.message}</span>`;
+    } finally {
+      btn.disabled = false; btn.textContent = "Check lxplus for runs";
+    }
+  }
+
+  // ================= shared confirm + progress modal =================
   const modal = $("ds-confirm-modal");
   const cInput = $("ds-confirm-input");
   const cGo = $("ds-confirm-go");
-  const cErr = $("ds-confirm-err");
   const cClose = $("ds-confirm-close");
-  let deleting = false;   // blocks closing the modal mid-delete
-  const gb = (n) => (n / 1073741824).toFixed(1) + " GB";
+  let busy = false;      // blocks closing the modal mid-action
+  let action = null;     // the active action config (see openDelete/openRestore)
 
   function setPhase(phase) {   // 'confirm' | 'progress' | 'done'
     $("ds-confirm-section").style.display  = phase === "confirm" ? "" : "none";
@@ -3669,109 +3770,164 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     cClose.style.display = phase === "done" ? "" : "none";
   }
 
-  function openConfirm() {
-    if (!selected.size || !lastScan) return;
-    const runs = lastScan.runs.filter(r => selected.has(r.run));
-    const total = runs.reduce((a, r) => a + (r.size || 0), 0);
-    $("ds-confirm-disk").textContent = lastScan.label;
-    $("ds-confirm-list").innerHTML = runs.map(r => `<li>${r.run} — ${r.size_h}</li>`).join("");
+  function openAction(cfg) {
+    action = cfg;
+    const total = cfg.items.reduce((a, it) => a + (it.bytes || 0), 0);
+    $("ds-modal-title").textContent = cfg.title;
+    $("ds-modal-title").style.color = cfg.danger ? "var(--bad)" : "var(--accent)";
+    $("ds-confirm-intro").innerHTML = cfg.intro;
+    $("ds-confirm-list").innerHTML = cfg.items.map(it => `<li>${it.name} — ${it.sizeH}</li>`).join("");
+    $("ds-confirm-sizelabel").textContent = cfg.sizeLabel;
     $("ds-confirm-size").textContent = gb(total);
-    cInput.value = ""; cErr.textContent = ""; cGo.disabled = true;
-    cGo.textContent = "Delete permanently";
+    $("ds-confirm-typewrap").style.display = cfg.needType ? "" : "none";
+    cInput.value = "";
+    cGo.className = "btn btn-sm " + cfg.goClass;
+    cGo.textContent = cfg.goLabel;
+    cGo.disabled = !!cfg.needType;      // must type DELETE for destructive actions
     setPhase("confirm");
-    modal.style.display = "flex"; cInput.focus();
+    modal.style.display = "flex";
+    if (cfg.needType) cInput.focus();
   }
-  function closeConfirm() { if (!deleting) modal.style.display = "none"; }
+  function closeModal() { if (!busy) modal.style.display = "none"; }
 
-  cInput.addEventListener("input", () => { cGo.disabled = cInput.value !== "DELETE"; });
-  $("ds-confirm-cancel").addEventListener("click", closeConfirm);
-  cClose.addEventListener("click", () => { modal.style.display = "none"; runCheck(); });
-  modal.addEventListener("click", e => { if (e.target === modal) closeConfirm(); });
+  cInput.addEventListener("input", () => { if (action && action.needType) cGo.disabled = cInput.value !== "DELETE"; });
+  $("ds-confirm-cancel").addEventListener("click", closeModal);
+  cClose.addEventListener("click", () => { modal.style.display = "none"; if (action && action.onClose) action.onClose(); });
+  modal.addEventListener("click", e => { if (e.target === modal) closeModal(); });
 
-  // Delete the selected runs ONE AT A TIME so we can show real per-run progress.
-  // Each request re-verifies that single run on the server before removing it.
-  async function runDeletion(disk, runs, sizeByRun) {
-    const totalBytes = runs.reduce((a, r) => a + (sizeByRun[r] || 0), 0) || 1;
-    const log = $("ds-progress-log");
-    log.innerHTML = "";
-    let doneBytes = 0, freed = 0, nOk = 0, nFail = 0;
-    for (let i = 0; i < runs.length; i++) {
-      const run = runs[i];
-      $("ds-progress-status").textContent = `Deleting ${run} (${i + 1}/${runs.length})…`;
+  // Run the selected items ONE AT A TIME so we can show real per-item progress.
+  // Each request re-verifies that single run on the server.
+  async function runItems(cfg) {
+    const total = cfg.items.reduce((a, it) => a + (it.bytes || 0), 0) || 1;
+    const log = $("ds-progress-log"); log.innerHTML = "";
+    let done = 0, bytes = 0, nOk = 0, nFail = 0;
+    for (let i = 0; i < cfg.items.length; i++) {
+      const it = cfg.items[i];
+      $("ds-progress-status").textContent = `${cfg.verbing} ${it.name} (${i + 1}/${cfg.items.length})…`;
       const li = document.createElement("li");
-      li.innerHTML = `<span class="text-muted">${run} … removing</span>`;
+      li.innerHTML = `<span class="text-muted">${it.name} … ${cfg.working}</span>`;
       log.appendChild(li); log.scrollTop = log.scrollHeight;
       let d;
       try {
-        const r = await fetch("/space/delete", {
+        const r = await fetch(cfg.endpoint, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ disk, runs: [run], confirm: "DELETE" }),
+          body: JSON.stringify(cfg.buildBody(it.name)),
         });
         d = await r.json();
-      } catch (e) { d = { results: [{ run, success: false, message: e.message }] }; }
-      const rr = (d.results && d.results[0]) || { success: false, message: (d && d.message) || "failed" };
-      if (rr.success) {
-        nOk++; freed += rr.freed_bytes || 0;
-        li.innerHTML = `<span class="shift-flag-ok">✓ ${run}</span> <span class="text-muted">freed ${rr.freed_h || ""}</span>`;
+      } catch (e) { d = { results: [{ run: it.name, success: false, message: e.message }] }; }
+      const rr = cfg.readResult(d);
+      if (rr.ok) {
+        nOk++; bytes += rr.bytes || 0;
+        li.innerHTML = `<span class="shift-flag-ok">✓ ${it.name}</span> <span class="text-muted">${rr.detail}</span>`;
       } else {
         nFail++;
-        li.innerHTML = `<span class="shift-flag-bad">✗ ${run}</span> <span class="text-muted">${rr.message || "skipped"}</span>`;
+        li.innerHTML = `<span class="shift-flag-bad">✗ ${it.name}</span> <span class="text-muted">${rr.detail}</span>`;
       }
-      doneBytes += sizeByRun[run] || 0;
-      const pct = Math.min(100, Math.round(100 * doneBytes / totalBytes));
+      done += it.bytes || 0;
+      const pct = Math.min(100, Math.round(100 * done / total));
       $("ds-progress-bar").style.width = pct + "%";
       $("ds-progress-pct").textContent = pct + "%";
     }
     $("ds-progress-bar").style.background = nFail ? "var(--warn)" : "var(--ok)";
-    $("ds-progress-status").innerHTML =
-      `Done — deleted ${nOk}` + (nFail ? `, <span style="color:var(--warn);">skipped ${nFail}</span>` : "") +
-      `, freed ${gb(freed)}.`;
-    return { nOk, nFail, freed };
+    $("ds-progress-status").innerHTML = cfg.doneText(nOk, nFail, bytes);
+    return { nOk, nFail, bytes };
   }
 
   cGo.addEventListener("click", async () => {
-    if (cInput.value !== "DELETE" || !lastScan) return;
-    const disk = lastScan.disk;
-    const runs = lastScan.runs.filter(r => selected.has(r.run)).map(r => r.run);  // scan order
-    const sizeByRun = {};
-    lastScan.runs.forEach(r => { sizeByRun[r.run] = r.size || 0; });
-    deleting = true;
+    if (!action) return;
+    if (action.needType && cInput.value !== "DELETE") return;
+    busy = true;
     setPhase("progress");
-    $("ds-progress-bar").style.background = "var(--bad)";
+    $("ds-progress-bar").style.background = action.barColor;
     $("ds-progress-bar").style.width = "0%";
     $("ds-progress-pct").textContent = "0%";
     let res;
-    try {
-      res = await runDeletion(disk, runs, sizeByRun);
-    } finally {
-      deleting = false;
-      setPhase("done");
-    }
-    $("ds-scan-meta").innerHTML = res.nFail
-      ? `<span style="color:var(--warn);">Deleted ${res.nOk}, skipped ${res.nFail}, freed ${gb(res.freed)}.</span>`
-      : `<span style="color:var(--ok);">Deleted ${res.nOk} run(s), freed ${gb(res.freed)}.</span>`;
+    try { res = await runItems(action); }
+    finally { busy = false; setPhase("done"); }
+    if (action.meta) action.meta(res);
   });
 
-  // ---- wire buttons ----
+  // ---- action builders ----
+  function openDelete() {
+    if (!delSel.size || !lastScan) return;
+    const items = lastScan.runs.filter(r => delSel.has(r.run))
+      .map(r => ({ name: r.run, sizeH: r.size_h, bytes: r.size || 0 }));
+    openAction({
+      needType: true, danger: true, title: "Permanently delete runs",
+      intro: `You are about to delete the following from <b>${lastScan.label}</b>. Each run is ` +
+             `re-verified on the server immediately before deletion; anything not provably backed up will be skipped.`,
+      sizeLabel: "Total to free:", items,
+      goLabel: "Delete permanently", goClass: "btn-danger", barColor: "var(--bad)",
+      verbing: "Deleting", working: "removing", endpoint: "/space/delete",
+      buildBody: (n) => ({ disk: lastScan.disk, runs: [n], confirm: "DELETE" }),
+      readResult: (d) => {
+        const r = (d.results && d.results[0]) || { success: false, message: (d && d.message) || "failed" };
+        return { ok: r.success, bytes: r.freed_bytes || 0,
+                 detail: r.success ? `freed ${r.freed_h || ""}` : (r.message || "skipped") };
+      },
+      doneText: (nOk, nFail, b) => `Done — deleted ${nOk}` +
+        (nFail ? `, <span style="color:var(--warn);">skipped ${nFail}</span>` : "") + `, freed ${gb(b)}.`,
+      onClose: runCheck,
+      meta: (res) => { $("ds-scan-meta").innerHTML = res.nFail
+        ? `<span style="color:var(--warn);">Deleted ${res.nOk}, skipped ${res.nFail}, freed ${gb(res.bytes)}.</span>`
+        : `<span style="color:var(--ok);">Deleted ${res.nOk} run(s), freed ${gb(res.bytes)}.</span>`; },
+    });
+  }
+  function openRestore() {
+    if (!resSel.size || !lastRestore) return;
+    const items = lastRestore.runs.filter(r => resSel.has(r.run))
+      .map(r => ({ name: r.run, sizeH: r.fetch_h, bytes: r.fetch_bytes || 0 }));
+    openAction({
+      needType: false, danger: false, title: "Restore runs from lxplus",
+      intro: `These runs will be pulled from EOS back onto the HDD (<b>/mnt/data</b>). ` +
+             `Only files missing or size-mismatched locally are fetched.`,
+      sizeLabel: "Total to fetch:", items,
+      goLabel: "Restore", goClass: "btn-info", barColor: "var(--info)",
+      verbing: "Restoring", working: "fetching", endpoint: "/space/restore",
+      buildBody: (n) => ({ runs: [n] }),
+      readResult: (d) => {
+        const r = (d.results && d.results[0]) || { success: false, message: (d && d.message) || "failed" };
+        return { ok: r.success, bytes: r.fetched_bytes || 0,
+                 detail: r.success ? `fetched ${r.fetched_h || ""} (${r.restored_files || 0} files)` : (r.message || "failed") };
+      },
+      doneText: (nOk, nFail, b) => `Done — restored ${nOk}` +
+        (nFail ? `, <span style="color:var(--warn);">failed ${nFail}</span>` : "") + `, fetched ${gb(b)}.`,
+      onClose: runRestoreCheck,
+      meta: (res) => { $("ds-restore-meta").innerHTML = res.nFail
+        ? `<span style="color:var(--warn);">Restored ${res.nOk}, failed ${res.nFail}, fetched ${gb(res.bytes)}.</span>`
+        : `<span style="color:var(--ok);">Restored ${res.nOk} run(s), fetched ${gb(res.bytes)}.</span>`; },
+    });
+  }
+
+  // ---- mode toggle ----
+  function setMode(m) {
+    mode = m;
+    $("ds-mode-free").className    = "btn btn-sm " + (m === "free" ? "btn-info" : "btn-outline-info");
+    $("ds-mode-restore").className = "btn btn-sm " + (m === "restore" ? "btn-info" : "btn-outline-info");
+    $("ds-free-controls").style.display    = m === "free" ? "flex" : "none";
+    $("ds-restore-controls").style.display = m === "restore" ? "flex" : "none";
+    $("ds-results-panel").style.display = "none";
+    $("ds-restore-panel").style.display = "none";
+  }
+
+  // ---- wire ----
   $("ds-check").addEventListener("click", runCheck);
-  $("ds-delete").addEventListener("click", openConfirm);
-  $("ds-select-safe").addEventListener("click", () => {
-    const cbs = [...tbody.querySelectorAll(".ds-cb")];
-    cbs.forEach(cb => cb.checked = true);
-    lastIdx = cbs.length ? cbs.length - 1 : null;
-    syncSelection(cbs);
-  });
-  $("ds-clear-sel").addEventListener("click", () => {
-    const cbs = [...tbody.querySelectorAll(".ds-cb")];
-    cbs.forEach(cb => cb.checked = false);
-    lastIdx = null;
-    syncSelection(cbs);
-  });
-  // Re-checking a different disk clears the stale table.
-  diskSel.addEventListener("change", () => { resultsP.style.display = "none"; lastScan = null; });
+  $("ds-delete").addEventListener("click", openDelete);
+  $("ds-select-safe").addEventListener("click", () => { if (delTable) delTable.all(); });
+  $("ds-clear-sel").addEventListener("click", () => { if (delTable) delTable.clear(); });
+  diskSel.addEventListener("change", () => { $("ds-results-panel").style.display = "none"; lastScan = null; });
+
+  $("ds-restore-check").addEventListener("click", runRestoreCheck);
+  $("ds-restore-go").addEventListener("click", openRestore);
+  $("ds-restore-select").addEventListener("click", () => { if (resTable) resTable.all(); });
+  $("ds-restore-clear").addEventListener("click", () => { if (resTable) resTable.clear(); });
+
+  $("ds-mode-free").addEventListener("click", () => setMode("free"));
+  $("ds-mode-restore").addEventListener("click", () => setMode("restore"));
 
   const dsTab = document.querySelector('a[href="#disk-space"]');
   if (dsTab) dsTab.addEventListener("shown.bs.tab", loadUsage);
+  setMode("free");
 })();
 </script>
 {% endblock %}
