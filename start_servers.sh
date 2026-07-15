@@ -29,3 +29,8 @@ bash_scripts/start_tmux.sh gas_watcher "python gas_watcher.py" 5000
 # 3He pressure watcher: sole owner of the Keithley 2000 GPIB link (reads + logs pressure).
 # Flask reads its state from config/he3_pressure_state.json. Read-only (no control).
 bash_scripts/start_tmux.sh he3_pressure_watcher "python he3_pressure_watcher.py" 5000
+# System-stats watcher: samples psutil (CPU / memory / disk-space / net + disk I/O) at
+# 2 Hz and appends a per-day CSV to ~/beam_july/slow_control/system_stats/. Pure logger:
+# owns no hardware, no state file (Flask /system_stats reads psutil directly for the live
+# Overview plots). Retune via config/system_stats_config.json. See system_monitor/.
+bash_scripts/start_tmux.sh system_stats_watcher "python system_stats_watcher.py" 5000

@@ -227,24 +227,20 @@
           <span id="sys-load-avg" class="ms-auto"></span>
         </div>
         <div class="panel-body">
-          <div class="sys-plot-grid">
-            <div class="sys-plot-cell">
-              <div class="sys-col-title">CPU</div>
-              <div id="sys-cpu-plot" class="sys-plot"></div>
+          <div class="sys-col-title">CPU &amp; Memory</div>
+          <div id="sys-cpumem-plot" class="sys-plot-tall"></div>
+          <div class="sys-io-row">
+            <div>
+              <div class="sys-col-title">Disk Space</div>
+              <div class="sys-rows sys-diskspace">
+                <div id="sys-ssd-row"></div>
+                <div id="sys-hdd-row"></div>
+              </div>
             </div>
-            <div class="sys-plot-cell">
-              <div class="sys-col-title">Memory</div>
-              <div id="sys-mem-plot" class="sys-plot"></div>
-            </div>
-            <div class="sys-plot-cell sys-plot-cell-wide">
+            <div>
               <div class="sys-col-title">Network &amp; Disk I/O</div>
               <div id="sys-io-plot" class="sys-plot"></div>
             </div>
-          </div>
-          <div class="sys-col-title sys-col-title-sub">Disk Space</div>
-          <div class="sys-rows">
-            <div id="sys-ssd-row"></div>
-            <div id="sys-hdd-row"></div>
           </div>
         </div>
       </div>
@@ -2227,7 +2223,7 @@ function sysFormatBytes(b) {
 // /system_stats returns instantaneous samples, so we keep a client-side buffer
 // and rebuild the traces each poll. The window is time-based (last SYS_WINDOW_MS)
 // so the seeded CSV history + live samples share one rolling view.
-const SYS_WINDOW_MS = 30 * 60 * 1000;   // 30 min
+const SYS_WINDOW_MS = 10 * 60 * 1000;   // 10 min
 const sysSamples = [];   // [{t: Date, cpu: [..], cpuAvg, mem, swap, netRx, netTx, diskR, diskW}]
 
 // Drop samples older than the window (called after every push / seed).
@@ -2291,40 +2287,43 @@ function sysDrawPlots() {
 
     const t = sysSamples.map(s => s.t);
     const nCores = sysSamples[sysSamples.length - 1].cpu.length;
+    const sysYTitle = { size: 11, color: '#cbd5e1' };
 
-    // CPU: one faint line per core + a bold average on top.
+    // CPU + Memory: two vertically-stacked subplots that SHARE the x-axis. CPU on top
+    // (y2), Memory below (y); the single x-axis (ticks at the bottom) is common to both.
     const cpuTraces = [];
     for (let i = 0; i < nCores; i++) {
         cpuTraces.push({
             x: t, y: sysSamples.map(s => s.cpu[i] ?? null),
             mode: 'lines', name: 'core ' + (i + 1),
             line: { color: sysCoreColor(i, nCores), width: 1 },
-            opacity: 0.5, showlegend: false,
+            opacity: 0.5, showlegend: false, xaxis: 'x', yaxis: 'y2',
         });
     }
     cpuTraces.push({
         x: t, y: sysSamples.map(s => s.cpuAvg),
-        mode: 'lines', name: 'avg', line: { color: '#3ddc84', width: 2.5 },
+        mode: 'lines', name: 'CPU avg', line: { color: '#3ddc84', width: 2.5 },
+        xaxis: 'x', yaxis: 'y2',
     });
-    Plotly.react('sys-cpu-plot', cpuTraces, {
-        ...sysBaseLayout(),
-        xaxis: { ...SYS_AXIS },
-        yaxis: { ...SYS_AXIS, range: [0, 100], ticksuffix: '%' },
-    }, SYS_PLOT_CFG);
-
-    // Memory: RAM % and swap %.
-    Plotly.react('sys-mem-plot', [
+    const memTraces = [
         { x: t, y: sysSamples.map(s => s.mem), mode: 'lines', name: 'RAM',
-          line: { color: '#6ab0f3', width: 2 } },
+          line: { color: '#6ab0f3', width: 2 }, xaxis: 'x', yaxis: 'y' },
         { x: t, y: sysSamples.map(s => s.swap), mode: 'lines', name: 'Swap',
-          line: { color: '#f0a050', width: 2 } },
-    ], {
+          line: { color: '#f0a050', width: 2 }, xaxis: 'x', yaxis: 'y' },
+    ];
+    Plotly.react('sys-cpumem-plot', [...cpuTraces, ...memTraces], {
         ...sysBaseLayout(),
-        xaxis: { ...SYS_AXIS },
-        yaxis: { ...SYS_AXIS, range: [0, 100], ticksuffix: '%' },
+        legend: { orientation: 'h', font: { size: 10 }, x: 0, y: 1.0, yanchor: 'bottom' },
+        margin: { t: 20, r: 12, b: 34, l: 48 },
+        xaxis:  { ...SYS_AXIS, anchor: 'y', domain: [0, 1] },
+        yaxis:  { ...SYS_AXIS, domain: [0, 0.46], range: [0, 100], ticksuffix: '%',
+                  title: { text: 'Mem', font: sysYTitle } },
+        yaxis2: { ...SYS_AXIS, domain: [0.54, 1], range: [0, 100], ticksuffix: '%',
+                  anchor: 'x', title: { text: 'CPU', font: sysYTitle } },
     }, SYS_PLOT_CFG);
 
     // Network + disk throughput, MB/s (rates summed across interfaces / devices).
+    // Wider left margin so the "MB/s" y tick labels aren't clipped in the narrow column.
     const MB = 1e6;
     Plotly.react('sys-io-plot', [
         { x: t, y: sysSamples.map(s => s.netRx / MB), mode: 'lines', name: 'net ↓',
@@ -2337,6 +2336,7 @@ function sysDrawPlots() {
           line: { color: '#e0806a', width: 2 } },
     ], {
         ...sysBaseLayout(),
+        margin: { t: 18, r: 12, b: 20, l: 60 },
         xaxis: { ...SYS_AXIS },
         yaxis: { ...SYS_AXIS, rangemode: 'tozero', ticksuffix: ' MB/s' },
     }, SYS_PLOT_CFG);

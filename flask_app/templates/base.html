@@ -184,17 +184,19 @@
 
         /* ---------- System resource monitor ---------- */
         #sys-load-avg { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
-        /* CPU + Memory plots sit side by side; the Network/Disk I/O plot spans the
-           full width beneath them. Collapses to a single column on narrow phones. */
-        .sys-plot-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 0.3rem 1rem;
-        }
-        .sys-plot-cell-wide { grid-column: 1 / -1; }
+        /* CPU + Memory share one full-width, vertically-stacked (shared-x) plot on top;
+           beneath it, disk-space bars (left ~35%) sit beside the Network/Disk I/O plot. */
         .sys-plot { height: 132px; }
+        .sys-plot-tall { height: 260px; }   /* the stacked CPU+Memory subplots */
+        .sys-io-row {
+            display: grid;
+            grid-template-columns: 35% 1fr;
+            gap: 1rem;
+            align-items: start;
+            margin-top: 0.7rem;
+        }
         @media (max-width: 480px) {
-            .sys-plot-grid { grid-template-columns: 1fr; }
+            .sys-io-row { grid-template-columns: 1fr; }
         }
         .sys-col-title {
             font-size: 0.68rem;
@@ -227,6 +229,17 @@
         .sys-bar-fill { position: absolute; inset: 0; transition: width 0.6s ease; }
         .sys-bar-pct { color: var(--muted); margin-left: 7px; min-width: 44px; flex-shrink: 0; }
         .sys-bar-extra { color: #5c6774; margin-left: 5px; }
+        /* Overview disk-space bars only: taller bars + bigger fonts to fill the vertical
+           space, labels flush-left (no indent) to stay horizontally compact. Scoped so
+           the Disk Space tab's bars keep the original sizing. */
+        .sys-diskspace { gap: 9px; }
+        .sys-diskspace .sys-bar-row { font-size: 0.95rem; line-height: 24px; }
+        .sys-diskspace .sys-bar-label {
+            width: auto; min-width: 2.4em; text-align: left;
+            padding-right: 9px; font-weight: 600; color: var(--text);
+        }
+        .sys-diskspace .sys-bar-track { height: 20px; border-radius: 3px; }
+        .sys-diskspace .sys-bar-pct { min-width: 3.4em; }
 
         /* ---------- Monitoring strip ---------- */
         .monitor-strip .strip-row {
