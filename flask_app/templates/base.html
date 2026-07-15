@@ -184,20 +184,17 @@
 
         /* ---------- System resource monitor ---------- */
         #sys-load-avg { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
-        #sys-cpu-grid {
+        /* CPU + Memory plots sit side by side; the Network/Disk I/O plot spans the
+           full width beneath them. Collapses to a single column on narrow phones. */
+        .sys-plot-grid {
             display: grid;
-            /* 2 columns (3 rows for 6 cores). minmax(0,1fr) removes the
-               min-content floor so cells can't push into the next column. */
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 3px 14px;
-            font-family: var(--mono);
+            gap: 0.3rem 1rem;
         }
-        .sys-cols {
-            display: grid;
-            /* min(220px, 100%) lets a single column shrink below 220px on
-               narrow phones instead of overflowing the panel. */
-            grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-            gap: 0.8rem 1.8rem;
+        .sys-plot-cell-wide { grid-column: 1 / -1; }
+        .sys-plot { height: 132px; }
+        @media (max-width: 480px) {
+            .sys-plot-grid { grid-template-columns: 1fr; }
         }
         .sys-col-title {
             font-size: 0.68rem;
@@ -214,18 +211,7 @@
             gap: 3px;
             font-family: var(--mono);
         }
-        /* Network / disk I/O: device name on the left, two stacked direction bars */
-        .sys-io-list { font-family: var(--mono); }
-        .sys-io-block { display: flex; align-items: center; }
-        .sys-io-block + .sys-io-block { margin-top: 5px; }
-        #sys-diskio-rows { margin-top: 5px; }   /* net -> disk group boundary */
-        .sys-io-name {
-            width: 52px; flex-shrink: 0; padding-right: 6px;
-            font-size: 0.72rem; color: var(--fg); opacity: 0.85;
-        }
-        .sys-io-bars { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-        .sys-io-dir { width: 16px; text-align: left; padding-right: 0; }
-        .sys-io-val { min-width: 56px; }
+        /* Disk-space usage bars (the remaining bar UI; CPU/mem/IO are line plots) */
         .sys-bar-row { display: flex; align-items: center; font-size: 0.75rem; line-height: 18px; }
         .sys-bar-label { color: var(--muted); width: 44px; text-align: right; padding-right: 6px; flex-shrink: 0; }
         .sys-bar-track {
@@ -288,6 +274,94 @@
         .breadcrumb-item + .breadcrumb-item::before { color: #4a5462; }
         .table-dark { --bs-table-bg: var(--panel-2); border-color: var(--border); }
 
+        /* ---------- Shift Overview ---------- */
+        /* Big glanceable banner: the whole strip takes the run-state color. */
+        .shift-banner {
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            border-left-width: 6px;
+            background: var(--panel);
+            padding: 0.8rem 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 1.6rem;
+            flex-wrap: wrap;
+        }
+        .shift-banner .shift-state { font-size: 1.9rem; font-weight: 700; letter-spacing: 0.02em; line-height: 1.1; }
+        .shift-banner .shift-substate { color: var(--muted); font-size: 0.85rem; }
+        .shift-banner.lv-ok   { border-left-color: var(--ok);   } .shift-banner.lv-ok   .shift-state { color: var(--ok); }
+        .shift-banner.lv-warn { border-left-color: var(--warn); } .shift-banner.lv-warn .shift-state { color: var(--warn); }
+        .shift-banner.lv-bad  { border-left-color: var(--bad);  animation: shift-alarm 1.2s ease-in-out infinite; }
+        .shift-banner.lv-bad  .shift-state { color: var(--bad); }
+        .shift-banner.lv-idle { border-left-color: var(--sec);  } .shift-banner.lv-idle .shift-state { color: var(--sec); }
+        @keyframes shift-alarm {
+            0%, 100% { background: var(--panel); }
+            50%      { background: rgba(239, 91, 91, 0.14); }
+        }
+        .shift-banner .shift-stats { display: flex; gap: 1.8rem; flex-wrap: wrap; margin-left: auto; }
+        .shift-clock { font-family: var(--mono); font-size: 1.5rem; color: var(--muted); }
+
+        /* Cards: same skin as status-card, colored by the section's health. */
+        .shift-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-top: 3px solid var(--sec);
+            border-radius: 8px;
+            padding: 0.75rem 0.95rem;
+            height: 100%;
+        }
+        .shift-card.lv-ok    { border-top-color: var(--ok); }
+        .shift-card.lv-warn  { border-top-color: var(--warn); }
+        .shift-card.lv-stale { border-top-color: var(--info); }
+        .shift-card.lv-bad   { border-top-color: var(--bad); }
+        .shift-card.lv-idle  { border-top-color: var(--sec); }
+        .shift-card-head {
+            display: flex; justify-content: space-between; align-items: baseline;
+            gap: 0.5rem; margin-bottom: 0.5rem;
+        }
+        .shift-card-title {
+            font-weight: 600; font-size: 0.75rem; text-transform: uppercase;
+            letter-spacing: 0.09em; color: var(--muted);
+        }
+        .shift-card-state { font-weight: 600; font-size: 0.85rem; }
+        .lv-ok    .shift-card-state { color: var(--ok); }
+        .lv-warn  .shift-card-state { color: var(--warn); }
+        .lv-stale .shift-card-state { color: var(--info); }
+        .lv-bad   .shift-card-state { color: var(--bad); }
+        .lv-idle  .shift-card-state { color: var(--sec); }
+
+        /* value / expected rows */
+        .shift-rows { display: flex; flex-direction: column; gap: 3px; font-family: var(--mono); font-size: 0.88rem; }
+        .shift-row { display: flex; justify-content: space-between; gap: 0.7rem; align-items: baseline; }
+        .shift-row .k { color: var(--muted); white-space: nowrap; }
+        .shift-row .v { white-space: nowrap; }
+        .shift-row .exp { color: var(--muted); }
+        .shift-flag-ok   { color: var(--ok); }
+        .shift-flag-bad  { color: var(--bad); font-weight: 700; }
+        .shift-flag-na   { color: var(--muted); }
+        .shift-note { color: var(--muted); font-size: 0.75rem; margin-top: 0.45rem; }
+
+        /* Emergency stop: two-step (arm -> confirm), auto-disarms after 5 s. */
+        .estop-btn {
+            width: 100%; height: 100%; min-height: 96px;
+            border-radius: 10px; border: 2px solid var(--bad);
+            background: rgba(239, 91, 91, 0.12); color: var(--bad);
+            font-size: 1.25rem; font-weight: 800; letter-spacing: 0.06em;
+            text-transform: uppercase; cursor: pointer;
+        }
+        .estop-btn:hover { background: rgba(239, 91, 91, 0.22); }
+        .estop-btn.armed {
+            background: var(--bad); color: #fff;
+            animation: estop-pulse 0.7s ease-in-out infinite;
+        }
+        .estop-btn:disabled { opacity: 0.55; cursor: wait; animation: none; }
+        @keyframes estop-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 91, 91, 0.7); }
+            50%      { box-shadow: 0 0 0 10px rgba(239, 91, 91, 0); }
+        }
+        .estop-sub { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.03em;
+                     text-transform: none; display: block; margin-top: 2px; }
+
         /* ---------- View-only / access control ---------- */
         .auth-badge {
             display: inline-flex; align-items: center; gap: 0.4rem;
@@ -320,7 +394,11 @@
             </a>
             <ul class="nav nav-tabs main-tabs ms-2" id="daqTabs">
                 <li class="nav-item">
-                    <a class="nav-link active" data-bs-toggle="tab" href="#overview">Overview</a>
+                    <!-- Shifters (view-only) land on the Shift page; controllers on Overview -->
+                    <a class="nav-link {% if not authorized %}active{% endif %}" data-bs-toggle="tab" href="#shift">Shift</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if authorized %}active{% endif %}" data-bs-toggle="tab" href="#overview">Overview</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" data-bs-toggle="tab" href="#png-viewer">Online QA</a>
@@ -336,6 +414,18 @@
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" data-bs-toggle="tab" href="#he3-pressure">3He Pressure</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#beam">Beam</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#m5-walls">M5 Walls</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#trigger">Trigger</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#disk-space">Disk Space</a>
                 </li>
             </ul>
             <div class="ms-auto d-flex align-items-center gap-2">
@@ -392,10 +482,12 @@
     // stays enabled for viewers as a safety action.
     window.CONTROL_BUTTON_IDS = [
         "run-toggle", "stop-sub-run", "pause-toggle", "restart-all", "take-pedestals",
+        "hv-off",
         "rerun-qa", "processor-toggle", "qa-toggle", "pedestal-toggle",
         "backup-toggle", "gas-watcher-toggle", "he3-pressure-watcher-toggle",
         "monitor-toggle", "monitor-test", "monitor-fetch-chat-id", "monitor-set-chat-id",
         "gas-apply", "gas-max-argon", "he3-pressure-hz-apply",
+        "ds-delete",   // Disk Space: delete is control-only (safety check stays open to viewers)
     ];
 
     function _authToast(msg) {
@@ -423,7 +515,8 @@
                             (typeof input === "object" && input && input.method) || "GET").toUpperCase();
             const url = (typeof input === "string") ? input : (input && input.url) || "";
             const exempt = url.startsWith("/auth/") || url.startsWith("/socket.io") ||
-                           url.startsWith("/gas/zero");  // emergency gas shutoff always allowed
+                           url.startsWith("/gas/zero") ||          // emergency gas shutoff always allowed
+                           url.startsWith("/shift/emergency_stop"); // emergency stop always allowed
             if (method !== "GET" && method !== "HEAD" && !exempt) {
                 _authToast("View-only mode — unlock control to make changes.");
                 return Promise.reject(new Error("view-only"));

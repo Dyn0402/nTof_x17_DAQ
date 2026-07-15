@@ -195,6 +195,13 @@
           </div>
 
           <div class="btn-group-block">
+            <span class="group-label">HV</span>
+            <div class="d-flex flex-wrap gap-2">
+              <button id="hv-off" class="btn btn-outline-danger btn-sm">HV Off (Run Detectors)</button>
+            </div>
+          </div>
+
+          <div class="btn-group-block">
             <span class="group-label">Watchers</span>
             <div class="d-flex flex-wrap gap-2">
               <button id="processor-toggle" class="btn btn-info btn-sm">Start Processor</button>
@@ -204,6 +211,7 @@
               <button id="gas-watcher-toggle" class="btn btn-info btn-sm">Start Gas Watcher</button>
               <button id="he3-pressure-watcher-toggle" class="btn btn-info btn-sm">Start 3He Pressure Watcher</button>
               <button id="beam-watcher-toggle" class="btn btn-info btn-sm">Start Beam Watcher</button>
+              <button id="n1081b-timetag-watcher-toggle" class="btn btn-info btn-sm">Start M5 Time-Tag Watcher</button>
               <button id="rerun-qa" class="btn btn-outline-warning btn-sm ms-auto">Rerun QA</button>
             </div>
           </div>
@@ -219,23 +227,24 @@
           <span id="sys-load-avg" class="ms-auto"></span>
         </div>
         <div class="panel-body">
-          <div class="sys-cols">
-            <div class="sys-col">
+          <div class="sys-plot-grid">
+            <div class="sys-plot-cell">
               <div class="sys-col-title">CPU</div>
-              <div id="sys-cpu-grid"></div>
-              <div class="sys-col-title sys-col-title-sub">Memory &amp; Disk</div>
-              <div class="sys-rows">
-                <div id="sys-mem-row"></div>
-                <div id="sys-swp-row"></div>
-                <div id="sys-ssd-row"></div>
-                <div id="sys-hdd-row"></div>
-              </div>
+              <div id="sys-cpu-plot" class="sys-plot"></div>
             </div>
-            <div class="sys-col">
+            <div class="sys-plot-cell">
+              <div class="sys-col-title">Memory</div>
+              <div id="sys-mem-plot" class="sys-plot"></div>
+            </div>
+            <div class="sys-plot-cell sys-plot-cell-wide">
               <div class="sys-col-title">Network &amp; Disk I/O</div>
-              <div class="sys-io-list" id="sys-net-rows"></div>
-              <div class="sys-io-list" id="sys-diskio-rows"></div>
+              <div id="sys-io-plot" class="sys-plot"></div>
             </div>
+          </div>
+          <div class="sys-col-title sys-col-title-sub">Disk Space</div>
+          <div class="sys-rows">
+            <div id="sys-ssd-row"></div>
+            <div id="sys-hdd-row"></div>
           </div>
         </div>
       </div>
@@ -706,6 +715,179 @@
 </div>
 
 
+<!-- =========================== Module 5 walls — time-tag stream =========================== -->
+<div class="tab-pane fade" id="m5-walls">
+  <div class="row g-3">
+    <!-- Current state -->
+    <div class="col-12 col-xl-4">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">M5 Walls — Time-Tag</span>
+          <span id="n1081b-conn" class="ms-auto panel-header-note">…</span>
+        </div>
+        <div class="panel-body">
+          <div class="run-stats mb-0">
+            <div class="stat">
+              <div class="stat-label">Total edge rate</div>
+              <div class="stat-value" id="n1081b-rate-total" style="font-size:1.6rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Edges today</div>
+              <div class="stat-value" id="n1081b-total-today" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <div class="run-stats mb-0 mt-2">
+            <div class="stat">
+              <div class="stat-label">A (Hz)</div>
+              <div class="stat-value" id="n1081b-rate-A" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">B (Hz)</div>
+              <div class="stat-value" id="n1081b-rate-B" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">C (Hz)</div>
+              <div class="stat-value" id="n1081b-rate-C" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">D (Hz)</div>
+              <div class="stat-value" id="n1081b-rate-D" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <p class="text-muted small mb-0 mt-3">
+            Module 5 (<span class="font-monospace">.244</span>) four scintillator walls (sections
+            A–D) streamed as per-edge timestamps via the persistent-FIFO round-robin — the watcher
+            owns .244 exclusively (<span class="font-monospace">poll_modules</span> skips it while
+            running) and restores it to counter mode on stop. Rates are beam-driven, so they read ~0
+            when beam is off. Logged per edge to
+            <span class="font-monospace" id="n1081b-csv-path">n1081b/logs/</span>.
+            See <span class="font-monospace">n1081b/TIMETAG_WATCHER.md</span>.
+          </p>
+          <p class="text-muted small mb-0 mt-2">
+            <span id="n1081b-updated"></span>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trend -->
+    <div class="col-12 col-xl-8">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Per-Section Edge Rate</span>
+          <span class="panel-header-note">Hz per wall section — last 6 h from the log</span>
+        </div>
+        <div class="panel-body">
+          <div id="n1081b-plot" style="width:100%;height:380px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- =========================== Trigger (N1081B) =========================== -->
+<div class="tab-pane fade" id="trigger">
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">N1081B Trigger Logic</span>
+      <span class="panel-header-note">
+        live diagram of all 6 CAEN N1081B modules — design model overlaid with the
+        newest board read-back (per-sub-run snapshot; no extra board traffic) and the
+        active scan. Click a <span class="font-monospace">M#</span> chip to jump.
+      </span>
+      <span id="trigger-status" class="ms-auto panel-header-note">…</span>
+    </div>
+    <div class="panel-body">
+      <div id="n1081b-diagram"><div class="text-muted">Loading trigger diagram…</div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Disk Space Tab -->
+<div class="tab-pane fade" id="disk-space">
+  <div class="panel mb-3">
+    <div class="panel-header">
+      <span class="panel-title">Disk Space — clear backed-up DREAM runs</span>
+      <span class="panel-header-note">A run is deletable only when its data is
+        verified elsewhere: HDD run &rarr; EOS, SSD raw run &rarr; HDD &rarr; EOS.</span>
+    </div>
+    <div class="panel-body">
+      <!-- disk usage bars -->
+      <div id="ds-usage" class="sys-rows mb-3" style="max-width:640px;">
+        <div class="text-muted">Loading disk usage…</div>
+      </div>
+
+      <div class="d-flex align-items-end gap-3 flex-wrap">
+        <div class="btn-group-block mb-0">
+          <label class="form-label" for="ds-disk">Disk</label>
+          <select id="ds-disk" class="form-select form-select-sm" style="width:auto;">
+            <option value="hdd">HDD — processed runs (/mnt/data)</option>
+            <option value="ssd">SSD — raw dream_run (/home)</option>
+          </select>
+        </div>
+        <div class="btn-group-block mb-0">
+          <button id="ds-check" class="btn btn-info btn-sm">Run safety check</button>
+        </div>
+        <div class="btn-group-block mb-0 ms-auto text-muted" id="ds-scan-meta" style="font-size:0.8rem;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="ds-results-panel" style="display:none;">
+    <div class="panel-header">
+      <span class="panel-title">Runs</span>
+      <span id="ds-summary" class="panel-header-note"></span>
+      <div class="ms-auto d-flex gap-2 align-items-center">
+        <button id="ds-select-safe" class="btn btn-outline-secondary btn-sm">Select all safe</button>
+        <button id="ds-clear-sel" class="btn btn-outline-secondary btn-sm">Clear</button>
+        <button id="ds-delete" class="btn btn-danger btn-sm" disabled>Delete selected…</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="table-responsive">
+        <table class="table table-dark table-sm align-middle mb-0" id="ds-table">
+          <thead>
+            <tr>
+              <th style="width:2.2rem;"></th>
+              <th>Run</th><th class="text-end">Size</th>
+              <th>Backup status</th><th>Safe to delete</th>
+            </tr>
+          </thead>
+          <tbody id="ds-tbody"></tbody>
+        </table>
+      </div>
+      <p id="ds-empty" class="text-muted d-none mb-0 mt-2">No runs found on this disk.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Disk Space: delete confirmation modal -->
+<div id="ds-confirm-modal" style="position:fixed; inset:0; background:rgba(0,0,0,0.6);
+     display:none; align-items:center; justify-content:center; z-index:2000;">
+  <div style="background:var(--panel); border:1px solid var(--bad); border-radius:10px;
+       padding:1.2rem 1.3rem; width:min(480px,94vw);">
+    <div style="font-weight:600; margin-bottom:0.5rem; color:var(--bad);">Permanently delete runs</div>
+    <p class="text-muted" style="font-size:0.83rem; margin-bottom:0.5rem;">
+      You are about to delete the following from <b id="ds-confirm-disk"></b>. Each run is
+      re-verified on the server immediately before deletion; anything not provably backed
+      up will be skipped.</p>
+    <ul id="ds-confirm-list" style="font-family:var(--mono); font-size:0.82rem; max-height:180px;
+        overflow:auto; margin-bottom:0.6rem;"></ul>
+    <div style="font-size:0.83rem; margin-bottom:0.35rem;">Total to free:
+      <b id="ds-confirm-size" style="font-family:var(--mono);"></b></div>
+    <label class="form-label" for="ds-confirm-input">Type <b>DELETE</b> to confirm</label>
+    <input id="ds-confirm-input" type="text" class="form-control" autocomplete="off" placeholder="DELETE">
+    <div id="ds-confirm-err" style="color:var(--bad); font-size:0.8rem; min-height:1.1rem; margin-top:0.4rem;"></div>
+    <div class="d-flex gap-2 justify-content-end mt-2">
+      <button id="ds-confirm-cancel" class="btn btn-sm btn-secondary">Cancel</button>
+      <button id="ds-confirm-go" class="btn btn-sm btn-danger" disabled>Delete permanently</button>
+    </div>
+  </div>
+</div>
+
+
 {% endblock %}
 
 {% block scripts %}
@@ -836,6 +1018,13 @@ document.getElementById("restart-all").addEventListener("click", () => {
     .then(res => res.json())
     .then(data => alert(data.message))
     .catch(err => alert("Error: " + err));
+});
+
+document.getElementById("hv-off").addEventListener("click", async () => {
+  if (!confirm("Power off HV for the detectors in the current run config?")) return;
+  const res = await fetch("/run/hv_off", { method: "POST" });
+  const data = await res.json();
+  showPopup(data.message, data.success ? "#17a2b8" : "#dc3545");
 });
 
 // GUI Reset: restart only the Flask server (this page). The request returns
@@ -1458,6 +1647,9 @@ const WATCHER_TOGGLES = [
     { name: "beam_watcher", btn: "beam-watcher-toggle", label: "Beam Watcher",
       start: "/start_beam_watcher", stop: "/stop_beam_watcher",
       confirm: "Stop the beam watcher? (n_TOF intensity logging pauses)" },
+    { name: "n1081b_timetag_watcher", btn: "n1081b-timetag-watcher-toggle", label: "M5 Time-Tag Watcher",
+      start: "/start_n1081b_timetag_watcher", stop: "/stop_n1081b_timetag_watcher",
+      confirm: "Stop the M5 time-tag watcher? (.244 wall-timestamp logging pauses; .244 is restored to counter mode)" },
 ];
 const watcherStopped = {};  // name -> bool, tracked from /status
 
@@ -2011,32 +2203,123 @@ function sysFormatBytes(b) {
     return (b / 1e3).toFixed(0) + 'K';
 }
 
-function sysFormatRate(bps) {
-    return sysFormatBytes(bps) + '/s';
+// ---- Rolling history for the line plots ----------------------------------
+// /system_stats returns instantaneous samples, so we keep a client-side buffer
+// and rebuild the traces each poll. The window is time-based (last SYS_WINDOW_MS)
+// so the seeded CSV history + live samples share one rolling view.
+const SYS_WINDOW_MS = 30 * 60 * 1000;   // 30 min
+const sysSamples = [];   // [{t: Date, cpu: [..], cpuAvg, mem, swap, netRx, netTx, diskR, diskW}]
+
+// Drop samples older than the window (called after every push / seed).
+function sysTrim() {
+    const cutoff = Date.now() - SYS_WINDOW_MS;
+    while (sysSamples.length && sysSamples[0].t.getTime() < cutoff) sysSamples.shift();
 }
 
-// A single direction's rate bar, scaled against a soft reference max.
-function sysIOBar(dirTag, rate, refMax) {
-    const pct = Math.min(100, (rate / refMax) * 100);
-    const color = sysBarColor(pct);
-    return `<div class="sys-bar-row">
-      <span class="sys-bar-label sys-io-dir">${dirTag}</span>
-      <div class="sys-bar-track">
-        <div class="sys-bar-fill" style="width:${pct}%;background:${color};"></div>
-      </div>
-      <span class="sys-bar-pct sys-io-val">${sysFormatRate(rate)}</span>
-    </div>`;
+// Prefill the buffer from the watcher's logged CSVs so the plots come up populated
+// instead of filling in live. Runs once at load, before live polling starts.
+async function sysSeedHistory() {
+    try {
+        const res = await fetch('/system_stats/history?minutes=' + (SYS_WINDOW_MS / 60000));
+        const d = await res.json();
+        if (!d.success || !d.time || !d.time.length) return;
+        const seeded = d.time.map((ts, i) => ({
+            t: new Date(ts),            // ISO local (no tz) -> parsed as local, matches live
+            cpu: d.cpu[i] || [],
+            cpuAvg: d.cpu_avg[i],
+            mem: d.mem[i], swap: d.swap[i],
+            netRx: d.net_rx[i], netTx: d.net_tx[i],
+            diskR: d.disk_r[i], diskW: d.disk_w[i],
+        }));
+        // Prepend logged history ahead of anything already collected live this session.
+        sysSamples.unshift(...seeded);
+        sysTrim();
+        sysDrawPlots();
+    } catch (e) { /* silent */ }
 }
 
-// One device: a name on the left, two stacked direction bars (in/out or read/write).
-function sysMakeIOBlock(name, aTag, aRate, bTag, bRate, refMax) {
-    return `<div class="sys-io-block">
-      <span class="sys-io-name">${name}</span>
-      <div class="sys-io-bars">
-        ${sysIOBar(aTag, aRate, refMax)}
-        ${sysIOBar(bTag, bRate, refMax)}
-      </div>
-    </div>`;
+// Blue→red spread across the CPU cores so individual core lines stay distinct.
+function sysCoreColor(i, n) {
+    const h = 210 - (i / Math.max(1, n - 1)) * 210;
+    return `hsl(${h}, 55%, 60%)`;
+}
+
+// Shared dark plot styling (mirrors the HV/gas plots on this page).
+const SYS_PLOT_CFG = { responsive: true, displaylogo: false, displayModeBar: false };
+const SYS_AXIS = { gridcolor: '#242e39', zerolinecolor: '#38434f', linecolor: '#38434f' };
+function sysBaseLayout() {
+    return {
+        showlegend: true,
+        legend: { orientation: 'h', font: { size: 10 }, x: 0, y: 1.22, yanchor: 'bottom' },
+        hovermode: 'x unified',
+        uirevision: 'sys',
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        font: { color: '#8b96a5', size: 10 },
+        hoverlabel: { bgcolor: '#1b222b', bordercolor: '#38434f' },
+        margin: { t: 18, r: 12, b: 20, l: 42 },
+    };
+}
+
+// Redraw the three line plots from the history buffer. Plotly can't size a plot
+// in a hidden tab (0 width), so skip drawing unless the Overview tab is visible.
+function sysDrawPlots() {
+    if (typeof Plotly === 'undefined') return;
+    const ov = document.getElementById('overview');
+    if (!ov || !ov.classList.contains('active')) return;
+    if (!sysSamples.length) return;
+
+    const t = sysSamples.map(s => s.t);
+    const nCores = sysSamples[sysSamples.length - 1].cpu.length;
+
+    // CPU: one faint line per core + a bold average on top.
+    const cpuTraces = [];
+    for (let i = 0; i < nCores; i++) {
+        cpuTraces.push({
+            x: t, y: sysSamples.map(s => s.cpu[i] ?? null),
+            mode: 'lines', name: 'core ' + (i + 1),
+            line: { color: sysCoreColor(i, nCores), width: 1 },
+            opacity: 0.5, showlegend: false,
+        });
+    }
+    cpuTraces.push({
+        x: t, y: sysSamples.map(s => s.cpuAvg),
+        mode: 'lines', name: 'avg', line: { color: '#3ddc84', width: 2.5 },
+    });
+    Plotly.react('sys-cpu-plot', cpuTraces, {
+        ...sysBaseLayout(),
+        xaxis: { ...SYS_AXIS },
+        yaxis: { ...SYS_AXIS, range: [0, 100], ticksuffix: '%' },
+    }, SYS_PLOT_CFG);
+
+    // Memory: RAM % and swap %.
+    Plotly.react('sys-mem-plot', [
+        { x: t, y: sysSamples.map(s => s.mem), mode: 'lines', name: 'RAM',
+          line: { color: '#6ab0f3', width: 2 } },
+        { x: t, y: sysSamples.map(s => s.swap), mode: 'lines', name: 'Swap',
+          line: { color: '#f0a050', width: 2 } },
+    ], {
+        ...sysBaseLayout(),
+        xaxis: { ...SYS_AXIS },
+        yaxis: { ...SYS_AXIS, range: [0, 100], ticksuffix: '%' },
+    }, SYS_PLOT_CFG);
+
+    // Network + disk throughput, MB/s (rates summed across interfaces / devices).
+    const MB = 1e6;
+    Plotly.react('sys-io-plot', [
+        { x: t, y: sysSamples.map(s => s.netRx / MB), mode: 'lines', name: 'net ↓',
+          line: { color: '#6ab0f3', width: 2 } },
+        { x: t, y: sysSamples.map(s => s.netTx / MB), mode: 'lines', name: 'net ↑',
+          line: { color: '#b57edc', width: 2 } },
+        { x: t, y: sysSamples.map(s => s.diskR / MB), mode: 'lines', name: 'disk R',
+          line: { color: '#3ddc84', width: 2 } },
+        { x: t, y: sysSamples.map(s => s.diskW / MB), mode: 'lines', name: 'disk W',
+          line: { color: '#e0806a', width: 2 } },
+    ], {
+        ...sysBaseLayout(),
+        xaxis: { ...SYS_AXIS },
+        yaxis: { ...SYS_AXIS, rangemode: 'tozero', ticksuffix: ' MB/s' },
+    }, SYS_PLOT_CFG);
 }
 
 function sysMakeBar(label, pct, rightLabel) {
@@ -2062,19 +2345,7 @@ async function updateSysStats() {
         const loadEl = document.getElementById('sys-load-avg');
         loadEl.textContent = 'load avg: ' + d.load_avg.map(x => x.toFixed(2)).join('  ');
 
-        const grid = document.getElementById('sys-cpu-grid');
-        grid.innerHTML = d.cpu_cores.map((pct, i) =>
-            sysMakeBar('CPU' + (i + 1), pct, null)
-        ).join('');
-
-        const m = d.memory, s = d.swap;
-        document.getElementById('sys-mem-row').innerHTML = sysMakeBar(
-            'Mem', m.percent,
-            sysFormatBytes(m.used) + '/' + sysFormatBytes(m.total));
-        document.getElementById('sys-swp-row').innerHTML = sysMakeBar(
-            'Swp', s.percent,
-            sysFormatBytes(s.used) + '/' + sysFormatBytes(s.total));
-
+        // Disk-space usage stays as bars (kept as-is per request).
         const sysDiskRow = (elId, label, disk) => {
             document.getElementById(elId).innerHTML = disk
                 ? sysMakeBar(label, disk.percent,
@@ -2084,30 +2355,38 @@ async function updateSysStats() {
         sysDiskRow('sys-ssd-row', 'SSD', d.ssd);
         sysDiskRow('sys-hdd-row', 'HDD', d.hdd);
 
-        // Network I/O (bytes/sec per interface). 125 MB/s ~ saturated 1 GbE.
-        const NET_REF = 125e6;
-        const net = d.net || {};
-        document.getElementById('sys-net-rows').innerHTML =
-            Object.keys(net).map(name => {
-                const n = net[name];
-                return n
-                    ? sysMakeIOBlock(name, '↓', n.rx, '↑', n.tx, NET_REF)
-                    : sysMakeIOBlock(name, '↓', 0, '↑', 0, NET_REF);
-            }).join('');
+        // Accumulate a sample for the line plots. Net/disk rates are summed across
+        // interfaces / physical devices into single throughput series.
+        const cores = d.cpu_cores || [];
+        const cpuAvg = cores.length ? cores.reduce((a, b) => a + b, 0) / cores.length : 0;
+        const sumIO = (obj, ...keys) => Object.values(obj || {}).reduce((acc, v) =>
+            v ? keys.reduce((a, k) => a + (v[k] || 0), acc) : acc, 0);
+        sysSamples.push({
+            t: new Date(),
+            cpu: cores,
+            cpuAvg,
+            mem: d.memory ? d.memory.percent : 0,
+            swap: d.swap ? d.swap.percent : 0,
+            netRx: sumIO(d.net, 'rx'),
+            netTx: sumIO(d.net, 'tx'),
+            diskR: sumIO(d.disk_io, 'read'),
+            diskW: sumIO(d.disk_io, 'write'),
+        });
+        sysTrim();
 
-        // Disk I/O (bytes/sec per physical device).
-        const dio = d.disk_io || {};
-        const diskIORow = (label, io, refMax) => io
-            ? sysMakeIOBlock(label, 'R', io.read, 'W', io.write, refMax)
-            : sysMakeIOBlock(label, 'R', 0, 'W', 0, refMax);
-        document.getElementById('sys-diskio-rows').innerHTML =
-            diskIORow('SSD', dio.ssd, 550e6) +   // SATA SSD ~ 550 MB/s
-            diskIORow('HDD', dio.hdd, 200e6);    // spinning HDD ~ 200 MB/s
+        sysDrawPlots();
     } catch (e) { /* silent */ }
 }
 
-updateSysStats();
-setInterval(updateSysStats, 2000);
+// Seed from the logged CSVs first (plots come up populated), then start live polling.
+sysSeedHistory().finally(() => {
+    updateSysStats();
+    setInterval(updateSysStats, 2000);
+});
+// Overview may start hidden (unauthorized → Shift tab active); redraw on show
+// so the plots size correctly once the container has real dimensions.
+document.querySelector('a[href="#overview"]')
+    .addEventListener('shown.bs.tab', sysDrawPlots);
 
 
 // ---------------------------------------------------------------------------
@@ -2743,6 +3022,71 @@ beamUpdateStatus();
 setInterval(beamUpdateStatus, 5000);
 beamRenderPlot();   // initial draw (Overview is the default-active tab at load)
 
+// ---------------- Module 5 walls (N1081B time-tag watcher) ----------------
+async function n1081bTTUpdateStatus() {
+  let d;
+  try { d = await (await fetch("/n1081b/status")).json(); } catch (e) { return; }
+  const conn = document.getElementById("n1081b-conn");
+  const big = document.getElementById("n1081b-rate-total");
+  const setRate = (id, v) => document.getElementById(id).textContent =
+    (v == null ? "—" : (Math.round(v * 10) / 10).toString());
+
+  if (!d.connected) {
+    conn.textContent = "disconnected" + (d.last_error ? ` — ${String(d.last_error).split("\n")[0]}` : "");
+    conn.style.color = "var(--bad)";
+    big.textContent = "—"; big.style.color = "var(--muted)";
+    ["n1081b-rate-A", "n1081b-rate-B", "n1081b-rate-C", "n1081b-rate-D", "n1081b-total-today"]
+      .forEach(id => document.getElementById(id).textContent = "—");
+    document.getElementById("n1081b-updated").textContent = "";
+    return;
+  }
+  conn.textContent = "connected · " + (d.sections || "");
+  conn.style.color = "var(--ok)";
+  big.textContent = (d.rate_hz_total != null ? d.rate_hz_total : 0) + " Hz";
+  big.style.color = (d.rate_hz_total > 0) ? "var(--ok)" : "var(--muted)";
+  const r = d.rate_hz || {};
+  setRate("n1081b-rate-A", r.A); setRate("n1081b-rate-B", r.B);
+  setRate("n1081b-rate-C", r.C); setRate("n1081b-rate-D", r.D);
+  document.getElementById("n1081b-total-today").textContent =
+    (d.total_today_all != null ? d.total_today_all.toLocaleString() : "—");
+  if (d.csv_path) document.getElementById("n1081b-csv-path").textContent = d.csv_path;
+  document.getElementById("n1081b-updated").textContent =
+    d.timestamp ? `updated ${d.timestamp.split("T")[1] || ""} · ${d.cycles ?? "?"} cycles` : "";
+}
+
+async function n1081bTTRenderPlot() {
+  if (typeof Plotly === "undefined") return;
+  let h;
+  try { h = await (await fetch("/n1081b/history?hours=6&bin_s=10")).json(); } catch (e) { return; }
+  if (!h || !h.success) return;
+  const axis = { gridcolor: '#242e39', zerolinecolor: '#38434f', linecolor: '#38434f' };
+  const layout = {
+    hovermode: "closest",
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: "#8b96a5" }, hoverlabel: { bgcolor: "#1b222b", bordercolor: "#38434f" },
+    legend: { orientation: "h", y: -0.22, yanchor: "top" },
+    margin: { t: 20, r: 20, b: 48, l: 60 }, xaxis: { ...axis },
+    yaxis: { title: { text: "Edge rate (Hz)", font: { size: 14, color: "#4dabe8" } },
+             ...axis, rangemode: "tozero" },
+  };
+  const colors = { A: "#4dabe8", B: "#5cc98a", C: "#c98500", D: "#c95c8a" };
+  const secs = h.sections || {};
+  const traces = Object.keys(secs).sort().map(name => ({
+    x: h.time, y: secs[name], name: `Section ${name}`, type: "scatter", mode: "lines",
+    line: { color: colors[name] || "#8b96a5", width: 2 },
+  }));
+  Plotly.react("n1081b-plot", traces, { ...layout, uirevision: "n1081b-plot" },
+               { responsive: true, displaylogo: false });
+}
+
+document.querySelector('a[href="#m5-walls"]')
+  .addEventListener("shown.bs.tab", n1081bTTRenderPlot);
+setInterval(() => {
+  if (document.getElementById("m5-walls").classList.contains("active")) n1081bTTRenderPlot();
+}, 15000);
+n1081bTTUpdateStatus();
+setInterval(n1081bTTUpdateStatus, 3000);
+
 // ---------------------------------------------------------------------------
 // Shift Overview tab
 // One /shift/status poll drives the banner + health cards; the two trend plots
@@ -3141,5 +3485,206 @@ document.querySelector('a[href="#shift"]').addEventListener("shown.bs.tab", () =
   shiftRenderPlots();
 });
 if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
+</script>
+
+<!-- N1081B trigger diagram: self-contained renderer + fetch/refresh loop. -->
+<script src="{{ url_for('static', filename='n1081b_diagram.js') }}"></script>
+<script>
+(function () {
+  const root = document.getElementById("n1081b-diagram");
+  const statusEl = document.getElementById("trigger-status");
+  async function loadTrigger() {
+    if (!root || !window.N1081B) return;
+    let d;
+    try { d = await (await fetch("/n1081b/state")).json(); }
+    catch (e) { if (statusEl) statusEl.textContent = "fetch error"; return; }
+    window.N1081B.render(d, root);
+    if (statusEl) {
+      const src = d.source || {};
+      if (!d.success) statusEl.textContent = "error: " + (d.message || "failed");
+      else if (!src.kind) statusEl.textContent = "design only — no board snapshot yet";
+      else statusEl.textContent = "source: " +
+        (src.kind === "run_snapshot" ? "run snapshot" : "manual dump") +
+        (src.age_s != null ? " · " + (src.age_s < 90 ? src.age_s + "s"
+          : Math.round(src.age_s / 60) + " min") + " old" : "");
+    }
+  }
+  function triggerVisible() {
+    const p = document.getElementById("trigger");
+    return p && p.classList.contains("active");
+  }
+  const tab = document.querySelector('a[href="#trigger"]');
+  if (tab) tab.addEventListener("shown.bs.tab", loadTrigger);
+  // Refresh while the tab is open (per-sub-run snapshots land every few minutes).
+  setInterval(() => { if (triggerVisible()) loadTrigger(); }, 15000);
+  if (triggerVisible()) loadTrigger();
+})();
+</script>
+
+<!-- ===== Disk Space tab JS ===== -->
+<script>
+(function () {
+  let lastScan = null;              // last /space/scan result
+  const selected = new Set();       // run names checked for deletion
+
+  const $ = (id) => document.getElementById(id);
+  const diskSel   = $("ds-disk");
+  const usageBox  = $("ds-usage");
+  const resultsP  = $("ds-results-panel");
+  const tbody     = $("ds-tbody");
+
+  function fmtBar(u) {
+    if (!u || u.error) return `<div class="text-muted">unavailable (${u ? u.error : '—'})</div>`;
+    const pct = u.pct || 0;
+    const color = pct >= 90 ? "var(--bad)" : pct >= 75 ? "var(--warn)" : "var(--ok)";
+    const gb = (n) => (n / 1073741824).toFixed(0) + " GB";
+    return `
+      <div class="sys-bar-row">
+        <span class="sys-bar-label" style="width:auto; padding-right:10px;">${u.label}</span>
+        <span class="sys-bar-track"><span class="sys-bar-fill" style="width:${pct}%; background:${color};"></span></span>
+        <span class="sys-bar-pct" style="min-width:auto;">${pct}%</span>
+        <span class="sys-bar-extra">${gb(u.free)} free / ${gb(u.total)}</span>
+      </div>`;
+  }
+
+  async function loadUsage() {
+    try {
+      const r = await fetch("/space/usage");
+      const d = await r.json();
+      usageBox.innerHTML = fmtBar(d.hdd) + fmtBar(d.ssd);
+    } catch (e) { usageBox.innerHTML = `<div class="text-muted">could not load usage</div>`; }
+  }
+
+  function renderRows(scan) {
+    tbody.innerHTML = "";
+    selected.clear();
+    updateDeleteBtn();
+    if (!scan.runs.length) { $("ds-empty").classList.remove("d-none"); return; }
+    $("ds-empty").classList.add("d-none");
+    for (const r of scan.runs) {
+      const tr = document.createElement("tr");
+      const safe = r.safe;
+      const badge = r.active
+        ? `<span class="shift-flag-na">● acquiring</span>`
+        : safe ? `<span class="shift-flag-ok">✓ SAFE</span>`
+               : `<span class="shift-flag-bad">✗ not safe</span>`;
+      tr.innerHTML = `
+        <td>${safe ? `<input type="checkbox" class="form-check-input ds-cb" data-run="${r.run}">`
+                   : `<input type="checkbox" class="form-check-input" disabled title="not safe to delete">`}</td>
+        <td><b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}</td>
+        <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
+        <td style="font-size:0.82rem; color:var(--muted);">${r.reason}</td>
+        <td>${badge}</td>`;
+      tbody.appendChild(tr);
+    }
+    tbody.querySelectorAll(".ds-cb").forEach(cb => {
+      cb.addEventListener("change", () => {
+        if (cb.checked) selected.add(cb.dataset.run); else selected.delete(cb.dataset.run);
+        updateDeleteBtn();
+      });
+    });
+  }
+
+  function updateDeleteBtn() {
+    const btn = $("ds-delete");
+    btn.disabled = selected.size === 0;
+    btn.textContent = selected.size ? `Delete selected (${selected.size})…` : "Delete selected…";
+  }
+
+  async function runCheck() {
+    const disk = diskSel.value;
+    const btn = $("ds-check");
+    btn.disabled = true; btn.textContent = "Checking… (verifying against EOS)";
+    $("ds-scan-meta").textContent = "";
+    try {
+      const r = await fetch(`/space/scan?disk=${encodeURIComponent(disk)}`);
+      const d = await r.json();
+      if (!r.ok || d.success === false) throw new Error(d.message || "scan failed");
+      lastScan = d;
+      resultsP.style.display = "";
+      renderRows(d);
+      $("ds-summary").innerHTML =
+        `${d.n_safe}/${d.n_runs} safe · would free <b>${d.safe_bytes_h}</b>` +
+        (d.active_run ? ` · active: ${d.active_run}` : "");
+      $("ds-scan-meta").textContent = `Scanned ${d.n_runs} runs at ${d.scanned_at}`;
+      loadUsage();
+    } catch (e) {
+      $("ds-scan-meta").innerHTML = `<span style="color:var(--bad);">Check failed: ${e.message}</span>`;
+    } finally {
+      btn.disabled = false; btn.textContent = "Run safety check";
+    }
+  }
+
+  // ---- confirmation modal ----
+  const modal = $("ds-confirm-modal");
+  const cInput = $("ds-confirm-input");
+  const cGo = $("ds-confirm-go");
+  const cErr = $("ds-confirm-err");
+
+  function openConfirm() {
+    if (!selected.size || !lastScan) return;
+    const runs = lastScan.runs.filter(r => selected.has(r.run));
+    const total = runs.reduce((a, r) => a + (r.size || 0), 0);
+    $("ds-confirm-disk").textContent = lastScan.label;
+    $("ds-confirm-list").innerHTML = runs.map(r => `<li>${r.run} — ${r.size_h}</li>`).join("");
+    $("ds-confirm-size").textContent = (total / 1073741824).toFixed(1) + " GB";
+    cInput.value = ""; cErr.textContent = ""; cGo.disabled = true;
+    modal.style.display = "flex"; cInput.focus();
+  }
+  function closeConfirm() { modal.style.display = "none"; }
+
+  cInput.addEventListener("input", () => { cGo.disabled = cInput.value !== "DELETE"; });
+  $("ds-confirm-cancel").addEventListener("click", closeConfirm);
+  modal.addEventListener("click", e => { if (e.target === modal) closeConfirm(); });
+
+  cGo.addEventListener("click", async () => {
+    if (cInput.value !== "DELETE") return;
+    const disk = lastScan.disk;
+    const runs = [...selected];
+    cGo.disabled = true; cGo.textContent = "Deleting…";
+    try {
+      const r = await fetch("/space/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disk, runs, confirm: "DELETE" }),
+      });
+      const d = await r.json();
+      closeConfirm();
+      if (!r.ok) { $("ds-scan-meta").innerHTML =
+        `<span style="color:var(--bad);">${(d && d.message) || "delete failed"}</span>`; return; }
+      const failed = (d.results || []).filter(x => !x.success);
+      let msg = `Deleted ${d.n_deleted} run(s), freed ${d.freed_h}.`;
+      if (failed.length) msg += ` ${failed.length} skipped: ` +
+        failed.map(x => `${x.run || '?'} (${x.message})`).join("; ");
+      $("ds-scan-meta").innerHTML = failed.length
+        ? `<span style="color:var(--warn);">${msg}</span>`
+        : `<span style="color:var(--ok);">${msg}</span>`;
+      await runCheck();   // re-scan so the table + usage reflect reality
+    } catch (e) {
+      closeConfirm();
+      $("ds-scan-meta").innerHTML = `<span style="color:var(--bad);">delete error: ${e.message}</span>`;
+    } finally {
+      cGo.textContent = "Delete permanently";
+    }
+  });
+
+  // ---- wire buttons ----
+  $("ds-check").addEventListener("click", runCheck);
+  $("ds-delete").addEventListener("click", openConfirm);
+  $("ds-select-safe").addEventListener("click", () => {
+    tbody.querySelectorAll(".ds-cb").forEach(cb => {
+      cb.checked = true; selected.add(cb.dataset.run);
+    });
+    updateDeleteBtn();
+  });
+  $("ds-clear-sel").addEventListener("click", () => {
+    tbody.querySelectorAll(".ds-cb").forEach(cb => cb.checked = false);
+    selected.clear(); updateDeleteBtn();
+  });
+  // Re-checking a different disk clears the stale table.
+  diskSel.addEventListener("change", () => { resultsP.style.display = "none"; lastScan = null; });
+
+  const dsTab = document.querySelector('a[href="#disk-space"]');
+  if (dsTab) dsTab.addEventListener("shown.bs.tab", loadUsage);
+})();
 </script>
 {% endblock %}

@@ -30,9 +30,12 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_qa_watcher_status, get_backup_watcher_status,
                         get_pedestal_watcher_status,
                         get_gas_watcher_status, get_he3_pressure_watcher_status,
-                        get_beam_watcher_status)
+                        get_beam_watcher_status, get_n1081b_timetag_watcher_status)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
+_N1081B_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "n1081b")
+if _N1081B_DIR not in sys.path:
+    sys.path.append(_N1081B_DIR)  # so the N1081B design-model module imports cleanly
 from run_config_beam import Config, BASE_DATA_DIR
 from get_run_events import get_total_events_for_run
 from monitor import DaqMonitor, fetch_chat_id, get_bot_username
@@ -46,6 +49,10 @@ from he3_pressure_reader.he3_pressure_controller import (HE3_PRESSURE_LOG_DIR,
 from beam_monitor.beam_intensity_controller import (BEAM_LOG_DIR, BEAM_STATE_PATH,
                                                     NXCALS_PYTHON, BEAM_UNIT,
                                                     PULSE_THRESHOLD_E10)
+from n1081b.timetag_watcher_controller import (N1081B_TT_LOG_DIR, N1081B_TT_STATE_PATH,
+                                               N1081B_TT_CONFIG_PATH)
+from system_monitor.system_stats_controller import SYSTEM_STATS_LOG_DIR
+import space_manager
 
 # BASE_DIR = "/home/dylan/PycharmProjects/nTof_x17_DAQ"
 BASE_DIR = "/home/mx17/PycharmProjects/nTof_x17_DAQ"
@@ -68,6 +75,12 @@ CURRENT_RUN_STATE_PATH = f"{BASE_DIR}/config/current_run_state.json"
 # Post-sub-run pause flag; presence tells daq_control to wait at the next sub-run
 # boundary. Path must match PAUSE_FLAG in daq_control.py (repo root).
 PAUSE_FLAG_PATH = f"{BASE_DIR}/.pause_run"
+# N1081B trigger-diagram tab: the live board state is read (no extra board
+# traffic) from the newest per-sub-run n1081b_config.json daq_control drops in each
+# run dir, falling back to the newest manual snapshots/dump_*.json when idle. The
+# scan watcher publishes the currently-applied scan config here.
+N1081B_SNAP_DIR = f"{BASE_DIR}/n1081b/snapshots"
+N1081B_SCAN_ACTIVE_PATH = f"{BASE_DIR}/config/n1081b_scan_active.json"
 # ANALYSIS_DIR = "/media/dylan/data/x17"
 # RUN_DIR = "/media/dylan/data/x17/dream_run_test"
 # Online QA Viewer tab serves the per-run QA plots detector_qa.py writes under
@@ -237,7 +250,7 @@ def auth_status():
 
 TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
                  "pedestal_watcher", "gas_watcher", "he3_pressure_watcher",
-                 "beam_watcher"]
+                 "beam_watcher", "n1081b_timetag_watcher"]
 sessions = {}
 
 @app.route("/")
@@ -397,6 +410,8 @@ def status_all():
             info = get_he3_pressure_watcher_status()
         elif s == "beam_watcher":
             info = get_beam_watcher_status()
+        elif s == "n1081b_timetag_watcher":
+            info = get_n1081b_timetag_watcher_status()
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 
@@ -1341,6 +1356,61 @@ def system_stats():
         return jsonify({"success": False, "message": str(e)})
 
 
+@app.route("/system_stats/history")
+def system_stats_history():
+    """Logged system-resource history from the per-day CSV(s) the system_stats_watcher
+    writes, so the Overview plots come up already populated instead of filling in live.
+    `minutes` trims to a recent window; the result is downsampled to keep the payload
+    light. Net/disk rates are summed across interfaces/devices to match the live plots."""
+    import glob
+    minutes = request.args.get("minutes", default=30.0, type=float)
+    max_points = request.args.get("max_points", default=600, type=int)
+    empty = {"success": True, "time": [], "cpu": [], "cpu_avg": [], "mem": [],
+             "swap": [], "net_rx": [], "net_tx": [], "disk_r": [], "disk_w": []}
+    try:
+        files = sorted(glob.glob(os.path.join(SYSTEM_STATS_LOG_DIR, "system_stats_*.csv")))
+        if not files:
+            return jsonify(empty)
+        # Read the last couple of day-files so a window spanning midnight still works.
+        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        if minutes and minutes > 0:
+            df = df[df["timestamp"] >= datetime.now() - timedelta(minutes=minutes)]
+        if df.empty:
+            return jsonify(empty)
+        # Downsample by striding so the trace stays light but keeps its shape.
+        if len(df) > max_points:
+            df = df.iloc[:: (len(df) // max_points) + 1]
+
+        def sum_cols(names):
+            """Sum a set of (possibly absent) numeric columns into one series."""
+            s = None
+            for n in names:
+                if n in df.columns:
+                    col = pd.to_numeric(df[n], errors="coerce").fillna(0)
+                    s = col if s is None else s + col
+            return (s if s is not None else pd.Series(0.0, index=df.index)).tolist()
+
+        core_cols = sorted(
+            [c for c in df.columns if c.startswith("cpu") and c != "cpu_avg"],
+            key=lambda c: int(c[3:]))
+        return jsonify({
+            "success": True,
+            "time": df["timestamp"].dt.strftime("%Y-%m-%dT%H:%M:%S").tolist(),
+            "cpu": df[core_cols].round(1).values.tolist() if core_cols else [],
+            "cpu_avg": df["cpu_avg"].round(1).tolist() if "cpu_avg" in df else [],
+            "mem": df["mem_percent"].round(1).tolist() if "mem_percent" in df else [],
+            "swap": df["swap_percent"].round(1).tolist() if "swap_percent" in df else [],
+            "net_rx": sum_cols([f"net_{i}_rx_bps" for i in _NET_IFACES]),
+            "net_tx": sum_cols([f"net_{i}_tx_bps" for i in _NET_IFACES]),
+            "disk_r": sum_cols([f"disk_{k}_read_bps" for k in _DISK_DEVS]),
+            "disk_w": sum_cols([f"disk_{k}_write_bps" for k in _DISK_DEVS]),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 # --- Gas mixer (Bronkhorst MFC) control ---
 # The serial bus is owned by the separate gas_watcher process (see the note by the
 # imports). Flask reads the watcher's published state and sends commands via files;
@@ -1512,6 +1582,82 @@ def he3_pressure_history():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+# --- N1081B Module-5 time-tag watcher (owns .244; streams the 4 scint walls as
+# per-edge timestamps). Flask only reads the watcher's published state + CSV history;
+# it must NOT open .244 itself while the watcher runs (the board broadcasts its stream
+# to every client). See n1081b/timetag_watcher_controller.py + n1081b/TIMETAG_WATCHER.md.
+def _n1081b_tt_read_state():
+    """The watcher's latest published state, or a disconnected stub if not running."""
+    try:
+        with open(N1081B_TT_STATE_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {"connected": False, "last_error": "N1081B time-tag watcher not running"}
+
+
+@app.route("/n1081b/status")
+def n1081b_status():
+    """Latest health + per-section edge rates published by the n1081b_timetag_watcher."""
+    return jsonify(_n1081b_tt_read_state())
+
+
+@app.route("/n1081b/history")
+def n1081b_history():
+    """Per-section edge RATE history binned from the per-day time-tag CSV(s). The raw CSV
+    is one row per edge (high volume), so we bin by `bin_s` seconds into rates for the
+    plot rather than returning raw edges. `hours` trims to a recent window."""
+    import glob
+    hours = request.args.get("hours", default=6.0, type=float)
+    bin_s = max(1.0, request.args.get("bin_s", default=10.0, type=float))
+    try:
+        files = sorted(glob.glob(os.path.join(N1081B_TT_LOG_DIR, "n1081b_timetag_*.csv")))
+        if not files:
+            return jsonify({"success": True, "time": [], "sections": {}, "bin_s": bin_s})
+        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
+        df["ts"] = pd.to_datetime(df["host_unix"], unit="s", errors="coerce")
+        df = df.dropna(subset=["ts"])
+        if hours and hours > 0:
+            df = df[df["ts"] >= datetime.now() - timedelta(hours=hours)]
+        if df.empty:
+            return jsonify({"success": True, "time": [], "sections": {}, "bin_s": bin_s})
+        # Bin edges/section into rates (Hz) on a common time axis.
+        df["bin"] = (df["host_unix"] // bin_s * bin_s).astype("int64")
+        grp = df.groupby(["bin", "section"]).size().unstack(fill_value=0)
+        bins = grp.index.to_numpy()
+        times = [datetime.fromtimestamp(float(b)).strftime("%Y-%m-%d %H:%M:%S") for b in bins]
+        sections = {col: (grp[col] / bin_s).round(2).tolist() for col in grp.columns}
+        return jsonify({"success": True, "time": times, "sections": sections, "bin_s": bin_s})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/start_n1081b_timetag_watcher", methods=["POST"])
+def start_n1081b_timetag_watcher():
+    """Start the N1081B time-tag watcher (sole owner of .244: arms all 4 sections to
+    Time-Tag and streams per-edge timestamps to a daily CSV). While it runs, poll_modules
+    auto-skips .244. On stop it restores .244 to its counter steady state."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", "n1081b_timetag_watcher"], capture_output=True)
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", "n1081b_timetag_watcher",
+            sys.executable, f"{BASE_DIR}/n1081b_timetag_watcher.py"
+        ])
+        return jsonify({"success": True, "message": "N1081B time-tag watcher started"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stop_n1081b_timetag_watcher", methods=["POST"])
+def stop_n1081b_timetag_watcher():
+    """Stop the N1081B time-tag watcher. Killing the tmux session sends SIGTERM, so the
+    watcher runs its clean-exit restore (.244 back to counters) before exiting."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", "n1081b_timetag_watcher"], capture_output=True)
+        return jsonify({"success": True, "message": "N1081B time-tag watcher stopped"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 # The NXCALS session is owned by the separate beam_watcher process (see
 # beam_monitor/beam_intensity_controller.py). Flask only reads the watcher's
 # published state and CSV history. Intensity is in 1e10 protons per pulse.
@@ -1592,6 +1738,77 @@ def beam_history():
         })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+def _n1081b_find_snapshot():
+    """Newest live board read-back available WITHOUT touching the boards: the most
+    recent per-sub-run n1081b_config.json daq_control writes, else the newest manual
+    snapshots/dump_*.json. Returns (path, kind) or (None, None)."""
+    import glob
+    cands = []  # (mtime, path, kind)
+    try:
+        for p in glob.glob(os.path.join(RUN_DIR, "*", "*", "n1081b_config.json")):
+            try:
+                cands.append((os.path.getmtime(p), p, "run_snapshot"))
+            except OSError:
+                pass
+    except Exception:
+        pass
+    try:
+        for p in glob.glob(os.path.join(N1081B_SNAP_DIR, "dump_*.json")):
+            try:
+                cands.append((os.path.getmtime(p), p, "dump"))
+            except OSError:
+                pass
+    except Exception:
+        pass
+    if not cands:
+        return None, None
+    cands.sort(reverse=True)
+    return cands[0][1], cands[0][2]
+
+
+@app.route("/n1081b/state")
+def n1081b_state():
+    """Merged N1081B trigger diagram: the static design model (roles, routing,
+    intended thresholds/monos) overlaid with the newest available live read-back and
+    the currently-applied scan. No board access — reads only files on disk."""
+    from n1081b_module_map import build_state
+    snapshot, path, kind, age_s, polled_at = None, None, None, None, None
+    try:
+        path, kind = _n1081b_find_snapshot()
+        if path:
+            with open(path) as f:
+                snapshot = json.load(f)
+            age_s = int(time.time() - os.path.getmtime(path))
+            polled_at = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"success": False, "message": f"snapshot load failed: {e}"}), 500
+
+    scan_active = None
+    try:
+        if os.path.exists(N1081B_SCAN_ACTIVE_PATH):
+            with open(N1081B_SCAN_ACTIVE_PATH) as f:
+                sa = json.load(f)
+            # only surface it while a scan is actually applied
+            if sa.get("active"):
+                sa["age_s"] = None
+                try:
+                    sa["age_s"] = int(time.time() - os.path.getmtime(N1081B_SCAN_ACTIVE_PATH))
+                except OSError:
+                    pass
+                scan_active = sa
+    except Exception:
+        scan_active = None
+
+    try:
+        state = build_state(snapshot, scan_active, source_meta={
+            "path": os.path.relpath(path, BASE_DIR) if path else None,
+            "kind": kind, "age_s": age_s, "polled_at": polled_at,
+        })
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"success": False, "message": f"build_state failed: {e}"}), 500
+    return jsonify(state)
 
 
 @app.route("/he3_pressure/config", methods=["GET", "POST"])
@@ -2016,6 +2233,35 @@ def emergency_stop():
                                if ok else "Emergency stop dispatched with errors — check details"})
 
 
+@app.route("/run/hv_off", methods=["POST"])
+def hv_off():
+    """HV off for the Overview page's Run Control box: power off only the HV
+    channels belonging to the detectors listed in the current run config's
+    included_detectors (direct to the CAEN crate, own session — reuses
+    emergency_hv_off.py, the same script the Shift Overview Emergency Stop
+    uses for its HV step)."""
+    log_event('HV_OFF', 'overview_page', remote_addr=_client_ip())
+    try:
+        included = list(Config().included_detectors)
+    except Exception:
+        included = []
+
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        hv_log = open(f"{LOG_DIR}/hv_off.log", "a")
+        hv_log.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} from "
+                     f"{_client_ip()} =====\n")
+        hv_log.flush()
+        subprocess.Popen([sys.executable, f"{BASE_DIR}/emergency_hv_off.py"],
+                         cwd=BASE_DIR, stdout=hv_log, stderr=subprocess.STDOUT)
+        detail = (f"HV power-off dispatched for: {', '.join(included)}" if included
+                  else "HV power-off dispatched (no detectors listed in run config)")
+        return jsonify({"success": True, "message": detail, "detectors": included})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"HV off failed: {e}",
+                        "detectors": included})
+
+
 def is_dream_daq_running():
     """
     Checks tmux session 'daq_control' and returns True if Dream DAQ is running.
@@ -2062,6 +2308,54 @@ def is_dream_daq_running():
     #
     # # Running only if started AND not complete
     # return saw_start and not saw_complete
+
+
+# ===========================================================================
+# Disk Space tab — free space by clearing DREAM runs that are provably backed up
+# ---------------------------------------------------------------------------
+# All the safety logic lives in space_manager.py: a run is "safe to delete" only
+# when its data is verified elsewhere (HDD run -> EOS; SSD raw run -> HDD -> EOS).
+# /space/scan is read-only (open to viewers); /space/delete is a POST and so is
+# gated by the view-only guard, AND space_manager re-verifies every run itself
+# before removing it (never trusts the client).
+# ===========================================================================
+
+@app.route("/space/usage")
+def space_usage():
+    return jsonify(space_manager.disk_usage())
+
+
+@app.route("/space/scan")
+def space_scan():
+    disk = request.args.get("disk", "hdd")
+    if disk not in space_manager.DISKS:
+        return jsonify({"success": False, "message": f"unknown disk {disk}"}), 400
+    try:
+        return jsonify(space_manager.scan(disk))
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/space/delete", methods=["POST"])
+def space_delete():
+    data = request.get_json(silent=True) or {}
+    disk = data.get("disk")
+    runs = data.get("runs") or []
+    confirm = data.get("confirm")
+    if disk not in space_manager.DISKS:
+        return jsonify({"success": False, "message": f"unknown disk {disk}"}), 400
+    if not isinstance(runs, list) or not runs:
+        return jsonify({"success": False, "message": "no runs selected"}), 400
+    # Typed confirmation must match exactly, so a stray click can't delete.
+    if confirm != "DELETE":
+        return jsonify({"success": False, "message": "confirmation text did not match"}), 400
+    out = space_manager.delete_runs(disk, runs)
+    log_event("SPACE_DELETE", "disk_space", disk=disk,
+              runs=",".join(runs), freed=out["freed_h"],
+              ok=out["n_deleted"], failed=out["n_failed"])
+    out["success"] = out["n_failed"] == 0
+    out["usage"] = space_manager.disk_usage().get(disk, {})
+    return jsonify(out)
 
 
 if __name__ == "__main__":
