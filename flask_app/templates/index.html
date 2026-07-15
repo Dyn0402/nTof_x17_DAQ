@@ -846,6 +846,9 @@
       </div>
     </div>
     <div class="panel-body">
+      <p class="text-muted mb-2" style="font-size:0.8rem;">
+        Tip: tick a checkbox, then <b>Shift-click</b> another to select every safe run in
+        between (like a file list). Use <b>Select all safe</b> to grab them all at once.</p>
       <div class="table-responsive">
         <table class="table table-dark table-sm align-middle mb-0" id="ds-table">
           <thead>
@@ -869,20 +872,37 @@
   <div style="background:var(--panel); border:1px solid var(--bad); border-radius:10px;
        padding:1.2rem 1.3rem; width:min(480px,94vw);">
     <div style="font-weight:600; margin-bottom:0.5rem; color:var(--bad);">Permanently delete runs</div>
-    <p class="text-muted" style="font-size:0.83rem; margin-bottom:0.5rem;">
-      You are about to delete the following from <b id="ds-confirm-disk"></b>. Each run is
-      re-verified on the server immediately before deletion; anything not provably backed
-      up will be skipped.</p>
-    <ul id="ds-confirm-list" style="font-family:var(--mono); font-size:0.82rem; max-height:180px;
-        overflow:auto; margin-bottom:0.6rem;"></ul>
-    <div style="font-size:0.83rem; margin-bottom:0.35rem;">Total to free:
-      <b id="ds-confirm-size" style="font-family:var(--mono);"></b></div>
-    <label class="form-label" for="ds-confirm-input">Type <b>DELETE</b> to confirm</label>
-    <input id="ds-confirm-input" type="text" class="form-control" autocomplete="off" placeholder="DELETE">
-    <div id="ds-confirm-err" style="color:var(--bad); font-size:0.8rem; min-height:1.1rem; margin-top:0.4rem;"></div>
+
+    <!-- confirm phase -->
+    <div id="ds-confirm-section">
+      <p class="text-muted" style="font-size:0.83rem; margin-bottom:0.5rem;">
+        You are about to delete the following from <b id="ds-confirm-disk"></b>. Each run is
+        re-verified on the server immediately before deletion; anything not provably backed
+        up will be skipped.</p>
+      <ul id="ds-confirm-list" style="font-family:var(--mono); font-size:0.82rem; max-height:180px;
+          overflow:auto; margin-bottom:0.6rem;"></ul>
+      <div style="font-size:0.83rem; margin-bottom:0.35rem;">Total to free:
+        <b id="ds-confirm-size" style="font-family:var(--mono);"></b></div>
+      <label class="form-label" for="ds-confirm-input">Type <b>DELETE</b> to confirm</label>
+      <input id="ds-confirm-input" type="text" class="form-control" autocomplete="off" placeholder="DELETE">
+      <div id="ds-confirm-err" style="color:var(--bad); font-size:0.8rem; min-height:1.1rem; margin-top:0.4rem;"></div>
+    </div>
+
+    <!-- progress phase -->
+    <div id="ds-progress-section" style="display:none;">
+      <div id="ds-progress-status" style="font-size:0.85rem; margin-bottom:0.5rem;">Deleting…</div>
+      <div class="sys-bar-track" style="height:16px; margin-bottom:0.4rem;">
+        <div id="ds-progress-bar" class="sys-bar-fill" style="width:0%; background:var(--bad);"></div>
+      </div>
+      <div id="ds-progress-pct" class="text-muted" style="font-size:0.78rem; font-family:var(--mono); margin-bottom:0.5rem;">0%</div>
+      <ul id="ds-progress-log" style="font-family:var(--mono); font-size:0.8rem; max-height:180px;
+          overflow:auto; margin-bottom:0;"></ul>
+    </div>
+
     <div class="d-flex gap-2 justify-content-end mt-2">
       <button id="ds-confirm-cancel" class="btn btn-sm btn-secondary">Cancel</button>
       <button id="ds-confirm-go" class="btn btn-sm btn-danger" disabled>Delete permanently</button>
+      <button id="ds-confirm-close" class="btn btn-sm btn-secondary" style="display:none;">Close</button>
     </div>
   </div>
 </div>
@@ -3555,9 +3575,12 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     } catch (e) { usageBox.innerHTML = `<div class="text-muted">could not load usage</div>`; }
   }
 
+  let lastIdx = null;   // index (within the safe-checkbox list) of the last click, for shift-range
+
   function renderRows(scan) {
     tbody.innerHTML = "";
     selected.clear();
+    lastIdx = null;
     updateDeleteBtn();
     if (!scan.runs.length) { $("ds-empty").classList.remove("d-none"); return; }
     $("ds-empty").classList.add("d-none");
@@ -3577,12 +3600,26 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
         <td>${badge}</td>`;
       tbody.appendChild(tr);
     }
-    tbody.querySelectorAll(".ds-cb").forEach(cb => {
-      cb.addEventListener("change", () => {
-        if (cb.checked) selected.add(cb.dataset.run); else selected.delete(cb.dataset.run);
-        updateDeleteBtn();
+    // Wire the safe checkboxes with shift-click range support. We use "click"
+    // (not "change") because only the click event carries shiftKey.
+    const cbs = [...tbody.querySelectorAll(".ds-cb")];
+    cbs.forEach((cb, i) => {
+      cb.addEventListener("click", (e) => {
+        if (e.shiftKey && lastIdx !== null && lastIdx !== i) {
+          // Apply this checkbox's new state to every safe checkbox in the range.
+          const [lo, hi] = [Math.min(lastIdx, i), Math.max(lastIdx, i)];
+          for (let j = lo; j <= hi; j++) cbs[j].checked = cb.checked;
+        }
+        lastIdx = i;
+        syncSelection(cbs);
       });
     });
+  }
+
+  function syncSelection(cbs) {
+    selected.clear();
+    cbs.forEach(cb => { if (cb.checked) selected.add(cb.dataset.run); });
+    updateDeleteBtn();
   }
 
   function updateDeleteBtn() {
@@ -3615,11 +3652,22 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     }
   }
 
-  // ---- confirmation modal ----
+  // ---- confirmation + progress modal ----
   const modal = $("ds-confirm-modal");
   const cInput = $("ds-confirm-input");
   const cGo = $("ds-confirm-go");
   const cErr = $("ds-confirm-err");
+  const cClose = $("ds-confirm-close");
+  let deleting = false;   // blocks closing the modal mid-delete
+  const gb = (n) => (n / 1073741824).toFixed(1) + " GB";
+
+  function setPhase(phase) {   // 'confirm' | 'progress' | 'done'
+    $("ds-confirm-section").style.display  = phase === "confirm" ? "" : "none";
+    $("ds-progress-section").style.display = phase === "confirm" ? "none" : "";
+    $("ds-confirm-cancel").style.display   = phase === "confirm" ? "" : "none";
+    cGo.style.display    = phase === "confirm" ? "" : "none";
+    cClose.style.display = phase === "done" ? "" : "none";
+  }
 
   function openConfirm() {
     if (!selected.size || !lastScan) return;
@@ -3627,58 +3675,97 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     const total = runs.reduce((a, r) => a + (r.size || 0), 0);
     $("ds-confirm-disk").textContent = lastScan.label;
     $("ds-confirm-list").innerHTML = runs.map(r => `<li>${r.run} — ${r.size_h}</li>`).join("");
-    $("ds-confirm-size").textContent = (total / 1073741824).toFixed(1) + " GB";
+    $("ds-confirm-size").textContent = gb(total);
     cInput.value = ""; cErr.textContent = ""; cGo.disabled = true;
+    cGo.textContent = "Delete permanently";
+    setPhase("confirm");
     modal.style.display = "flex"; cInput.focus();
   }
-  function closeConfirm() { modal.style.display = "none"; }
+  function closeConfirm() { if (!deleting) modal.style.display = "none"; }
 
   cInput.addEventListener("input", () => { cGo.disabled = cInput.value !== "DELETE"; });
   $("ds-confirm-cancel").addEventListener("click", closeConfirm);
+  cClose.addEventListener("click", () => { modal.style.display = "none"; runCheck(); });
   modal.addEventListener("click", e => { if (e.target === modal) closeConfirm(); });
 
-  cGo.addEventListener("click", async () => {
-    if (cInput.value !== "DELETE") return;
-    const disk = lastScan.disk;
-    const runs = [...selected];
-    cGo.disabled = true; cGo.textContent = "Deleting…";
-    try {
-      const r = await fetch("/space/delete", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disk, runs, confirm: "DELETE" }),
-      });
-      const d = await r.json();
-      closeConfirm();
-      if (!r.ok) { $("ds-scan-meta").innerHTML =
-        `<span style="color:var(--bad);">${(d && d.message) || "delete failed"}</span>`; return; }
-      const failed = (d.results || []).filter(x => !x.success);
-      let msg = `Deleted ${d.n_deleted} run(s), freed ${d.freed_h}.`;
-      if (failed.length) msg += ` ${failed.length} skipped: ` +
-        failed.map(x => `${x.run || '?'} (${x.message})`).join("; ");
-      $("ds-scan-meta").innerHTML = failed.length
-        ? `<span style="color:var(--warn);">${msg}</span>`
-        : `<span style="color:var(--ok);">${msg}</span>`;
-      await runCheck();   // re-scan so the table + usage reflect reality
-    } catch (e) {
-      closeConfirm();
-      $("ds-scan-meta").innerHTML = `<span style="color:var(--bad);">delete error: ${e.message}</span>`;
-    } finally {
-      cGo.textContent = "Delete permanently";
+  // Delete the selected runs ONE AT A TIME so we can show real per-run progress.
+  // Each request re-verifies that single run on the server before removing it.
+  async function runDeletion(disk, runs, sizeByRun) {
+    const totalBytes = runs.reduce((a, r) => a + (sizeByRun[r] || 0), 0) || 1;
+    const log = $("ds-progress-log");
+    log.innerHTML = "";
+    let doneBytes = 0, freed = 0, nOk = 0, nFail = 0;
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i];
+      $("ds-progress-status").textContent = `Deleting ${run} (${i + 1}/${runs.length})…`;
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="text-muted">${run} … removing</span>`;
+      log.appendChild(li); log.scrollTop = log.scrollHeight;
+      let d;
+      try {
+        const r = await fetch("/space/delete", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ disk, runs: [run], confirm: "DELETE" }),
+        });
+        d = await r.json();
+      } catch (e) { d = { results: [{ run, success: false, message: e.message }] }; }
+      const rr = (d.results && d.results[0]) || { success: false, message: (d && d.message) || "failed" };
+      if (rr.success) {
+        nOk++; freed += rr.freed_bytes || 0;
+        li.innerHTML = `<span class="shift-flag-ok">✓ ${run}</span> <span class="text-muted">freed ${rr.freed_h || ""}</span>`;
+      } else {
+        nFail++;
+        li.innerHTML = `<span class="shift-flag-bad">✗ ${run}</span> <span class="text-muted">${rr.message || "skipped"}</span>`;
+      }
+      doneBytes += sizeByRun[run] || 0;
+      const pct = Math.min(100, Math.round(100 * doneBytes / totalBytes));
+      $("ds-progress-bar").style.width = pct + "%";
+      $("ds-progress-pct").textContent = pct + "%";
     }
+    $("ds-progress-bar").style.background = nFail ? "var(--warn)" : "var(--ok)";
+    $("ds-progress-status").innerHTML =
+      `Done — deleted ${nOk}` + (nFail ? `, <span style="color:var(--warn);">skipped ${nFail}</span>` : "") +
+      `, freed ${gb(freed)}.`;
+    return { nOk, nFail, freed };
+  }
+
+  cGo.addEventListener("click", async () => {
+    if (cInput.value !== "DELETE" || !lastScan) return;
+    const disk = lastScan.disk;
+    const runs = lastScan.runs.filter(r => selected.has(r.run)).map(r => r.run);  // scan order
+    const sizeByRun = {};
+    lastScan.runs.forEach(r => { sizeByRun[r.run] = r.size || 0; });
+    deleting = true;
+    setPhase("progress");
+    $("ds-progress-bar").style.background = "var(--bad)";
+    $("ds-progress-bar").style.width = "0%";
+    $("ds-progress-pct").textContent = "0%";
+    let res;
+    try {
+      res = await runDeletion(disk, runs, sizeByRun);
+    } finally {
+      deleting = false;
+      setPhase("done");
+    }
+    $("ds-scan-meta").innerHTML = res.nFail
+      ? `<span style="color:var(--warn);">Deleted ${res.nOk}, skipped ${res.nFail}, freed ${gb(res.freed)}.</span>`
+      : `<span style="color:var(--ok);">Deleted ${res.nOk} run(s), freed ${gb(res.freed)}.</span>`;
   });
 
   // ---- wire buttons ----
   $("ds-check").addEventListener("click", runCheck);
   $("ds-delete").addEventListener("click", openConfirm);
   $("ds-select-safe").addEventListener("click", () => {
-    tbody.querySelectorAll(".ds-cb").forEach(cb => {
-      cb.checked = true; selected.add(cb.dataset.run);
-    });
-    updateDeleteBtn();
+    const cbs = [...tbody.querySelectorAll(".ds-cb")];
+    cbs.forEach(cb => cb.checked = true);
+    lastIdx = cbs.length ? cbs.length - 1 : null;
+    syncSelection(cbs);
   });
   $("ds-clear-sel").addEventListener("click", () => {
-    tbody.querySelectorAll(".ds-cb").forEach(cb => cb.checked = false);
-    selected.clear(); updateDeleteBtn();
+    const cbs = [...tbody.querySelectorAll(".ds-cb")];
+    cbs.forEach(cb => cb.checked = false);
+    lastIdx = null;
+    syncSelection(cbs);
   });
   // Re-checking a different disk clears the stale table.
   diskSel.addEventListener("change", () => { resultsP.style.display = "none"; lastScan = null; });
