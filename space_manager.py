@@ -380,6 +380,169 @@ def delete_runs(disk: str, runs: list) -> dict:
             'n_failed': sum(1 for r in results if not r.get('success'))}
 
 
+# --- Restore (EOS -> local HDD) -------------------------------------------
+# The inverse of delete: pull a run back from EOS onto the HDD. EOS mirrors the
+# HDD layout (not the SSD raw staging), so restore always targets the HDD. Only
+# files missing or size-mismatched locally are fetched (xrdcp -f), so it is
+# idempotent and cheap to re-run — exactly the reverse of the backup sync.
+
+def _xrdcp_download(eos_file: str, local_path: Path):
+    """Copy one file EOS -> local via native xrdcp. Returns (ok, stderr)."""
+    url, _ = _eos_config()
+    try:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return False, str(e)
+    src = f"{url}//{eos_file.lstrip('/')}"
+    r = subprocess.run(['xrdcp', '-f', '--nopbar', src, str(local_path)],
+                       capture_output=True, text=True)
+    return (r.returncode == 0), (r.stderr or '').strip()
+
+
+def list_eos_runs():
+    """Sorted run_N names present on EOS, or None if the listing failed."""
+    url, eos_runs = _eos_config()
+    r = subprocess.run(['xrdfs', url, 'ls', eos_runs], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    out = []
+    for line in r.stdout.splitlines():
+        name = line.rstrip('/').rsplit('/', 1)[-1]
+        if RUN_NAME_RE.match(name):
+            out.append(name)
+    return sorted(out, key=_run_num)
+
+
+def scan_restore() -> dict:
+    """List every run on EOS and, for each, how it compares to the local HDD:
+    complete (already local), partial, or missing. 'To fetch' is the bytes that
+    would be pulled (files absent or size-mismatched locally)."""
+    runs = list_eos_runs()
+    if runs is None:
+        raise RuntimeError('could not list runs on EOS (Kerberos/network?)')
+    act = active_run()
+    _, eos_runs = _eos_config()
+    results = []
+    fetch_total = 0
+    for run in runs:
+        remote = _remote_size_map(f"{eos_runs}/{run}")
+        r = {'run': run, 'disk': 'hdd', 'active': run == act}
+        if remote is None:
+            r.update(status='error', restorable=False, eos_bytes=0, size_h='—',
+                     total=0, have=0, fetch_files=0, fetch_bytes=0, fetch_h='—')
+            results.append(r)
+            continue
+        eos_bytes = sum(remote.values())
+        total = len(remote)
+        local_root = HDD_RUNS_DIR / run
+        local = _local_size_map(local_root) if local_root.is_dir() else {}
+        have = fetch_bytes = 0
+        for rel, sz in remote.items():
+            if local.get(rel) == sz:
+                have += 1
+            else:
+                fetch_bytes += sz
+        fetch_files = total - have
+        status = 'complete' if fetch_files == 0 else ('missing' if not local else 'partial')
+        restorable = fetch_files > 0 and not r['active']
+        r.update(status=status, restorable=restorable, eos_bytes=eos_bytes,
+                 size_h=human(eos_bytes), total=total, have=have,
+                 fetch_files=fetch_files, fetch_bytes=fetch_bytes, fetch_h=human(fetch_bytes))
+        if restorable:
+            fetch_total += fetch_bytes
+        results.append(r)
+    return {
+        'runs': results, 'n_runs': len(results),
+        'n_restorable': sum(1 for r in results if r['restorable']),
+        'fetch_bytes_total': fetch_total, 'fetch_bytes_total_h': human(fetch_total),
+        'active_run': act, 'usage': disk_usage().get('hdd', {}),
+        'scanned_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }
+
+
+def restore_run(run: str) -> dict:
+    """Pull one run from EOS onto the HDD. Copies only files missing or size-
+    mismatched locally. Refuses the active run (would clobber live writes) and
+    aborts if the HDD lacks free space for the fetch."""
+    res = {'run': run, 'disk': 'hdd', 'success': False, 'restored_files': 0,
+           'fetched_bytes': 0, 'fetched_h': '0 B', 'message': ''}
+    if not RUN_NAME_RE.match(run or ''):
+        res['message'] = f'invalid run name {run!r}'
+        return res
+    if run == active_run():
+        res['message'] = f'{run} is the active run — refusing'
+        return res
+    _, eos_runs = _eos_config()
+    eos_run = f"{eos_runs}/{run}"
+    remote = _remote_size_map(eos_run)
+    if remote is None:
+        res['message'] = 'could not list run on EOS (Kerberos/network?)'
+        return res
+    if not remote:
+        res['message'] = 'run not found on EOS'
+        return res
+
+    local_root = HDD_RUNS_DIR / run
+    to_fetch = []
+    for rel, sz in remote.items():
+        lp = local_root / rel
+        try:
+            match = lp.is_file() and lp.stat().st_size == sz
+        except OSError:
+            match = False
+        if not match:
+            to_fetch.append((rel, sz))
+
+    need = sum(sz for _, sz in to_fetch)
+    if need == 0:
+        res['success'] = True
+        res['message'] = 'already complete on HDD (nothing to fetch)'
+        return res
+
+    try:
+        free = shutil.disk_usage(HDD_FS_PATH).free
+    except OSError:
+        free = None
+    MARGIN = 5 * 1024 ** 3   # keep 5 GB headroom on the HDD
+    if free is not None and need > free - MARGIN:
+        res['message'] = f'not enough free space: need {human(need)}, have {human(free)}'
+        return res
+
+    fetched = nfiles = 0
+    failed = []
+    for rel, sz in to_fetch:
+        ok, err = _xrdcp_download(f"{eos_run}/{rel}", local_root / rel)
+        if ok:
+            fetched += sz
+            nfiles += 1
+        else:
+            failed.append(rel)
+    res.update(restored_files=nfiles, fetched_bytes=fetched, fetched_h=human(fetched))
+    if failed:
+        res['success'] = False
+        res['message'] = f'{len(failed)} file(s) failed to copy; {nfiles} restored'
+        _log_delete(f"RESTORE partial hdd/{run}: {nfiles} ok, {len(failed)} failed")
+    else:
+        res['success'] = True
+        res['message'] = f'restored {nfiles} files ({human(fetched)})'
+        _log_delete(f"RESTORED hdd/{run}: {nfiles} files, {human(fetched)}")
+    return res
+
+
+def restore_runs(runs: list) -> dict:
+    """Restore several runs; each independent. Reports per-run outcomes."""
+    results = []
+    fetched = 0
+    for run in runs:
+        r = restore_run(run)
+        results.append(r)
+        if r.get('success'):
+            fetched += r.get('fetched_bytes', 0)
+    return {'results': results, 'fetched_bytes': fetched, 'fetched_h': human(fetched),
+            'n_restored': sum(1 for r in results if r.get('success')),
+            'n_failed': sum(1 for r in results if not r.get('success'))}
+
+
 if __name__ == '__main__':
     import argparse
     ap = argparse.ArgumentParser(description='Scan DREAM data disks for safe-to-delete runs')

@@ -2358,5 +2358,31 @@ def space_delete():
     return jsonify(out)
 
 
+@app.route("/space/restore_scan")
+def space_restore_scan():
+    """List runs on EOS and how each compares to the local HDD (read-only)."""
+    try:
+        return jsonify(space_manager.scan_restore())
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/space/restore", methods=["POST"])
+def space_restore():
+    """Pull runs back from EOS onto the HDD. Auth-gated (POST). Non-destructive:
+    only files missing or size-mismatched locally are fetched. Sent one run per
+    request by the UI so it can show per-run progress."""
+    data = request.get_json(silent=True) or {}
+    runs = data.get("runs") or []
+    if not isinstance(runs, list) or not runs:
+        return jsonify({"success": False, "message": "no runs selected"}), 400
+    out = space_manager.restore_runs(runs)
+    log_event("SPACE_RESTORE", "disk_space", runs=",".join(runs),
+              fetched=out["fetched_h"], ok=out["n_restored"], failed=out["n_failed"])
+    out["success"] = out["n_failed"] == 0
+    out["usage"] = space_manager.disk_usage().get("hdd", {})
+    return jsonify(out)
+
+
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=5001)
