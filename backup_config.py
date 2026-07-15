@@ -48,9 +48,12 @@ CONFIG = {
     'exclude_runs': None,   # e.g. ['run_35']          — skip these
 
     # Watcher behavior
-    'poll_interval':       30,   # seconds between runs-dir scans
-    'stale_run_days':      10,   # runs with no new data for this many days are skipped
-    'extra_sync_interval': 300,  # seconds between full syncs of non-runs subdirs
+    'poll_interval':       30,     # seconds between runs-dir scans
+    'stale_run_days':      10,     # runs with no new data for this many days are skipped
+    'extra_sync_interval': 300,    # seconds between full syncs of non-runs subdirs
+    'reconcile_interval':  86400,  # seconds between idle-only full-reconcile sweeps of
+                                   # ALL runs (verify vs EOS, re-copy missing/changed
+                                   # files incl. stale runs); once a day
 
     # Extra arguments passed verbatim to xrdcp (e.g. ['-S', '4'] for 4 parallel data
     # streams per file, or ['--retry', '3'] on flaky WAN links). '-f' (overwrite) and
