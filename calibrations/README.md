@@ -14,6 +14,7 @@ are exported snapshots with provenance — regenerate rather than hand-edit.
 | `wal_trigger/` | SiPM-wall trigger thresholds (top+bottom group sums, one per wall): recommended values + full threshold→efficiency/purity/rate scan | **filled** (run224460) |
 | `wal_mip/` | Per-channel SiPM-wall MIP amplitude constants (ADC & mV) | **filled** (run224460) |
 | `pss/` | Plastic PMT gain curves G∝V^n, HV equalization + global gain-slide table | **filled** (run224466 HV scan) |
+| `pss_trigger/` | Plastic trigger thresholds vs the 10 mV discriminator floor: efficiencies + HV-recovery options | **filled** (run224466) |
 | `liq/` | Liquid scintillators (LS): MIP / PSD calibration | placeholder — awaiting LIQ readout |
 
 Anticipated later: `sili/` (Si monitor), `mm/` (Micromegas gain/threshold maps).

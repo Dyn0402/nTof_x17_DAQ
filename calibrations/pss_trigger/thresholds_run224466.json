@@ -1,0 +1,131 @@
+{
+  "provenance": {
+    "run": "run224466",
+    "exported": "2026-07-16",
+    "source": "nTof_x17/mx_july_beam_qa (cache 12_hvscan; scripts 12/12b/12c); HV log ~/beam_july/scint_hv_scan/2026-07-16_13-32-34_plastic_scan_1/",
+    "method": "wall-tagged coincident plastic spectra (+-8 ns calibrated window, sideband-subtracted); observable = spectrum median. Scan: all 8 PMTs at common V, 9 proton-gated steps 1200-1600 V in two interleaved passes, + pre-scan (1500 V) and post-scan (nominal) windows.",
+    "hv_state": "operating point after the scan: AL 1325, AR 1275, BL 1325, others 1300 V; SiPM flash gating ON in pass 2 and after",
+    "caveats": [
+      "medians are a RELATIVE gain standard, not a MIP energy scale \u2014 the plastic sits behind the wall, so the wall tag does not select plastic MIPs; absolute calibration awaits the LIQ triple coincidence",
+      "power laws validated only inside the scanned 1200-1600 V range; settings outside are extrapolation",
+      "pass 1 = flash gating OFF, pass 2 = ON; the two passes give consistent gain fits, so curves are usable regardless of gating state",
+      "PSSC1 (C-L) has the lowest index (n~4.8) and visibly flattens above ~1500 V \u2014 avoid running it high",
+      "re-derive after PMT/base hardware changes: 12_plastic_hv_scan.py + this export"
+    ]
+  },
+  "hardware_min_threshold_mV": 10.0,
+  "note": "no signal/noise valley: threshold choice is efficiency-driven. Unconstrained recommendation was 4-5 mV (99% tagged eff at 4.2); the 10 mV hardware floor costs efficiency unless HV is raised. Efficiencies are for the wall-tagged (particle-like) population; rates are the relative late-TOF sample. Thresholds are digitizer-equivalent mV.",
+  "tagged_eff_at_hardware_min": {
+    "PSSA1": {
+      "eff_equalized_gain": 0.97,
+      "eff_current_gain": 0.976
+    },
+    "PSSA2": {
+      "eff_equalized_gain": 0.951,
+      "eff_current_gain": 0.962
+    },
+    "PSSB1": {
+      "eff_equalized_gain": 0.944,
+      "eff_current_gain": 0.897
+    },
+    "PSSB2": {
+      "eff_equalized_gain": 0.914,
+      "eff_current_gain": 0.939
+    },
+    "PSSC1": {
+      "eff_equalized_gain": 0.864,
+      "eff_current_gain": 0.95
+    },
+    "PSSC2": {
+      "eff_equalized_gain": 0.934,
+      "eff_current_gain": 0.926
+    },
+    "PSSD1": {
+      "eff_equalized_gain": 0.938,
+      "eff_current_gain": 0.935
+    },
+    "PSSD2": {
+      "eff_equalized_gain": 0.961,
+      "eff_current_gain": 0.862
+    }
+  },
+  "worst_pmt_eff_at_hardware_min_equalized": 0.864,
+  "hv_to_recover": {
+    "model": "V = V_equalized * g^(1/n) per PMT; g scales the whole spectrum so 10 mV sits at the unconstrained 99%/95% points",
+    "status": "OPTION ONLY - deferred until a true plastic MIP calibration (LIQ triple coincidence) sets the absolute scale",
+    "eff99_at_10mV": {
+      "gain_factor": 2.35,
+      "pmts": {
+        "PSSA1": {
+          "v": 1477,
+          "extrapolated": false
+        },
+        "PSSA2": {
+          "v": 1458,
+          "extrapolated": false
+        },
+        "PSSB1": {
+          "v": 1598,
+          "extrapolated": false
+        },
+        "PSSB2": {
+          "v": 1447,
+          "extrapolated": false
+        },
+        "PSSC1": {
+          "v": 1408,
+          "extrapolated": false
+        },
+        "PSSC2": {
+          "v": 1483,
+          "extrapolated": false
+        },
+        "PSSD1": {
+          "v": 1529,
+          "extrapolated": false
+        },
+        "PSSD2": {
+          "v": 1614,
+          "extrapolated": true
+        }
+      }
+    },
+    "eff95_at_10mV": {
+      "gain_factor": 1.59,
+      "pmts": {
+        "PSSA1": {
+          "v": 1394,
+          "extrapolated": false
+        },
+        "PSSA2": {
+          "v": 1355,
+          "extrapolated": false
+        },
+        "PSSB1": {
+          "v": 1492,
+          "extrapolated": false
+        },
+        "PSSB2": {
+          "v": 1367,
+          "extrapolated": false
+        },
+        "PSSC1": {
+          "v": 1298,
+          "extrapolated": false
+        },
+        "PSSC2": {
+          "v": 1400,
+          "extrapolated": false
+        },
+        "PSSD1": {
+          "v": 1421,
+          "extrapolated": false
+        },
+        "PSSD2": {
+          "v": 1520,
+          "extrapolated": false
+        }
+      }
+    }
+  }
+}
