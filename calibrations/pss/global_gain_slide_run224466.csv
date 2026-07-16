@@ -1,0 +1,12 @@
+# Per-PMT voltages [V] that scale the equalized fleet response by a common factor g,
+# from the equalized baseline (g=1.0 column = hv_equalization_run224466.json).
+# V(g) = V_eq * g^(1/n) per PMT. Scanned/validated range: 1200-1600 V; values outside are marked with *.
+pmt,caen,n,g=0.5,g=0.67,g=0.8,g=1.0,g=1.25,g=1.5,g=2.0
+PSSA1,7:0,6.83,1177*,1229,1261,1303,1346,1383,1442
+PSSA2,7:1,5.34,1091*,1152*,1191*,1242,1295,1340,1414
+PSSB1,7:2,5.71,1219,1283,1323,1376,1431,1477,1554
+PSSB2,7:3,6.90,1157*,1207,1238,1279,1321,1356,1414
+PSSC1,7:4,4.83,1022*,1086*,1127*,1180*,1236,1283,1362
+PSSC2,7:5,6.79,1180*,1232,1265,1307,1351,1388,1448
+PSSD1,7:6,5.35,1145*,1209,1250,1303,1359,1406,1483
+PSSD2,7:7,6.59,1276,1334,1370,1417,1466,1507,1574

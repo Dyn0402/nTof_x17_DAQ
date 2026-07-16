@@ -1,0 +1,739 @@
+{
+  "provenance": {
+    "run": "run224466",
+    "exported": "2026-07-16",
+    "source": "nTof_x17/mx_july_beam_qa (cache 12_hvscan; scripts 12/12b/12c); HV log ~/beam_july/scint_hv_scan/2026-07-16_13-32-34_plastic_scan_1/",
+    "method": "wall-tagged coincident plastic spectra (+-8 ns calibrated window, sideband-subtracted); observable = spectrum median. Scan: all 8 PMTs at common V, 9 proton-gated steps 1200-1600 V in two interleaved passes, + pre-scan (1500 V) and post-scan (nominal) windows.",
+    "hv_state": "operating point after the scan: AL 1325, AR 1275, BL 1325, others 1300 V; SiPM flash gating ON in pass 2 and after",
+    "caveats": [
+      "medians are a RELATIVE gain standard, not a MIP energy scale \u2014 the plastic sits behind the wall, so the wall tag does not select plastic MIPs; absolute calibration awaits the LIQ triple coincidence",
+      "power laws validated only inside the scanned 1200-1600 V range; settings outside are extrapolation",
+      "pass 1 = flash gating OFF, pass 2 = ON; the two passes give consistent gain fits, so curves are usable regardless of gating state",
+      "PSSC1 (C-L) has the lowest index (n~4.8) and visibly flattens above ~1500 V \u2014 avoid running it high",
+      "re-derive after PMT/base hardware changes: 12_plastic_hv_scan.py + this export"
+    ]
+  },
+  "model": "median(V) = median(V_ref) * (V/V_ref)^n",
+  "pmts": {
+    "PSSA1": {
+      "detector": "plastic_A_L",
+      "caen_hv_channel": "7:0",
+      "v_operating": 1325,
+      "median_at_operating_adc": 1637.1,
+      "median_at_operating_mV": 50.16,
+      "adc_to_mV": 0.03064,
+      "n_combined": 6.83,
+      "n_pass1": 6.7,
+      "n_pass2": 7.1,
+      "curve": [
+        {
+          "step": "pre_1500V",
+          "v": 1500.0,
+          "median_adc": 4075.6,
+          "pass": 0,
+          "flash_gating": false
+        },
+        {
+          "step": "s1_1600V",
+          "v": 1600.0,
+          "median_adc": 5959.9,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s2_1500V",
+          "v": 1500.0,
+          "median_adc": 4075.6,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s3_1400V",
+          "v": 1400.0,
+          "median_adc": 2455.4,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s4_1300V",
+          "v": 1300.0,
+          "median_adc": 1479.3,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s5_1200V",
+          "v": 1200.0,
+          "median_adc": 891.2,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s6_1550V",
+          "v": 1550.0,
+          "median_adc": 5119.4,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s7_1450V",
+          "v": 1450.0,
+          "median_adc": 3163.4,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s8_1350V",
+          "v": 1350.0,
+          "median_adc": 1858.1,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s9_1250V",
+          "v": 1250.0,
+          "median_adc": 1119.5,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "end_nominal",
+          "v": 1325,
+          "median_adc": 1637.1,
+          "pass": 3,
+          "flash_gating": true
+        }
+      ]
+    },
+    "PSSA2": {
+      "detector": "plastic_A_R",
+      "caen_hv_channel": "7:1",
+      "v_operating": 1275,
+      "median_at_operating_adc": 1679.1,
+      "median_at_operating_mV": 51.67,
+      "adc_to_mV": 0.030774,
+      "n_combined": 5.34,
+      "n_pass1": 5.25,
+      "n_pass2": 5.5,
+      "curve": [
+        {
+          "step": "pre_1500V",
+          "v": 1500.0,
+          "median_adc": 4397.4,
+          "pass": 0,
+          "flash_gating": false
+        },
+        {
+          "step": "s1_1600V",
+          "v": 1600.0,
+          "median_adc": 4991.3,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s2_1500V",
+          "v": 1500.0,
+          "median_adc": 4287.4,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s3_1400V",
+          "v": 1400.0,
+          "median_adc": 3163.4,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s4_1300V",
+          "v": 1300.0,
+          "median_adc": 1905.8,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s5_1200V",
+          "v": 1200.0,
+          "median_adc": 1148.2,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s6_1550V",
+          "v": 1550.0,
+          "median_adc": 4744.7,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s7_1450V",
+          "v": 1450.0,
+          "median_adc": 3777.3,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s8_1350V",
+          "v": 1350.0,
+          "median_adc": 2455.4,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s9_1250V",
+          "v": 1250.0,
+          "median_adc": 1479.3,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "end_nominal",
+          "v": 1275,
+          "median_adc": 1679.1,
+          "pass": 3,
+          "flash_gating": true
+        }
+      ]
+    },
+    "PSSB1": {
+      "detector": "plastic_B_L",
+      "caen_hv_channel": "7:2",
+      "v_operating": 1325,
+      "median_at_operating_adc": 1177.7,
+      "median_at_operating_mV": 36.21,
+      "adc_to_mV": 0.030749,
+      "n_combined": 5.71,
+      "n_pass1": 5.64,
+      "n_pass2": 5.85,
+      "curve": [
+        {
+          "step": "pre_1500V",
+          "v": 1500.0,
+          "median_adc": 2583.0,
+          "pass": 0,
+          "flash_gating": false
+        },
+        {
+          "step": "s1_1600V",
+          "v": 1600.0,
+          "median_adc": 3007.1,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s2_1500V",
+          "v": 1500.0,
+          "median_adc": 2583.0,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s3_1400V",
+          "v": 1400.0,
+          "median_adc": 1722.1,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s4_1300V",
+          "v": 1300.0,
+          "median_adc": 1064.2,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s5_1200V",
+          "v": 1200.0,
+          "median_adc": 625.1,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s6_1550V",
+          "v": 1550.0,
+          "median_adc": 2787.0,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s7_1450V",
+          "v": 1450.0,
+          "median_adc": 2109.1,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s8_1350V",
+          "v": 1350.0,
+          "median_adc": 1336.7,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s9_1250V",
+          "v": 1250.0,
+          "median_adc": 805.3,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "end_nominal",
+          "v": 1325,
+          "median_adc": 1177.7,
+          "pass": 3,
+          "flash_gating": true
+        }
+      ]
+    },
+    "PSSB2": {
+      "detector": "plastic_B_R",
+      "caen_hv_channel": "7:3",
+      "v_operating": 1300,
+      "median_at_operating_adc": 1637.1,
+      "median_at_operating_mV": 50.22,
+      "adc_to_mV": 0.030674,
+      "n_combined": 6.9,
+      "n_pass1": 6.75,
+      "n_pass2": 7.21,
+      "curve": [
+        {
+          "step": "pre_1500V",
+          "v": 1500.0,
+          "median_adc": 4744.7,
+          "pass": 0,
+          "flash_gating": false
+        },
+        {
+          "step": "s1_1600V",
+          "v": 1600.0,
+          "median_adc": 6269.7,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s2_1500V",
+          "v": 1500.0,
+          "median_adc": 4626.0,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s3_1400V",
+          "v": 1400.0,
+          "median_adc": 2787.0,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s4_1300V",
+          "v": 1300.0,
+          "median_adc": 1637.1,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s5_1200V",
+          "v": 1200.0,
+          "median_adc": 937.5,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s6_1550V",
+          "v": 1550.0,
+          "median_adc": 5810.8,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s7_1450V",
+          "v": 1450.0,
+          "median_adc": 3590.6,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s8_1350V",
+          "v": 1350.0,
+          "median_adc": 2109.1,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s9_1250V",
+          "v": 1250.0,
+          "median_adc": 1238.9,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "end_nominal",
+          "v": 1300,
+          "median_adc": 1637.1,
+          "pass": 3,
+          "flash_gating": true
+        }
+      ]
+    },
+    "PSSC1": {
+      "detector": "plastic_C_L",
+      "caen_hv_channel": "7:4",
+      "v_operating": 1300,
+      "median_at_operating_adc": 2334.1,
+      "median_at_operating_mV": 71.78,
+      "adc_to_mV": 0.030752,
+      "n_combined": 4.83,
+      "n_pass1": 4.81,
+      "n_pass2": 4.88,
+      "curve": [
+        {
+          "step": "pre_1500V",
+          "v": 1500.0,
+          "median_adc": 4744.7,
+          "pass": 0,
+          "flash_gating": false
+        },
+        {
+          "step": "s1_1600V",
+          "v": 1600.0,
+          "median_adc": 5385.5,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s2_1500V",
+          "v": 1500.0,
+          "median_adc": 4744.7,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s3_1400V",
+          "v": 1400.0,
+          "median_adc": 3874.2,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s4_1300V",
+          "v": 1300.0,
+          "median_adc": 2393.9,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s5_1200V",
+          "v": 1200.0,
+          "median_adc": 1371.0,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s6_1550V",
+          "v": 1550.0,
+          "median_adc": 5119.4,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s7_1450V",
+          "v": 1450.0,
+          "median_adc": 4397.4,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s8_1350V",
+          "v": 1350.0,
+          "median_adc": 3084.2,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s9_1250V",
+          "v": 1250.0,
+          "median_adc": 1811.7,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "end_nominal",
+          "v": 1300,
+          "median_adc": 2334.1,
+          "pass": 3,
+          "flash_gating": true
+        }
+      ]
+    },
+    "PSSC2": {
+      "detector": "plastic_C_R",
+      "caen_hv_channel": "7:5",
+      "v_operating": 1300,
+      "median_at_operating_adc": 1406.2,
+      "median_at_operating_mV": 43.23,
+      "adc_to_mV": 0.030743,
+      "n_combined": 6.79,
+      "n_pass1": 6.68,
+      "n_pass2": 7.0,
+      "curve": [
+        {
+          "step": "pre_1500V",
+          "v": 1500.0,
+          "median_adc": 3973.6,
+          "pass": 0,
+          "flash_gating": false
+        },
+        {
+          "step": "s1_1600V",
+          "v": 1600.0,
+          "median_adc": 5250.7,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s2_1500V",
+          "v": 1500.0,
+          "median_adc": 3973.6,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s3_1400V",
+          "v": 1400.0,
+          "median_adc": 2393.9,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s4_1300V",
+          "v": 1300.0,
+          "median_adc": 1406.2,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s5_1200V",
+          "v": 1200.0,
+          "median_adc": 805.3,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s6_1550V",
+          "v": 1550.0,
+          "median_adc": 4744.7,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s7_1450V",
+          "v": 1450.0,
+          "median_adc": 3084.2,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s8_1350V",
+          "v": 1350.0,
+          "median_adc": 1811.7,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s9_1250V",
+          "v": 1250.0,
+          "median_adc": 1064.2,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "end_nominal",
+          "v": 1300,
+          "median_adc": 1406.2,
+          "pass": 3,
+          "flash_gating": true
+        }
+      ]
+    },
+    "PSSD1": {
+      "detector": "plastic_D_L",
+      "caen_hv_channel": "7:6",
+      "v_operating": 1300,
+      "median_at_operating_adc": 1442.3,
+      "median_at_operating_mV": 44.33,
+      "adc_to_mV": 0.030733,
+      "n_combined": 5.35,
+      "n_pass1": 5.25,
+      "n_pass2": 5.53,
+      "curve": [
+        {
+          "step": "pre_1500V",
+          "v": 1500.0,
+          "median_adc": 3244.6,
+          "pass": 0,
+          "flash_gating": false
+        },
+        {
+          "step": "s1_1600V",
+          "v": 1600.0,
+          "median_adc": 3777.3,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s2_1500V",
+          "v": 1500.0,
+          "median_adc": 3244.6,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s3_1400V",
+          "v": 1400.0,
+          "median_adc": 2334.1,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s4_1300V",
+          "v": 1300.0,
+          "median_adc": 1442.3,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s5_1200V",
+          "v": 1200.0,
+          "median_adc": 868.9,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s6_1550V",
+          "v": 1550.0,
+          "median_adc": 3590.6,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s7_1450V",
+          "v": 1450.0,
+          "median_adc": 2858.5,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s8_1350V",
+          "v": 1350.0,
+          "median_adc": 1811.7,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s9_1250V",
+          "v": 1250.0,
+          "median_adc": 1119.5,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "end_nominal",
+          "v": 1300,
+          "median_adc": 1442.3,
+          "pass": 3,
+          "flash_gating": true
+        }
+      ]
+    },
+    "PSSD2": {
+      "detector": "plastic_D_R",
+      "caen_hv_channel": "7:7",
+      "v_operating": 1300,
+      "median_at_operating_adc": 826.0,
+      "median_at_operating_mV": 25.39,
+      "adc_to_mV": 0.03074,
+      "n_combined": 6.59,
+      "n_pass1": 6.54,
+      "n_pass2": 6.7,
+      "curve": [
+        {
+          "step": "pre_1500V",
+          "v": 1500.0,
+          "median_adc": 2163.2,
+          "pass": 0,
+          "flash_gating": false
+        },
+        {
+          "step": "s1_1600V",
+          "v": 1600.0,
+          "median_adc": 3500.8,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s2_1500V",
+          "v": 1500.0,
+          "median_adc": 2163.2,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s3_1400V",
+          "v": 1400.0,
+          "median_adc": 1336.7,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s4_1300V",
+          "v": 1300.0,
+          "median_adc": 826.0,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s5_1200V",
+          "v": 1200.0,
+          "median_adc": 536.9,
+          "pass": 1,
+          "flash_gating": false
+        },
+        {
+          "step": "s6_1550V",
+          "v": 1550.0,
+          "median_adc": 2787.0,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s7_1450V",
+          "v": 1450.0,
+          "median_adc": 1679.1,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s8_1350V",
+          "v": 1350.0,
+          "median_adc": 1037.5,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "s9_1250V",
+          "v": 1250.0,
+          "median_adc": 657.6,
+          "pass": 2,
+          "flash_gating": true
+        },
+        {
+          "step": "end_nominal",
+          "v": 1300,
+          "median_adc": 826.0,
+          "pass": 3,
+          "flash_gating": true
+        }
+      ]
+    }
+  }
+}
