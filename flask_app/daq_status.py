@@ -26,6 +26,13 @@ BEAM_STATE_FILE = os.path.join(_REPO_DIR, "config", "beam_state.json")
 # N1081B time-tag watcher publishes its state here (see
 # n1081b/timetag_watcher_controller.py).
 N1081B_TIMETAG_STATE_FILE = os.path.join(_REPO_DIR, "config", "n1081b_timetag_state.json")
+# N1081B board-access runtime state (holder / quarantine markers) written by
+# n1081b/n1081b_session.py's board_session(). Read-only here so the dashboard can
+# show, at a glance, whether a board is in use or resting BEFORE an operator
+# launches an agent that would touch it. See n1081b/CLAUDE.md.
+N1081B_ACCESS_DIR = os.path.join(_REPO_DIR, "config", "n1081b_access")
+# .240-.245 -> Module 1-6 (trigger-logic-as-built: modules 1-6 = .240-.245).
+N1081B_BOARDS = [(f"192.168.10.{240 + i}", f"M{i + 1}") for i in range(6)]
 
 # Per-run output directory: each run's schedule lives at <RUN_DIR>/<run>/run_config.json.
 # Resolved lazily (see _run_dir) because this module is imported before app.py adds the
@@ -615,3 +622,60 @@ def get_n1081b_timetag_watcher_status():
     if age is not None and age > 15:
         return small("Stale", "warning")
     return small("Logging", "success")
+
+
+def get_n1081b_access_status():
+    """Per-board N1081B access state for the dashboard collision-guard card.
+
+    Read-only view of config/n1081b_access/ (the runtime markers board_session()
+    writes): for each of the six boards report IN USE (a live process holds the
+    lock), QUARANTINED (post-wedge rest window), or free. This is the human half of
+    'never run two agents on one board at once' — glance here before launching one.
+
+    Never raises: a missing/renamed/corrupt marker just yields 'free' for that board.
+    """
+    import time
+    import errno
+    boards = []
+    for ip, module in N1081B_BOARDS:
+        tag = ip.replace(".", "_")
+        rec = {"ip": ip, "module": module, "state": "free"}
+
+        # Quarantine takes precedence: a resting board must be left alone.
+        try:
+            with open(os.path.join(N1081B_ACCESS_DIR, f"{tag}.quarantine.json")) as f:
+                q = json.load(f)
+            left = q.get("until", 0) - time.time()
+            if left > 0:
+                rec.update(state="quarantined",
+                           reason=q.get("reason", ""),
+                           minutes_left=int(left // 60))
+                boards.append(rec)
+                continue
+        except (OSError, ValueError):
+            pass
+
+        # Holder marker present AND its pid still alive -> a process holds the board.
+        # A dead pid means the owner exited without cleanup: treat the board as free.
+        try:
+            with open(os.path.join(N1081B_ACCESS_DIR, f"{tag}.holder.json")) as f:
+                h = json.load(f)
+            pid = h.get("pid")
+            alive = False
+            try:
+                os.kill(int(pid), 0)
+                alive = True
+            except OSError as e:
+                alive = (e.errno == errno.EPERM)  # exists but not ours -> still alive
+            except (TypeError, ValueError):
+                alive = False
+            if alive:
+                rec.update(state="in_use",
+                           pid=pid,
+                           purpose=h.get("purpose") or "",
+                           since=h.get("since_str") or "")
+        except (OSError, ValueError):
+            pass
+
+        boards.append(rec)
+    return {"boards": boards}

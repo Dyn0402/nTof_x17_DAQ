@@ -1,0 +1,83 @@
+# Post-reboot checklist — recover .244 (M5) after the touchscreen reboot (2026-07-16)
+
+`.244` was probed 2026-07-16 10:41 and is **still wedged** at stage-3 (ws login timed
+out after 8 s; did NOT self-heal in ~11.5 h). It needs a **physical touchscreen reboot**.
+Run through this AT/AFTER the reboot, in order. All board contact here goes through the
+`board_session()` gateway (safe: lock + bounded connect + clean close), so nothing here
+can dirty-disconnect and re-wedge the freshly-recovered board.
+
+`.244` is **walls-monitoring only** (zero trigger impact) — safe to work on. Do all
+commands from the repo root: `cd ~/PycharmProjects/nTof_x17_DAQ`.
+
+---
+
+### 0. At the crate — reboot + observe
+- Reboot `.244` via the front-panel touchscreen (Settings → reboot, or power-cycle the NIM unit).
+- While there, note/photograph the **Settings / Version** pages for the runbook.
+- Note whether it booted its **last-saved config** or a **default**. (An as-built config
+  was saved on the board as `asbuilt_20260715`; if it booted to defaults it can be
+  reloaded with `load_configuration_file('asbuilt_20260715')` via a `board_session`.)
+
+### 1. Confirm the command interface is actually back (bounded probe)
+```bash
+.venv/bin/python -c "
+from websocket import create_connection as c; import time; t=time.time()
+ws=c('ws://192.168.10.244:8080/',timeout=8); ws.settimeout(8)
+ws.send('{\"command\":\"login\",\"callback\":\"login\",\"pwd\":\"password\"}')
+print('login', ws.recv()[:60], 'in', round(time.time()-t,1),'s'); ws.close()"
+```
+Expect an **instant** clean reply. If it still times out (8 s), the interface isn't up
+yet — wait and retry; do NOT proceed.
+
+### 2. Clear the quarantine (ONLY after step 1 answered cleanly)
+```bash
+.venv/bin/python -c "import sys;sys.path.insert(0,'.'); \
+  from n1081b.n1081b_session import clear_quarantine; print('cleared', clear_quarantine('192.168.10.244'))"
+```
+
+### 3. Restore the four sections to COUNTER (safe, board_session-based)
+```bash
+.venv/bin/python n1081b/restore_244_counters.py
+```
+Expect: `OK: 192.168.10.244 all four sections restored to 'counter'.`
+(This replaces the stale `n1081b_timetag_watcher.py --restore` reference — that file does
+not exist, and the old restore path in `timetag_watcher_controller.py` used a raw
+connection. Use this tool.)
+
+### 4. Verify it's actually counting (beam on → deltas non-zero)
+```bash
+.venv/bin/python -c "
+import sys,time; sys.path.insert(0,'n1081b')
+from n1081b_session import board_session
+from n1081b_sdk import N1081B
+with board_session('192.168.10.244', purpose='verify counting', require_login=False, min_gap_s=0.0) as s:
+    rd=lambda: {sec.name:{c['lemo']:c['value'] for c in s.call('get_function_results',sec)['data']['counters']} for sec in N1081B.Section}
+    a=rd(); time.sleep(3); b=rd()
+    for sec in a: print(sec, 'Δ', {k:b[sec][k]-a[sec][k] for k in a[sec]})
+"
+```
+Non-zero deltas (with beam on) = counting. All-zero everywhere = investigate (cabling / no beam).
+
+### 5. Re-add .244 to per-sub-run polling
+Edit `n1081b/poll_modules.py`, `POLL_IPS` (~line 56): put `244` back in the tuple →
+`(240, 241, 242, 243, 244, 245)`. **No restart needed** — the next run is a fresh
+`daq_control.py` process and auto-loads it. (poll_modules auto-skips `.244` anyway if the
+time-tag watcher tmux session is ever revived, so this is safe to leave in.)
+
+### 6. Update the runbook state
+In `n1081b/CLAUDE.md`, change the `## Current board state` `.244` line from
+"STILL WEDGED — QUARANTINED …" to healthy (all 4 sections counter, counting, back in POLL_IPS).
+
+### 7. Confirm on the dashboard
+Open the GUI **Trigger tab → Board Access** card (port 5001): `.244 (M5)` should now show
+**free** (not QUARANTINED). Optionally run `.venv/bin/python n1081b/dump_module_info.py`
+and confirm `.244` reads back cleanly with 0 errors.
+
+---
+
+## Not tied to the reboot — do soon (untested write paths)
+The board-hygiene migration was validated on read-only paths only (a live run blocked
+write testing). The **first time** each of these migrated *write* scripts is run, watch it
+(it read-back-verifies every write and aborts cleanly on a busy/wedged board):
+`trigger_mode.py <mode>`, `systematic_threshold_scan_v3.py`, `measure_chain.py`
+(zs_rate_scan), and any `setup_*.py` you use. See the plan's STATUS section.

@@ -4,9 +4,25 @@
 Read-only per-sub-run snapshot of the N1081B trigger modules.
 
 Spawned as a background (daemon) thread from daq_control at the start of each
-sub-run's data-taking. Read-only: connect -> login -> get_* -> disconnect. It
-never writes to a board and never raises into the caller (a busy or unreachable
-board just records an error entry and the run continues untouched).
+sub-run's data-taking. Read-only: it goes through the mandatory session gateway
+(`n1081b/n1081b_session.py`) — one locked, quarantine-aware, clean-closing
+connection per board — and only ever issues get_* commands. It never writes to a
+board and never raises into the caller (a busy / quarantined / wedged /
+unreachable board just records an error entry and the run continues untouched).
+
+Session hygiene for this best-effort telemetry (see n1081b/CLAUDE.md):
+  * `board_session(min_gap_s=0.0)` — reads are cheap (the web GUI polls ~4 Hz for
+    days on one connection); this preserves the ~0.1 s bulk snapshot.
+  * `auto_quarantine=False` — a snapshot that trips the breaker still stops
+    touching THAT board (its own breaker latches + we skip it), but a mere
+    telemetry read must never impose a 6 h shared quarantine on a LIVE trigger
+    board. It still RESPECTS an existing quarantine (skips the board).
+  * `require_login=False` — old-firmware boards (.245) serve get/* with login
+    returning False; we record the real login result and read them anyway.
+  * The interprocess lock is the point: it now serialises this snapshot against
+    the scan controller and any ad-hoc board_session, so two processes can never
+    hit one board at once. A board another process holds -> BoardBusyError -> we
+    skip it this cycle (best-effort telemetry, not worth forcing).
 
 Why a background thread: run_daq_controller() blocks for the whole sub-run, so we
 fire the poll just before it and let the ~0.1 s read run in parallel while the
@@ -31,77 +47,124 @@ Also runnable standalone for a one-off dump:
 """
 import json
 import os
+import subprocess
 import threading
 import time
 from datetime import datetime
+
+# The N1081B time-tag watcher owns .244 exclusively while it streams (the board
+# broadcasts send_data to every websocket client, so a concurrent read desyncs).
+# When its tmux session is alive we must NOT poll .244.
+TT_WATCHER_SESSION = "n1081b_timetag_watcher"
+TT_WATCHER_IP = "192.168.10.244"
 
 # Modules to poll (all six trigger boards, .240-.245). This single list is the
 # whole scope control. NOTE: do NOT poll .244 (Module 5) while
 # mod5_timetag_logger.py is streaming it -- a streaming board broadcasts send_data
 # to every websocket client and would interleave/desync the reads.
-POLL_IPS = [f"192.168.10.{n}" for n in (240, 241, 242, 243, 244, 245)]
+#
+# TEMPORARY 2026-07-15: .244 is REMOVED because its command interface is WEDGED
+# (websocket accepts connections but never answers login -- see
+# n1081b/HANDOFF_2026-07-15_timetag_watcher_board_wedge.md). Polling it would waste
+# ~6 s/sub-run on a dead login AND keep opening sessions to a board we want left
+# alone to self-recover. RESTORE .244 to this tuple once it has been physically
+# rebooted and verified reachable.
+POLL_IPS = [f"192.168.10.{n}" for n in (240, 241, 242, 243, 245)]  # .244 out again: deliberately re-wedged by stress test 2026-07-15 eve; re-add after 07-16 reboot
 PASSWORD = "password"
 RECV_TIMEOUT = 6      # s, per-board socket timeout so one hung board can't stall the rest
 SECTIONS_RANGE = 6    # LEMO inputs / outputs 0-5 per section
 
 
-def _call(errs, label, fn, *args):
-    """Run a get_* call, capturing either its result or the error string."""
+def _get(errs, label, s, method, *args):
+    """Run one read-only getter through the session, capturing result or error.
+
+    Ordinary getter failures (some getters misbehave on certain sections) are
+    recorded and we continue. A BoardWedgedError from the session's breaker is a
+    board-level signal, not a per-getter blip: let it propagate so _dump_board
+    stops reading this board instead of hammering it getter after getter."""
+    from n1081b_session import BoardWedgedError
     try:
-        return fn(*args)
+        return s.call(method, *args)
+    except BoardWedgedError:
+        raise
     except Exception as e:  # noqa: BLE001 - record every failure, never raise
         errs[label] = repr(e)
         return None
 
 
 def _dump_board(ip):
-    """Read-only readback of one board. Mirrors dump_module_info.py's coverage."""
-    from n1081b_sdk import N1081B  # lazy: keeps import safe if the SDK is absent
+    """Read-only readback of one board through the mandatory session gateway.
+    Mirrors dump_module_info.py's coverage. Never raises: a busy / quarantined /
+    wedged / unreachable board just records an error entry and returns."""
+    from n1081b_sdk import N1081B  # lazy: enum only; keeps import safe if SDK absent
+    from n1081b_session import (board_session, BoardBusyError, BoardWedgedError,
+                                BoardQuarantinedError)
     board = {"ip": ip, "errors": {}}
-    dev = N1081B(ip)
+    errs = board["errors"]
     try:
-        if not dev.connect():
-            board["errors"]["connect"] = "connect() returned False"
-            return board
-        dev.ws.settimeout(RECV_TIMEOUT)
-        board["login"] = bool(dev.login(PASSWORD))
+        # See the module docstring for why these session knobs: min_gap_s=0.0 keeps
+        # the fast bulk read, auto_quarantine=False protects the live trigger from a
+        # telemetry-induced lockout, require_login=False snapshots old-fw boards.
+        with board_session(ip, purpose="per-subrun snapshot", password=PASSWORD,
+                           timeout_s=RECV_TIMEOUT, min_gap_s=0.0, retry_rest_s=10.0,
+                           require_login=False, auto_quarantine=False) as s:
+            board["login"] = s.login_ok
+            board["version"] = _get(errs, "version", s, "get_version")
+            board["ethernet"] = _get(errs, "ethernet", s, "get_ethernet_configuration")
+            board["clock"] = _get(errs, "clock", s, "get_clock_status")
+            board["sections_function"] = _get(errs, "sections_function", s, "get_sections_function")
+            # Saved on-board config files (provenance) + LA trigger config. Both are
+            # passive one-shot reads. NOT captured: get_logic_analyzer_data /
+            # get_time_tag_data (live acquisition, not config; get_time_tag_data is a
+            # bare recv() that blocks), get_function_file_list (blocks its recv() for
+            # non-LUT/pattern/ToF sections), get_search_device_status (locate-blink alarm).
+            board["config_file_list"] = _get(errs, "config_file_list", s, "get_configuration_file_list")
+            board["logic_analyzer_trigger"] = _get(errs, "la_trigger", s, "get_logic_analyzer_trigger")
 
-        board["version"] = _call(board["errors"], "version", dev.get_version)
-        board["ethernet"] = _call(board["errors"], "ethernet", dev.get_ethernet_configuration)
-        board["clock"] = _call(board["errors"], "clock", dev.get_clock_status)
-        board["sections_function"] = _call(board["errors"], "sections_function", dev.get_sections_function)
-        # Saved on-board config files (provenance) + LA trigger config. Both are
-        # passive one-shot reads. NOT captured: get_logic_analyzer_data /
-        # get_time_tag_data (live acquisition, not config; get_time_tag_data is a
-        # bare recv() that blocks), get_function_file_list (blocks its recv() for
-        # non-LUT/pattern/ToF sections), get_search_device_status (locate-blink alarm).
-        board["config_file_list"] = _call(board["errors"], "config_file_list", dev.get_configuration_file_list)
-        board["logic_analyzer_trigger"] = _call(board["errors"], "la_trigger", dev.get_logic_analyzer_trigger)
-
-        board["sections"] = {}
-        for sec in N1081B.Section:
-            s = {}
-            s["function_configuration"] = _call(board["errors"], f"{sec.name}.fn_config", dev.get_function_configuration, sec)
-            s["function_results"] = _call(board["errors"], f"{sec.name}.fn_results", dev.get_function_results, sec)
-            s["input_configuration"] = _call(board["errors"], f"{sec.name}.input_config", dev.get_input_configuration, sec)
-            s["output_configuration"] = _call(board["errors"], f"{sec.name}.output_config", dev.get_output_configuration, sec)
-            s["input_channels"] = {
-                ch: _call(board["errors"], f"{sec.name}.in_ch{ch}", dev.get_input_channel_configuration, sec, ch)
-                for ch in range(SECTIONS_RANGE)
-            }
-            s["output_channels"] = {
-                ch: _call(board["errors"], f"{sec.name}.out_ch{ch}", dev.get_output_channel_configuration, sec, ch)
-                for ch in range(SECTIONS_RANGE)
-            }
-            board["sections"][sec.name] = s
+            board["sections"] = {}
+            for sec in N1081B.Section:
+                sd = {}
+                sd["function_configuration"] = _get(errs, f"{sec.name}.fn_config", s, "get_function_configuration", sec)
+                sd["function_results"] = _get(errs, f"{sec.name}.fn_results", s, "get_function_results", sec)
+                sd["input_configuration"] = _get(errs, f"{sec.name}.input_config", s, "get_input_configuration", sec)
+                sd["output_configuration"] = _get(errs, f"{sec.name}.output_config", s, "get_output_configuration", sec)
+                sd["input_channels"] = {
+                    ch: _get(errs, f"{sec.name}.in_ch{ch}", s, "get_input_channel_configuration", sec, ch)
+                    for ch in range(SECTIONS_RANGE)
+                }
+                sd["output_channels"] = {
+                    ch: _get(errs, f"{sec.name}.out_ch{ch}", s, "get_output_channel_configuration", sec, ch)
+                    for ch in range(SECTIONS_RANGE)
+                }
+                board["sections"][sec.name] = sd
+    except BoardBusyError as e:
+        errs["busy"] = repr(e)          # another process holds it this cycle; skip
+    except BoardQuarantinedError as e:
+        errs["quarantined"] = repr(e)   # board resting; leave it alone
+    except BoardWedgedError as e:
+        errs["wedged"] = repr(e)        # breaker tripped mid-read; do NOT retry
     except Exception as e:  # noqa: BLE001
-        board["errors"]["fatal"] = repr(e)
-    finally:
-        try:
-            dev.disconnect()
-        except Exception:
-            pass
+        errs["fatal"] = repr(e)
     return board
+
+
+def _tt_watcher_running():
+    """True if the N1081B time-tag watcher tmux session is alive (it owns .244)."""
+    try:
+        r = subprocess.run(["tmux", "has-session", "-t", TT_WATCHER_SESSION],
+                           capture_output=True)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _exclude_tt_watcher_board(ips, logger=None):
+    """Drop .244 from the poll list while the time-tag watcher is streaming it."""
+    if TT_WATCHER_IP in ips and _tt_watcher_running():
+        if logger:
+            logger(f"[n1081b] {TT_WATCHER_IP} owned by {TT_WATCHER_SESSION}; skipping it this poll")
+        return [ip for ip in ips if ip != TT_WATCHER_IP]
+    return ips
 
 
 def poll_to_file(out_path, ips=None, label=None, logger=print,
@@ -114,6 +177,7 @@ def poll_to_file(out_path, ips=None, label=None, logger=print,
         scan watcher is mid-apply. Returns the path written, or None on failure.
     """
     ips = ips or POLL_IPS
+    ips = _exclude_tt_watcher_board(ips, logger)
     if settle_s and settle_s > 0:
         time.sleep(settle_s)
     if wait_flag:

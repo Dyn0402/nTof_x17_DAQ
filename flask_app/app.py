@@ -30,7 +30,8 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_qa_watcher_status, get_backup_watcher_status,
                         get_pedestal_watcher_status,
                         get_gas_watcher_status, get_he3_pressure_watcher_status,
-                        get_beam_watcher_status, get_n1081b_timetag_watcher_status)
+                        get_beam_watcher_status, get_n1081b_timetag_watcher_status,
+                        get_n1081b_access_status, N1081B_ACCESS_DIR)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
 _N1081B_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "n1081b")
@@ -1599,6 +1600,34 @@ def _n1081b_tt_read_state():
 def n1081b_status():
     """Latest health + per-section edge rates published by the n1081b_timetag_watcher."""
     return jsonify(_n1081b_tt_read_state())
+
+
+@app.route("/n1081b/access")
+def n1081b_access():
+    """Per-board N1081B access state (IN USE / QUARANTINED / free) for the dashboard
+    collision-guard card. Read-only view of config/n1081b_access/."""
+    return jsonify(get_n1081b_access_status())
+
+
+@app.route("/n1081b/access/clear_quarantine", methods=["POST"])
+def n1081b_clear_quarantine():
+    """Manually clear a board's post-wedge quarantine marker. Guarded behind a
+    confirm in the UI: only clear AFTER the board has been verified healthy (e.g.
+    physically rebooted). This only removes the marker file — it does NOT touch the
+    board — so the next board_session is free to reconnect. Mirrors
+    n1081b_session.clear_quarantine() without importing the SDK into Flask."""
+    ip = (request.get_json(silent=True) or request.form or {}).get("ip", "")
+    valid = {b[0] for b in [(f"192.168.10.{240 + i}",) for i in range(6)]}
+    if ip not in valid:
+        return jsonify({"success": False, "message": f"unknown board ip {ip!r}"}), 400
+    path = os.path.join(N1081B_ACCESS_DIR, ip.replace(".", "_") + ".quarantine.json")
+    try:
+        os.remove(path)
+        return jsonify({"success": True, "ip": ip, "message": "quarantine cleared"})
+    except FileNotFoundError:
+        return jsonify({"success": True, "ip": ip, "message": "no quarantine to clear"})
+    except OSError as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route("/n1081b/history")

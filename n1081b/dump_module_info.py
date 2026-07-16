@@ -10,74 +10,99 @@ configuration captured here is enough to see (and hand-restore) the current stat
 of every board before we homogenize them.
 
 Must run where the boards are reachable (the DAQ private net) — i.e. on the daq
-server.  Typical use from the dev laptop:
+server. Board access goes through the mandatory `n1081b/n1081b_session.py` gateway
+(lock + quarantine gate + clean close + breaker), never a raw connection — so a
+quarantined board (e.g. .244) is recorded and skipped instead of hanging the dump.
 
-    ssh daq_lxplus '~/PycharmProjects/nTof_x17_DAQ/.venv/bin/python -' \
+Typical use (run from the repo root so n1081b/ is importable):
+
+    .venv/bin/python n1081b/dump_module_info.py > n1081b/snapshots/dump.json
+
+Piped over ssh needs the n1081b dir on PYTHONPATH (so n1081b_session resolves):
+
+    ssh daq_lxplus 'PYTHONPATH=~/PycharmProjects/nTof_x17_DAQ/n1081b \
+        ~/PycharmProjects/nTof_x17_DAQ/.venv/bin/python -' \
         < n1081b/dump_module_info.py > n1081b/snapshots/dump.json
-
-Then pretty-print / summarize locally.
 """
 import json
+import os
 import sys
-from n1081b_sdk import N1081B
 
-IPS = [f"192.168.10.{n}" for n in (240, 241, 242, 243, 244)]
+# Make the sibling n1081b_session importable when run as a file (sys.path[0] already
+# covers the direct case; this also helps `python path/to/dump_module_info.py`).
+if "__file__" in globals():
+    _HERE = os.path.dirname(os.path.abspath(__file__))
+    if _HERE not in sys.path:
+        sys.path.insert(0, _HERE)
+
+from n1081b_sdk import N1081B
+from n1081b_session import (board_session, BoardBusyError, BoardWedgedError,
+                            BoardQuarantinedError)
+
+IPS = [f"192.168.10.{n}" for n in (240, 241, 242, 243, 244, 245)]
 PASSWORD = "password"
 SECTIONS = list(N1081B.Section)          # SEC_A..SEC_D
 CHANNELS = range(6)                       # LEMO inputs / outputs 0-5
 RECV_TIMEOUT = 6                          # seconds
 
 
-def _call(out_errors, label, fn, *args):
-    """Run a get_* call, capturing either its result or the error string."""
+def _get(errs, label, s, method, *args):
+    """Run one read-only getter through the session, capturing result or error.
+    Ordinary getter failures are recorded and we continue; a breaker BoardWedgedError
+    propagates so dump_board stops reading this board instead of hammering it."""
     try:
-        return fn(*args)
-    except Exception as e:  # noqa: BLE001 - we want every failure recorded, not raised
-        out_errors[label] = repr(e)
+        return s.call(method, *args)
+    except BoardWedgedError:
+        raise
+    except Exception as e:  # noqa: BLE001 - record every failure, never raise
+        errs[label] = repr(e)
         return None
 
 
 def dump_board(ip):
     board = {"ip": ip, "errors": {}}
-    dev = N1081B(ip)
+    errs = board["errors"]
     try:
-        if not dev.connect():
-            board["errors"]["connect"] = "connect() returned False"
-            return board
-        dev.ws.settimeout(RECV_TIMEOUT)
-        board["login"] = bool(dev.login(PASSWORD))
+        # Read-only diagnostic: require_login=False (dump old-fw boards too),
+        # auto_quarantine=False (checking a suspect board must not impose a 6 h
+        # lockout), min_gap_s=0.0 (reads are cheap).
+        with board_session(ip, purpose="dump_module_info", password=PASSWORD,
+                           timeout_s=RECV_TIMEOUT, min_gap_s=0.0, require_login=False,
+                           auto_quarantine=False) as s:
+            board["login"] = s.login_ok
 
-        # ---- board-level ----
-        board["version"] = _call(board["errors"], "version", dev.get_version)
-        board["ethernet"] = _call(board["errors"], "ethernet", dev.get_ethernet_configuration)
-        board["clock"] = _call(board["errors"], "clock", dev.get_clock_status)
-        board["sections_function"] = _call(board["errors"], "sections_function", dev.get_sections_function)
-        board["config_file_list"] = _call(board["errors"], "config_file_list", dev.get_configuration_file_list)
+            # ---- board-level ----
+            board["version"] = _get(errs, "version", s, "get_version")
+            board["ethernet"] = _get(errs, "ethernet", s, "get_ethernet_configuration")
+            board["clock"] = _get(errs, "clock", s, "get_clock_status")
+            board["sections_function"] = _get(errs, "sections_function", s, "get_sections_function")
+            board["config_file_list"] = _get(errs, "config_file_list", s, "get_configuration_file_list")
 
-        # ---- per section (A-D) ----
-        board["sections"] = {}
-        for sec in SECTIONS:
-            s = {}
-            s["function_configuration"] = _call(board["errors"], f"{sec.name}.fn_config", dev.get_function_configuration, sec)
-            s["function_results"] = _call(board["errors"], f"{sec.name}.fn_results", dev.get_function_results, sec)
-            s["input_configuration"] = _call(board["errors"], f"{sec.name}.input_config", dev.get_input_configuration, sec)
-            s["output_configuration"] = _call(board["errors"], f"{sec.name}.output_config", dev.get_output_configuration, sec)
-            s["input_channels"] = {
-                ch: _call(board["errors"], f"{sec.name}.in_ch{ch}", dev.get_input_channel_configuration, sec, ch)
-                for ch in CHANNELS
-            }
-            s["output_channels"] = {
-                ch: _call(board["errors"], f"{sec.name}.out_ch{ch}", dev.get_output_channel_configuration, sec, ch)
-                for ch in CHANNELS
-            }
-            board["sections"][sec.name] = s
+            # ---- per section (A-D) ----
+            board["sections"] = {}
+            for sec in SECTIONS:
+                sd = {}
+                sd["function_configuration"] = _get(errs, f"{sec.name}.fn_config", s, "get_function_configuration", sec)
+                sd["function_results"] = _get(errs, f"{sec.name}.fn_results", s, "get_function_results", sec)
+                sd["input_configuration"] = _get(errs, f"{sec.name}.input_config", s, "get_input_configuration", sec)
+                sd["output_configuration"] = _get(errs, f"{sec.name}.output_config", s, "get_output_configuration", sec)
+                sd["input_channels"] = {
+                    ch: _get(errs, f"{sec.name}.in_ch{ch}", s, "get_input_channel_configuration", sec, ch)
+                    for ch in CHANNELS
+                }
+                sd["output_channels"] = {
+                    ch: _get(errs, f"{sec.name}.out_ch{ch}", s, "get_output_channel_configuration", sec, ch)
+                    for ch in CHANNELS
+                }
+                board["sections"][sec.name] = sd
+    except BoardBusyError as e:
+        errs["busy"] = repr(e)          # another process holds it; skip
+    except BoardQuarantinedError as e:
+        errs["quarantined"] = repr(e)   # board resting; leave it alone
+    except BoardWedgedError as e:
+        errs["wedged"] = repr(e)        # breaker tripped mid-read; do NOT retry
     except Exception as e:  # noqa: BLE001
-        board["errors"]["fatal"] = repr(e)
-    finally:
-        try:
-            dev.disconnect()
-        except Exception:
-            pass
+        errs["fatal"] = repr(e)
     return board
 
 

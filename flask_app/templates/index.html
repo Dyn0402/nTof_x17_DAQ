@@ -798,6 +798,21 @@
       <div id="n1081b-diagram"><div class="text-muted">Loading trigger diagram…</div></div>
     </div>
   </div>
+
+  <!-- Board-access collision guard: who holds each N1081B right now. -->
+  <div class="panel mt-3">
+    <div class="panel-header">
+      <span class="panel-title">Board Access</span>
+      <span class="panel-header-note">
+        one process per board — check here before launching a board-touching agent.
+        Source: <span class="font-monospace">config/n1081b_access/</span>.
+      </span>
+      <span id="n1081b-access-note" class="ms-auto panel-header-note">…</span>
+    </div>
+    <div class="panel-body">
+      <div id="n1081b-access-rows" class="text-muted" style="font-size:0.9rem;">Loading…</div>
+    </div>
+  </div>
 </div>
 
 
@@ -3587,6 +3602,83 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   // Refresh while the tab is open (per-sub-run snapshots land every few minutes).
   setInterval(() => { if (triggerVisible()) loadTrigger(); }, 15000);
   if (triggerVisible()) loadTrigger();
+})();
+</script>
+
+<!-- ===== N1081B board-access collision-guard card ===== -->
+<script>
+(function () {
+  const rowsEl = document.getElementById("n1081b-access-rows");
+  const noteEl = document.getElementById("n1081b-access-note");
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function badge(text, color) {
+    return `<span style="display:inline-block;min-width:82px;text-align:center;`
+      + `padding:1px 8px;border-radius:10px;font-weight:600;font-size:0.8rem;`
+      + `color:#fff;background:${color};">${text}</span>`;
+  }
+
+  async function clearQuarantine(ip) {
+    if (!confirm(`Clear the quarantine on ${ip}?\n\nONLY do this after the board has `
+      + `been verified healthy (e.g. physically rebooted). Clearing it lets the next `
+      + `process reconnect — do NOT clear a board that is still wedged.`)) return;
+    try {
+      const r = await fetch("/n1081b/access/clear_quarantine", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ip })
+      });
+      const d = await r.json();
+      if (!d.success) alert("Failed: " + (d.message || "unknown"));
+    } catch (e) { alert("Request failed: " + e); }
+    loadAccess();
+  }
+  window._n1081bClearQ = clearQuarantine;
+
+  function rowHtml(b) {
+    let chip, detail = "";
+    if (b.state === "quarantined") {
+      chip = badge("RESTING", "var(--bad)");
+      detail = `<span class="text-muted">${b.minutes_left}m left`
+        + (b.reason ? ` · ${esc(b.reason)}` : "") + `</span>`
+        + ` <button class="btn btn-outline-danger btn-sm py-0 px-1 ms-1"`
+        + ` style="font-size:0.72rem;" onclick="_n1081bClearQ('${b.ip}')">clear</button>`;
+    } else if (b.state === "in_use") {
+      chip = badge("IN USE", "var(--warn)");
+      detail = `<span class="text-muted">pid ${esc(b.pid)}`
+        + (b.purpose ? ` · ${esc(b.purpose)}` : "")
+        + (b.since ? ` · since ${esc(b.since)}` : "") + `</span>`;
+    } else {
+      chip = badge("free", "var(--ok)");
+    }
+    return `<div style="display:flex;align-items:center;gap:10px;padding:3px 0;`
+      + `border-bottom:1px solid rgba(128,128,128,0.15);">`
+      + `<span class="font-monospace" style="min-width:150px;">`
+      + `<b>${esc(b.module)}</b> · ${esc(b.ip)}</span>`
+      + chip + `<span style="flex:1;">${detail}</span></div>`;
+  }
+
+  async function loadAccess() {
+    if (!rowsEl) return;
+    let d;
+    try { d = await (await fetch("/n1081b/access")).json(); }
+    catch (e) { if (noteEl) noteEl.textContent = "fetch error"; return; }
+    const boards = (d && d.boards) || [];
+    rowsEl.innerHTML = boards.map(rowHtml).join("");
+    if (noteEl) {
+      const inUse = boards.filter(b => b.state === "in_use").length;
+      const rest = boards.filter(b => b.state === "quarantined").length;
+      noteEl.textContent = `${boards.length} boards · ${inUse} in use · ${rest} resting`;
+    }
+  }
+  function triggerVisible() {
+    const p = document.getElementById("trigger");
+    return p && p.classList.contains("active");
+  }
+  const tab = document.querySelector('a[href="#trigger"]');
+  if (tab) tab.addEventListener("shown.bs.tab", loadAccess);
+  setInterval(() => { if (triggerVisible()) loadAccess(); }, 5000);
+  if (triggerVisible()) loadAccess();
 })();
 </script>
 
