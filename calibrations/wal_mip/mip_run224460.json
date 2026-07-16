@@ -1,0 +1,177 @@
+{
+  "provenance": {
+    "run": "run224460",
+    "exported": "2026-07-16",
+    "source": "nTof_x17/mx_july_beam_qa (caches 18_trigsum, 07_mip)",
+    "selection": "beam-on bunches, hits >0.1 ms after gamma flash, duplication-vetoed (same-side neighbor +-4 ns, amp ratio 1/3-3)",
+    "hv_state": "walls at July operating point (WALA ~30% low gain, WALD g4 weak); plastics after the 224404->224460 retune",
+    "caveats": [
+      "sum thresholds are digitizer-equivalent mV of amp(top)+amp(bottom); map to hardware discriminator units before setting",
+      "rates are per-bunch for the late-TOF sample: relative, not in-spill absolute",
+      "duplication short (WALA 5-7, WALD 2-4, 5-7) is NOT removable in hardware: unfixed it adds ~+17% (A) / +25% (D) trigger rate",
+      "re-derive after any wall HV change: 18_trigger_threshold.py + this export"
+    ]
+  },
+  "channels": {
+    "WALA1": {
+      "mip_peak_adc": 746.4,
+      "mip_peak_mV": 22.8,
+      "adc_to_mV": 0.030547
+    },
+    "WALA2": {
+      "mip_peak_adc": 891.2,
+      "mip_peak_mV": 27.32,
+      "adc_to_mV": 0.030655
+    },
+    "WALA3": {
+      "mip_peak_adc": 847.2,
+      "mip_peak_mV": 25.91,
+      "adc_to_mV": 0.030578
+    },
+    "WALA4": {
+      "mip_peak_adc": 891.2,
+      "mip_peak_mV": 27.34,
+      "adc_to_mV": 0.030673
+    },
+    "WALA5": {
+      "mip_peak_adc": 785.2,
+      "mip_peak_mV": 23.98,
+      "adc_to_mV": 0.030544
+    },
+    "WALA6": {
+      "mip_peak_adc": 847.2,
+      "mip_peak_mV": 25.99,
+      "adc_to_mV": 0.030674
+    },
+    "WALA7": {
+      "mip_peak_adc": 709.5,
+      "mip_peak_mV": 21.71,
+      "adc_to_mV": 0.0306
+    },
+    "WALA8": {
+      "mip_peak_adc": 805.3,
+      "mip_peak_mV": 24.72,
+      "adc_to_mV": 0.030696
+    },
+    "WALB1": {
+      "mip_peak_adc": 1011.6,
+      "mip_peak_mV": 30.93,
+      "adc_to_mV": 0.030575
+    },
+    "WALB2": {
+      "mip_peak_adc": 1238.9,
+      "mip_peak_mV": 38.13,
+      "adc_to_mV": 0.03078
+    },
+    "WALB3": {
+      "mip_peak_adc": 1177.7,
+      "mip_peak_mV": 35.79,
+      "adc_to_mV": 0.030388
+    },
+    "WALB4": {
+      "mip_peak_adc": 1207.9,
+      "mip_peak_mV": 37.05,
+      "adc_to_mV": 0.030671
+    },
+    "WALB5": {
+      "mip_peak_adc": 1207.9,
+      "mip_peak_mV": 36.82,
+      "adc_to_mV": 0.03048
+    },
+    "WALB6": {
+      "mip_peak_adc": 1207.9,
+      "mip_peak_mV": 36.97,
+      "adc_to_mV": 0.030609
+    },
+    "WALB7": {
+      "mip_peak_adc": 1207.9,
+      "mip_peak_mV": 36.96,
+      "adc_to_mV": 0.030597
+    },
+    "WALB8": {
+      "mip_peak_adc": 1207.9,
+      "mip_peak_mV": 37.04,
+      "adc_to_mV": 0.030668
+    },
+    "WALC1": {
+      "mip_peak_adc": 1270.7,
+      "mip_peak_mV": 39.12,
+      "adc_to_mV": 0.03079
+    },
+    "WALC2": {
+      "mip_peak_adc": 1064.2,
+      "mip_peak_mV": 32.51,
+      "adc_to_mV": 0.030547
+    },
+    "WALC3": {
+      "mip_peak_adc": 1148.2,
+      "mip_peak_mV": 35.29,
+      "adc_to_mV": 0.03074
+    },
+    "WALC4": {
+      "mip_peak_adc": 1207.9,
+      "mip_peak_mV": 36.94,
+      "adc_to_mV": 0.030584
+    },
+    "WALC5": {
+      "mip_peak_adc": 1148.2,
+      "mip_peak_mV": 35.27,
+      "adc_to_mV": 0.030721
+    },
+    "WALC6": {
+      "mip_peak_adc": 1207.9,
+      "mip_peak_mV": 36.93,
+      "adc_to_mV": 0.030575
+    },
+    "WALC7": {
+      "mip_peak_adc": 1270.7,
+      "mip_peak_mV": 39.08,
+      "adc_to_mV": 0.030755
+    },
+    "WALC8": {
+      "mip_peak_adc": 1270.7,
+      "mip_peak_mV": 38.89,
+      "adc_to_mV": 0.030606
+    },
+    "WALD1": {
+      "mip_peak_adc": 1238.9,
+      "mip_peak_mV": 38.01,
+      "adc_to_mV": 0.03068
+    },
+    "WALD2": {
+      "mip_peak_adc": 1238.9,
+      "mip_peak_mV": 38.04,
+      "adc_to_mV": 0.030702
+    },
+    "WALD3": {
+      "mip_peak_adc": 1207.9,
+      "mip_peak_mV": 37.13,
+      "adc_to_mV": 0.030736
+    },
+    "WALD4": {
+      "mip_peak_adc": 1091.5,
+      "mip_peak_mV": 33.51,
+      "adc_to_mV": 0.030702
+    },
+    "WALD5": {
+      "mip_peak_adc": 1207.9,
+      "mip_peak_mV": 36.96,
+      "adc_to_mV": 0.030597
+    },
+    "WALD6": {
+      "mip_peak_adc": 1303.3,
+      "mip_peak_mV": 39.89,
+      "adc_to_mV": 0.030609
+    },
+    "WALD7": {
+      "mip_peak_adc": 641.1,
+      "mip_peak_mV": 19.59,
+      "adc_to_mV": 0.030557
+    },
+    "WALD8": {
+      "mip_peak_adc": 891.2,
+      "mip_peak_mV": 27.38,
+      "adc_to_mV": 0.030727
+    }
+  }
+}

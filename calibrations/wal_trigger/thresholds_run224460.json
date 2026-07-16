@@ -1,0 +1,142 @@
+{
+  "provenance": {
+    "run": "run224460",
+    "exported": "2026-07-16",
+    "source": "nTof_x17/mx_july_beam_qa (caches 18_trigsum, 07_mip)",
+    "selection": "beam-on bunches, hits >0.1 ms after gamma flash, duplication-vetoed (same-side neighbor +-4 ns, amp ratio 1/3-3)",
+    "hv_state": "walls at July operating point (WALA ~30% low gain, WALD g4 weak); plastics after the 224404->224460 retune",
+    "caveats": [
+      "sum thresholds are digitizer-equivalent mV of amp(top)+amp(bottom); map to hardware discriminator units before setting",
+      "rates are per-bunch for the late-TOF sample: relative, not in-spill absolute",
+      "duplication short (WALA 5-7, WALD 2-4, 5-7) is NOT removable in hardware: unfixed it adds ~+17% (A) / +25% (D) trigger rate",
+      "re-derive after any wall HV change: 18_trigger_threshold.py + this export"
+    ]
+  },
+  "target_eff_weakest_group": 0.95,
+  "walls": {
+    "A": {
+      "recommended_threshold_mV": 12.5,
+      "mip_sum_peak_mV": [
+        46.5,
+        48.5,
+        48.5,
+        44.5
+      ],
+      "plastic_tag_eff": [
+        0.14872575246839906,
+        0.1953601359017819,
+        0.18213191656449584,
+        0.14259543912347075
+      ],
+      "at_recommended": {
+        "eff": [
+          0.958429097298608,
+          0.9930646216900927,
+          0.9788988522635005,
+          0.9777724382057851
+        ],
+        "purity": [
+          0.9240265309000595,
+          0.9315192465310337,
+          0.9328145458641733,
+          0.936135899179075
+        ],
+        "pairs_per_bunch": 2454.1907177276184,
+        "pairs_per_bunch_dup_unfixed": 2877.555668272889
+      }
+    },
+    "B": {
+      "recommended_threshold_mV": 13.5,
+      "mip_sum_peak_mV": [
+        62.5,
+        66.5,
+        68.5,
+        67.5
+      ],
+      "plastic_tag_eff": [
+        0.13789157256591128,
+        0.18552390081695763,
+        0.19214167722294198,
+        0.16200420753517053
+      ],
+      "at_recommended": {
+        "eff": [
+          0.9685704772097624,
+          0.9629674409554523,
+          0.9549801798120299,
+          0.9951584987410544
+        ],
+        "purity": [
+          0.8983937529348957,
+          0.8930743745547199,
+          0.8786515777096209,
+          0.9113222367696968
+        ],
+        "pairs_per_bunch": 2915.5008876489983,
+        "pairs_per_bunch_dup_unfixed": 2980.8744610702515
+      }
+    },
+    "C": {
+      "recommended_threshold_mV": 12.5,
+      "mip_sum_peak_mV": [
+        66.5,
+        65.5,
+        64.5,
+        69.5
+      ],
+      "plastic_tag_eff": [
+        0.15757572302270134,
+        0.2066316271248837,
+        0.21887879072959823,
+        0.19911927309465505
+      ],
+      "at_recommended": {
+        "eff": [
+          0.9574444492069479,
+          0.9581184691007204,
+          0.9692035803559756,
+          0.9773711514998707
+        ],
+        "purity": [
+          0.86247054804192,
+          0.8615872427260913,
+          0.8762223277177263,
+          0.8449667100077054
+        ],
+        "pairs_per_bunch": 3184.442049201116,
+        "pairs_per_bunch_dup_unfixed": 3292.563023078874
+      }
+    },
+    "D": {
+      "recommended_threshold_mV": 13.5,
+      "mip_sum_peak_mV": [
+        72.5,
+        65.5,
+        72.5,
+        43.5
+      ],
+      "plastic_tag_eff": [
+        0.1247126433134157,
+        0.17131466221197725,
+        0.16668784600090597,
+        0.13063141144387688
+      ],
+      "at_recommended": {
+        "eff": [
+          0.9857335139711437,
+          0.9568518292448053,
+          0.9701761508297354,
+          0.9697199117614952
+        ],
+        "purity": [
+          0.8770350921711194,
+          0.8515910531089855,
+          0.8572598116876308,
+          0.9380039673395127
+        ],
+        "pairs_per_bunch": 2525.6700481866596,
+        "pairs_per_bunch_dup_unfixed": 3168.1491250317013
+      }
+    }
+  }
+}
