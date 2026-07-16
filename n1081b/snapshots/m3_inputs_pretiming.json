@@ -1,0 +1,66 @@
+{
+ "SEC_A": {
+  "0": {
+   "status": true,
+   "enable_gd": false,
+   "gate": 0,
+   "delay": 0,
+   "invert": false
+  },
+  "1": {
+   "status": true,
+   "enable_gd": false,
+   "gate": 0,
+   "delay": 0,
+   "invert": false
+  }
+ },
+ "SEC_B": {
+  "0": {
+   "status": true,
+   "enable_gd": false,
+   "gate": 0,
+   "delay": 0,
+   "invert": false
+  },
+  "1": {
+   "status": true,
+   "enable_gd": false,
+   "gate": 0,
+   "delay": 0,
+   "invert": false
+  }
+ },
+ "SEC_C": {
+  "0": {
+   "status": true,
+   "enable_gd": false,
+   "gate": 0,
+   "delay": 0,
+   "invert": false
+  },
+  "1": {
+   "status": true,
+   "enable_gd": false,
+   "gate": 0,
+   "delay": 0,
+   "invert": false
+  }
+ },
+ "SEC_D": {
+  "0": {
+   "status": true,
+   "enable_gd": false,
+   "gate": 0,
+   "delay": 0,
+   "invert": false
+  },
+  "1": {
+   "status": true,
+   "enable_gd": false,
+   "gate": 0,
+   "delay": 0,
+   "invert": false
+  }
+ }
+}
