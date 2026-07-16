@@ -1,0 +1,17 @@
+{
+  "_comment": "Nominal targets for the Shift Overview page. Gas setpoints are compared against these (so a mistyped setpoint gets flagged), and measured values are compared against the live setpoints. Edit and save; the page picks changes up within one poll (~3 s).",
+  "gas": {
+    "argon_lnh": 7.0,
+    "iso_pct": 12.5,
+    "flow_tol_lnh": 0.25,
+    "iso_tol_pct": 8.5
+  },
+  "hv": {
+    "tol_v": 5.0,
+    "stale_s": 30
+  },
+  "he3": {
+    "expected_bar": null,
+    "tol_bar": null
+  }
+}

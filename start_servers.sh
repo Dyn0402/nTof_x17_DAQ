@@ -34,3 +34,18 @@ bash_scripts/start_tmux.sh he3_pressure_watcher "python he3_pressure_watcher.py"
 # owns no hardware, no state file (Flask /system_stats reads psutil directly for the live
 # Overview plots). Retune via config/system_stats_config.json. See system_monitor/.
 bash_scripts/start_tmux.sh system_stats_watcher "python system_stats_watcher.py" 5000
+# Beam-intensity watcher: sole owner of the NXCALS/Spark session (n_TOF protons on
+# target from Timber's database). Runs under its OWN venv (pytimber + PySpark) and
+# needs a valid Kerberos ticket (kinit dneff@CERN.CH) — without one it idles in an
+# error state and recovers on its own once the ticket is reseeded.
+# See beam_monitor/README.md.
+bash_scripts/start_tmux.sh beam_watcher "$HOME/venvs/nxcals/bin/python beam_watcher.py" 5000
+# N1081B time-tag watcher: sole owner of Module 5 (.244). Arms all four scintillator-wall
+# sections to Time-Tag and streams per-edge timestamps to a daily CSV (n1081b/logs/).
+# NOTE: this holds .244 in Time-Tag mode (not counter) for as long as it runs, and
+# poll_modules auto-skips .244 while it is up. On stop it restores .244 to counters.
+# Flask reads its state from config/n1081b_timetag_state.json. See n1081b/TIMETAG_WATCHER.md.
+# DISABLED 2026-07-15: a ~1 h run WEDGED .244's firmware (command interface hung, needed a
+# power-cycle) — the rapid TT start/stop cycling is too hard on the board. Do NOT re-enable
+# until the cadence is made gentle + a duration soak-test passes. See n1081b/TIMETAG_WATCHER.md.
+# bash_scripts/start_tmux.sh n1081b_timetag_watcher "python n1081b_timetag_watcher.py" 5000
