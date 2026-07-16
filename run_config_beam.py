@@ -18,80 +18,45 @@ PROJECT       = 'beam_july'
 BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
 
 # ===========================================================================
-# run_34 — FINE random-trigger HV scan, TWO consecutive ~3 h passes offset in
-# HV to interleave new points. Ar/Iso 90/10 gas (Marex, parasitic beam), all
-# four detectors A/B/C/D. Re-does run_33's random phase, which was CORRUPTED
-# because the N1081B scan watcher was NOT running: the per-block trigger
-# modulation never happened, so C.in0/in1 (detector Singles/Doubles) stayed
-# enabled and their mains-combed self-triggers contaminated the "random"
-# trigger (30 us trains at the 10 ms mains half-period, frac<0.1ms ~= 0.67,
-# identical to run_30). run_32's random blocks were CLEAN because its watcher
-# WAS live and cut C.in0/in1 -> pulser-only Poisson (median ~1 ms, frac<0.1ms
-# ~= 0.06). Root cause: run_config_beam prints "watcher REQUIRED" but nothing
-# enforces it; run_33 was launched without it.
+# run_45 — FLASH + RANDOM-PULSER HV scan in 95/5 gas. FLASH_RANDOM trigger.
+# Ar/Iso 95/5 gas, 3He target, all four detectors A/B/C/D. RESIST HV scan:
+# A/B/C step down from 490 V to 400 V in -5 V steps (19 points), 8 min each.
+# Detector D runs 20 V BELOW the others throughout (470 -> 380 V). Drift held
+# at 800 V for all four. Random (Poisson) pulser samples the detector response
+# in the 30 ms gated window after each flash, across the resist-HV scan.
 #
-#   THE FIX IS OPERATIONAL: start the watcher before this run (see PRE-RUN).
-#   With it live, the randOn/randOff tags cut Singles/Doubles at C and the
-#   time distribution is the intended veto-gated Poisson.
+#   Mode 2 trigger (RUN_MODES_2026-07.md): M4.C = or_veto(lemo4 = M6.D pulser);
+#   M4.D = OR(lemo0 = PS/gamma-flash, lemo1 = C-out). ONLY the PS and pulser
+#   triggers pass at M4.D (Singles/Doubles cut at C). The M6.D pulser is Poisson
+#   ~666 Hz (period 1.5 ms, width 100); the 30 ms N93B veto gate (~1 % duty)
+#   turns it into ~5-6 Hz of DREAM triggers gated to the post-flash window.
+#   32 samples x 60 ns (1.92 us window), latency 5 (flash peak ~= latency + 13).
+#   STATIC board settings, applied ONCE before the run:
+#     .venv/bin/python n1081b/trigger_mode.py flash_random
+#     + M6.D pulser = Poisson, period 1.5 ms, width 100 (verify it is RUNNING).
+#   Verify with `.venv/bin/python n1081b/trigger_mode.py status` before
+#   starting DAQ (expect "looks like mode: flash_random").
 #
-#   TWO PASSES (s1, s2) — each a full random-trigger fine HV scan under the
-#     30 ms veto-gated Poisson RANDOM trigger (PS + pulser through the real
-#     or_veto), 32 smp x 60 ns, latency 5. At EACH HV point a mesh-injection ON
-#     sub-run then a mesh OFF sub-run (INTERLEAVED, so the on/off pair sees the
-#     same beam within minutes). Resists step -10 V: 560 -> 460 V (A/B/C),
-#     540 -> 440 V (D), 11 points x 2 mesh x 7 min at drift 800 V (~3.0 h/pass).
-#     PASS 2 is shifted DOWN 2.5 V (557.5 -> 457.5 A/B/C) so its points
-#     INTERLEAVE pass 1's -> new HV points, combined 2.5 V local spacing, plus a
-#     drift/reproducibility cross-check between the two passes.
-#     WATCH the first sub-runs' interval distributions live to confirm the fix
-#     (analyze_intervals.py <subrun_dir>, or the §6 snippet in
-#     HANDOFF_2026-07-13_randomizer_veto_test.md): expect frac<0.1ms ~= 0.06,
-#     median ~1 ms like run_32 — NOT run_30/33's 0.67 / 30 us trains.
+#   No mesh circuit is connected this run (mesh is GROUNDED), so there is no
+#   mesh injection to modulate — n1081b_scan is left 'off' (no inline
+#   trigger/mesh modulation, no cycling; do NOT start n1081b_scan_watcher.py).
 #
-#   REUSES config/n1081b_scan_schedule.json (randOn / randOff tags). daq_control
-#   now applies the per-sub-run trigger/mesh config ITSELF (in-process, verified
-#   by read-back — see n1081b/scan_control.py); the standalone scan-watcher
-#   process is no longer needed and must NOT be run alongside a data run.
-#
-#   PRE-RUN (one-time): the STATIC trigger setup — or_veto function on M4.C and
-#   the M6.D Poisson pulser — is NOT part of the per-block schedule, so it still
-#   must be applied once before the run:
-#     .venv/bin/python n1081b/setup_run30_trigger.py
-#   Then just launch daq_control: it snapshots the boards, cuts Singles/Doubles
-#   and toggles mesh per sub-run automatically, and restores the boards on exit.
-#   (Set self.n1081b_scan = 'off' to force it off, 'on' to force on; default
-#   'auto' enables it whenever a sub-run tag matches a schedule scan entry.)
+#   STRUCTURE: one run, 19 sub-runs of 8 min each (~2.9 h with overhead). Each
+#   sub-run is one resist HV point; chunking gives incremental resume (a crash
+#   re-takes only the current point) and lets backup_watcher mirror each
+#   finished point to EOS.
 # ===========================================================================
 OVERHEAD_MIN = 1      # per-subrun ramp poll + DAQ prep + inter-subrun wait
 
-# Per-channel maximum resist voltages, card 5 channels 1-4 = detectors A/B/C/D.
-# Kept at run_32/33's cautious Ar/Iso 90/10 ceiling (the 80/20 maxes 700/700/660
-# do NOT transfer); detector D capped 20 V lower for its trip history. Both
-# passes scan DOWN from these maxes (pass 2 from a 2.5 V-lower start).
-RESIST_MAX = {'1': 560, '2': 560, '3': 560, '4': 540}
+SCAN_DRIFT    = 800   # V, drift, all four detectors (A/B/C/D = card 9 ch 0-3)
+RESIST_TOP    = 490   # V, resist starting point (A/B/C)
+RESIST_STEP   = 5     # V, step DOWN between points
+RESIST_BOTTOM = 400   # V, resist final point (A/B/C), inclusive
+DET_D_OFFSET  = 20    # V, det D resist runs this many volts BELOW A/B/C
+N_PER_POINT   = 1     # sub-runs per HV point
+SUBRUN_MIN    = 8     # minutes per sub-run
 
-# ----- random-trigger fine HV scan geometry (two offset passes) ----------------
-SCAN_DRIFT      = 800   # V, drift held throughout (A/B/C/D = card 9 ch 0-3)
-RESIST_STEP     = 10    # V per step within a pass (mesh ON+OFF at each -> fits 3 h)
-RESIST_MAX_OFF  = 100   # V, deepest offset below max (inclusive) -> 11 points/pass
-RAND_SUBRUN_MIN = 7     # minutes per random sub-run (11 pts x 2 mesh x 7 min +
-                        # settle ~= 3.0 h per pass; two passes ~= 6.1 h)
-SETTLE_MIN      = 5     # settle at each pass's max before scanning
-N_PASSES        = 2     # two consecutive rescans (s1, s2)
-PASS_OFFSET_V   = 2.5   # pass 2 shifted DOWN this much to interleave new HV points
-
-# Offsets (V below each pass's own max) -> 0..100 in 10 V steps = 11 points.
-RESIST_OFFSETS = list(range(0, RESIST_MAX_OFF + RESIST_STEP, RESIST_STEP))
-
-# Tags + DREAM readout overrides (samples / period ns / latency). Tags must
-# match config/n1081b_scan_schedule.json; overrides ride on each sub-run. Each
-# HV point interleaves mesh ON (randOn) then mesh OFF (randOff).
-RAND_TAGS = ('randOn', 'randOff')  # mesh injection ON then OFF at each HV point
-RAND_DREAM  = {'n_samples_per_waveform': 32, 'sample_period': 60, 'latency': 5}
-
-POST_PAUSE_S = 5  # extra post-sub-run wait; with daq_control's built-in 10 s it
-                  # guarantees the watcher (3 s poll) latches .pause_run and swaps
-                  # the trigger/mesh config before the next sub-run starts.
+POST_PAUSE_S = 0  # no inline scan control in play this run; nothing to re-apply between sub-runs.
 
 
 def fmt_v(v):
@@ -107,7 +72,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_34'  # Two ~3 h random-trigger fine HV passes, HV-offset to interleave; all 4 dets, Ar/Iso 90/10
+        self.run_name = 'run_45'  # Flash+random-pulser HV scan (95/5 gas), flash_random trigger, resist 490->400 V (D -20 V), drift 800 V, 19 x 8 min
         self.base_out_dir = BASE_DATA_DIR
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -118,19 +83,17 @@ class Config(RunConfigBase):
         self.start_time = None
         self.process_on_fly = False  # True to process fdfs on the fly.
         self.power_off_hv_at_end = False  # True to power off all CAEN HV at the end of the run.
-        self.resume = False  # Fresh run_34 (new run dir, no markers). Set True only
-                             # to continue a partially-completed run_34.
-        self.n1081b_scan = 'on'  # 'on' (this IS a veto-gated random-trigger scan) |
-                             # 'auto' (enable iff a sub-run tag matches the schedule) |
-                             # 'off' (deliberately no trigger modulation). 'on' makes
-                             # daq_control REFUSE to start if it can't control the
-                             # trigger (missing schedule / unreachable boards) rather
-                             # than silently take data with Singles leaking in.
+        self.resume = False  # Fresh run: do not skip any sub-runs.
+        self.n1081b_scan = 'off'  # No inline trigger/mesh modulation this run: the
+                             # flash_random trigger is a STATIC board setting
+                             # (n1081b/trigger_mode.py flash_random + M6.D Poisson pulser,
+                             # applied once pre-run) and the mesh is grounded/disconnected,
+                             # so there is nothing to toggle or cycle per sub-run.
         self.write_all_detectors_to_json = True  # Only when making run config json template. Maybe do always?
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
         # self.gas = 'Ar/CO2 70/30'  # Gas type for run
-        self.gas = 'Ar/Iso 90/10'  # Gas type for run (changed from 80/20 on 2026-07-12)
+        self.gas = 'Ar/Iso 95/5'  # Gas type for run (gas-change run: changed from 90/10 on 2026-07-16)
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         # self.gas = 'Ne/Iso 95/5'  # Gas type for run
         # self.beam_type = 'cosmics'
@@ -145,31 +108,34 @@ class Config(RunConfigBase):
         # self.target_type = 'Lead'
         # self.target_type = 'empty target holder'
         # self.target_type = 'none'
-        self.target_type = 'Marex'
+        # self.target_type = 'Marex'
+        # self.target_type = 'B4C - 2.5mm (thinner)'
+        self.target_type = '3He'  # new 3He target installed 2026-07-15
         # self.trigger = "Det 3 SiPM Wall + Det 3 Scint"
         # self.trigger = "PS Pickup"
-        self.trigger = ("External (N1081B M4.D out0): PS + 30 ms-veto-gated Poisson "
-                        "pulser (~5-6 Hz avg) through the real or_veto with C.in0/in1 "
-                        "(Singles/Doubles) CUT by the scan watcher — the intended "
-                        "'random' trigger. REQUIRES n1081b_scan_watcher.py running "
-                        "(run_33's random phase was corrupted by Singles leakage "
-                        "because the watcher was not started). Two consecutive fine "
-                        "HV passes (s1, s2), pass 2 offset -2.5 V to interleave new "
-                        "points. Mesh injection (M6.B) toggled ON (randOn) then OFF "
-                        "(randOff) per HV point. All four detectors A/B/C/D.")
+        self.trigger = ("External (N1081B M4.D out0): FLASH + RANDOM-PULSER trigger "
+                        "(M4.C = or_veto(lemo4 = M6.D Poisson pulser ~666 Hz, gated by the "
+                        "30 ms N93B window); M4.D = OR(lemo0 = PS/gamma-flash, lemo1 = "
+                        "C-out); Singles/Doubles cut at C) — Mode 2 of RUN_MODES_2026-07.md, "
+                        "static setup via n1081b/trigger_mode.py flash_random + M6.D pulser "
+                        "Poisson 1.5 ms/width 100. Mesh grounded/disconnected. "
+                        "FLASH+RANDOM HV SCAN in 95/5 gas: resist A/B/C 490->400 V in -5 V "
+                        "steps (det D 20 V below, 470->380 V), drift 800 V, 19 x 8 min "
+                        "sub-runs (~2.9 h). 32 smp x 60 ns (1.92 us window), latency 5 "
+                        "(flash peak ~= latency + 13; pulser events = flat pedestal).")
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
             'port': 1101,
-            # External-trigger (TCM) template: gamma flash + random post-flash trigger fed in
-            # externally; every detector is Dat (full 4-detector readout), no self-trigger FEU.
+            # External-trigger (TCM) template: gamma flash trigger fed in externally;
+            # every detector is Dat (full 4-detector readout), no self-trigger FEU.
             'daq_config_template_path': f'{self.base_out_dir}dream_config/Tcm_Mx17_July.cfg',
 
             # 'run_directory': f'{self.base_out_dir}/dream_run/{self.run_name}/',
             'run_directory': f'/home/mx17/july_dream/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-            'n_samples_per_waveform': 400,  # base value; PER-SUB-RUN OVERRIDES in SCAN_BLOCKS drive the real settings
+            'n_samples_per_waveform': 32,  # flash_random config: 32 x 60 ns = 1920 ns window
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -177,9 +143,10 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-            'latency': 60,  # base value; per-sub-run overrides apply (tuned 2026-07-11:
-                            # flash 20 ns -> 60; flash 60 ns -> 5; scint 60 ns -> 35)
-            'sample_period': 20,  # ns (20 or 60); base value, per-sub-run overrides apply
+            'latency': 5,  # flash_random value (Mode 2, RUN_MODES_2026-07.md; flash peak
+                           # ~= latency + 13; pulser events uncorrelated = flat pedestal;
+                           # window-start artifact smp 0-5)
+            'sample_period': 60,  # ns (20 or 60)
             # No daq_run_events cap: runs are purely time-based (5 min sub-runs), like run_15.
             'zs_check_sample': 4,  # Number of samples to read out beyond threshold crossing
             # Full 4-detector readout auto-derived from included detectors (all four = Dat). External
@@ -224,45 +191,30 @@ class Config(RunConfigBase):
             self.hv_info['password'] = lines[1].strip()
 
         # ----- SUB-RUN BUILD (from constants above) -----
-        # PHASE 1: fine HV scan under the veto-gated Poisson random trigger, with
-        # a mesh-ON (randOn) then mesh-OFF (randOff) sub-run at each HV point,
-        # max -> min in 5 V steps. PHASE 2: one open-ended scint sub-run at max
-        # HV. The leading name token = the N1081B watcher scan tag; the watcher
-        # swaps mesh routing at every on<->off change (and trigger routing at the
-        # phase-1 -> phase-2 border). DREAM readout overrides (samples/period/
-        # latency) ride on each sub-run dict ({**dream_info, **subrun}).
+        # Single phase, static flash (PS) trigger (no scan tags — n1081b_scan='off',
+        # so sub_run_name has no special leading token). RESIST HV scan: A/B/C step
+        # from RESIST_TOP down to RESIST_BOTTOM in -RESIST_STEP steps; det D held
+        # DET_D_OFFSET volts below A/B/C at every point. Drift SCAN_DRIFT for all four.
         def _drift(v):
             return {'0': v, '1': v, '2': v, '3': v}  # card 9 ch 0-3 = drifts A/B/C/D
 
+        def _resist(v):
+            # card 5 ch 1-4 = det A/B/C/D; D runs DET_D_OFFSET volts below A/B/C
+            return {'1': v, '2': v, '3': v, '4': v - DET_D_OFFSET}
+
         self.sub_runs = []
 
-        # TWO consecutive random-trigger fine HV passes. Pass p starts 2.5*(p-1) V
-        # below the maxes so pass 2's grid interleaves pass 1's (new HV points).
-        # Within a pass: settle at that pass's max, then step DOWN by RESIST_OFFSETS
-        # at drift 800 V, taking a mesh-ON (randOn) then mesh-OFF (randOff) sub-run
-        # at each point (HV identical within the pair; ramps only between points).
-        for p in range(1, N_PASSES + 1):
-            shift = PASS_OFFSET_V * (p - 1)
-            pass_max = {ch: v - shift for ch, v in RESIST_MAX.items()}
-
-            # Settle at this pass's max. randOn tag (mesh ON) so the watcher
-            # re-applies the random trigger config at the pass start.
-            self.sub_runs.append({
-                'sub_run_name': f'{RAND_TAGS[0]}_s{p}_settle_Amax',
-                'run_time': SETTLE_MIN, 'post_pause_s': POST_PAUSE_S,
-                'hvs': {'5': dict(pass_max), '9': _drift(SCAN_DRIFT)},
-                **RAND_DREAM,
-            })
-
-            for k, off_v in enumerate(RESIST_OFFSETS):
-                resists = {ch: v - off_v for ch, v in pass_max.items()}
-                for tag in RAND_TAGS:
-                    self.sub_runs.append({
-                        'sub_run_name': f'{tag}_s{p}_A{fmt_v(resists["1"])}_{k:02d}',
-                        'run_time': RAND_SUBRUN_MIN, 'post_pause_s': POST_PAUSE_S,
-                        'hvs': {'5': resists, '9': _drift(SCAN_DRIFT)},
-                        **RAND_DREAM,
-                    })
+        k = 0
+        v = RESIST_TOP
+        while v >= RESIST_BOTTOM - 1e-9:
+            for _rep in range(N_PER_POINT):
+                self.sub_runs.append({
+                    'sub_run_name': f'frand_dr{SCAN_DRIFT}_A{fmt_v(v)}_D{fmt_v(v - DET_D_OFFSET)}_{k:02d}',
+                    'run_time': SUBRUN_MIN, 'post_pause_s': POST_PAUSE_S,
+                    'hvs': {'5': _resist(v), '9': _drift(SCAN_DRIFT)},
+                })
+                k += 1
+            v -= RESIST_STEP
 
 
         self.bench_geometry = {
@@ -282,7 +234,7 @@ class Config(RunConfigBase):
                 'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
                 'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
-                    'x': -32.7,  # mm  tangential pinwheel shift (-X)
+                    'x': -16.35,  # mm  tangential pinwheel shift (-X)
                     'y': 0,  # mm
                     'z': 234.6,  # mm  +Z normal: mylar 204.5 + 30.1 (drift gap to mesh)
                 },
@@ -362,7 +314,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
                     'x': -234.1,  # mm  -X normal: mylar 204.0 + 30.1 (drift gap to mesh)
                     'y': 0,  # mm
-                    'z': -31.5,  # mm  tangential pinwheel shift (-Z)
+                    'z': -15.75,  # mm  tangential pinwheel shift (-Z)
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
@@ -440,7 +392,7 @@ class Config(RunConfigBase):
                 'drift_gap': '30 mm',
                 'frame_type': 'aluminum',  # carbon or aluminum
                 'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
-                    'x': 34.6,  # mm  tangential pinwheel shift (+X)
+                    'x': 17.3,  # mm  tangential pinwheel shift (+X)
                     'y': 0,  # mm
                     'z': -234.6,  # mm  -Z normal: mylar 204.5 + 30.1 (drift gap to mesh)
                 },
@@ -521,7 +473,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {  # Center of detector at mesh plane (sim X/Z; y free, set 0)
                     'x': 234.1,  # mm  +X normal: mylar 204.0 + 30.1 (drift gap to mesh)
                     'y': 0,  # mm
-                    'z': 31.0,  # mm  tangential pinwheel shift (+Z)
+                    'z': 15.5,  # mm  tangential pinwheel shift (+Z)
                 },
                 'det_orientation': {
                     'x': 0,  # deg  Rotation about x axis
@@ -684,22 +636,25 @@ if __name__ == '__main__':
     START = datetime.now()  # projection only; run starts when daq_control is launched
 
     import os as _os
+    ns = config.dream_daq_info['n_samples_per_waveform']
+    sp = config.dream_daq_info['sample_period']
+    lat = config.dream_daq_info['latency']
+    n_pts = len(config.sub_runs)
     print(f'Gas: {config.gas}   Beam: {config.beam_type}   Target: {config.target_type}')
-    print(f'Run: {config.run_name}  — two consecutive random-trigger fine HV passes '
-          f'(pass 2 offset -{PASS_OFFSET_V:g} V)')
+    print(f'Run: {config.run_name}  — FLASH+RANDOM-PULSER HV scan, flash_random trigger, all 4 detectors')
     print(f'Trigger: {config.trigger}')
-    print(f'Each pass {"/".join(RAND_TAGS)}: {RAND_DREAM["n_samples_per_waveform"]} smp x '
-          f'{RAND_DREAM["sample_period"]} ns = {RAND_DREAM["n_samples_per_waveform"]*RAND_DREAM["sample_period"]} ns '
-          f'window, latency {RAND_DREAM["latency"]}; HV {RESIST_MAX["1"]} -> '
-          f'{RESIST_MAX["1"]-RESIST_MAX_OFF} V (D {RESIST_MAX["4"]} -> {RESIST_MAX["4"]-RESIST_MAX_OFF}) '
-          f'in -{RESIST_STEP} V ({len(RESIST_OFFSETS)} pts x {len(RAND_TAGS)} mesh x '
-          f'{RAND_SUBRUN_MIN} min), drift {SCAN_DRIFT} V. {N_PASSES} passes, '
-          f'pass 2 shifted -{PASS_OFFSET_V:g} V (interleaves new HV points).')
-    print('*** PRE-RUN: apply the STATIC trigger setup once — '
-          '.venv/bin/python n1081b/setup_run30_trigger.py (or_veto + pulser). '
-          'daq_control now applies the per-sub-run trigger/mesh config INLINE '
-          '(n1081b/scan_control.py) — no separate watcher process. Do NOT run '
-          'n1081b_scan_watcher.py during the run. ***')
+    print(f'DAQ: {ns} smp x {sp} ns = {ns*sp} ns window, latency {lat}; RESIST scan '
+          f'{RESIST_TOP}->{RESIST_BOTTOM} V step -{RESIST_STEP} V for A/B/C '
+          f'(det D {RESIST_TOP-DET_D_OFFSET}->{RESIST_BOTTOM-DET_D_OFFSET} V), drift '
+          f'{SCAN_DRIFT} V; {n_pts} x {SUBRUN_MIN} min '
+          f'~= {n_pts*(SUBRUN_MIN+OVERHEAD_MIN)/60:.1f} h.')
+    print('*** PRE-RUN: apply the STATIC flash_random trigger once — '
+          '.venv/bin/python n1081b/trigger_mode.py flash_random (M4.C = or_veto(lemo4 = '
+          'pulser); M4.D = OR(lemo0 = PS, lemo1 = C-out); Singles/Doubles cut). ALSO '
+          'ensure the M6.D pulser is RUNNING: Poisson, period 1.5 ms, width 100 (~666 Hz). '
+          'Verify with n1081b/trigger_mode.py status before starting DAQ (expect '
+          '"flash_random"). Mesh grounded — nothing else to set. n1081b_scan is "off": no '
+          'inline trigger/mesh modulation. Do NOT run n1081b_scan_watcher.py during the run. ***')
     print(f'resume={getattr(config, "resume", False)}: sub-runs with a .subrun_complete '
           'marker are shown [done] and skipped.\n')
 
