@@ -53,14 +53,13 @@ Runtime state lives in `config/n1081b_access/` (gitignored):
 Quick check: `python -c "from n1081b.n1081b_session import quarantine_status; print(quarantine_status('192.168.10.244'))"`.
 
 ## Current board state (update when it changes)
-- `.244` (M5): **STILL WEDGED — QUARANTINED until 2026-07-18 ~11:16.** Deliberately
-  stress-wedged 2026-07-15 eve (stage-3 ws-upgrade hang). Probed 2026-07-16 10:41
-  (single bounded ws login): **timed out after 8 s → did NOT self-heal after ~11.5 h.**
-  Deep stage-3 needs a **physical touchscreen reboot** (no reliable remote reboot).
-  **Recovery: follow `n1081b/POST_REBOOT_244_CHECKLIST.md`** — probe → `clear_quarantine`
-  → `restore_244_counters.py` (safe board_session restore; the old
-  `n1081b_timetag_watcher.py --restore` is a stale/nonexistent reference) → verify counting
-  → re-add `244` to `poll_modules.POLL_IPS`. Kept out of `POLL_IPS` until then.
+- `.244` (M5): **HEALTHY — recovered 2026-07-16.** Was stress-wedged 2026-07-15 eve
+  (stage-3 ws-upgrade hang), did NOT self-heal in ~11.5 h; recovered by a **physical
+  touchscreen reboot** 2026-07-16. Post-reboot: bounded login probe clean (0.0 s),
+  quarantine cleared, all four sections restored to `counter` via
+  `restore_244_counters.py`, verified counting (SEC_A ~700 Hz all ch), and **re-added to
+  `poll_modules.POLL_IPS`** (`240–245`). Walls-monitoring only (no trigger impact). Lesson:
+  a deep stage-3 wedge needs a physical reboot — there is no reliable remote reboot.
 - `.240–.243, .245`: healthy, in the live trigger. Board access now goes through
   `board_session()` for the daemons (`poll_modules`, `scan_watcher`/`scan_control`)
   AND the migrated scripts — the interprocess lock spans them all. Watch the Trigger

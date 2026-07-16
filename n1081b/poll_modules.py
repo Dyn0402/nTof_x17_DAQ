@@ -69,7 +69,7 @@ TT_WATCHER_IP = "192.168.10.244"
 # ~6 s/sub-run on a dead login AND keep opening sessions to a board we want left
 # alone to self-recover. RESTORE .244 to this tuple once it has been physically
 # rebooted and verified reachable.
-POLL_IPS = [f"192.168.10.{n}" for n in (240, 241, 242, 243, 245)]  # .244 out again: deliberately re-wedged by stress test 2026-07-15 eve; re-add after 07-16 reboot
+POLL_IPS = [f"192.168.10.{n}" for n in (240, 241, 242, 243, 244, 245)]  # .244 back 2026-07-16: touchscreen-rebooted, quarantine cleared, sections restored to counter + verified counting
 PASSWORD = "password"
 RECV_TIMEOUT = 6      # s, per-board socket timeout so one hung board can't stall the rest
 SECTIONS_RANGE = 6    # LEMO inputs / outputs 0-5 per section

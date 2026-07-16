@@ -10,13 +10,14 @@ wedge a board for hours and there is no reliable remote reboot.**
 
 ## STATUS — updated 2026-07-16 (execution session)
 
-- **Task 1 (.244 recovery): BLOCKED — needs physical reboot.** Probed `.244` once
-  (bounded ws login) at 10:41: timed out after 8 s → it did NOT self-heal after ~11.5 h
-  at deep stage-3. Per the "no reboot" constraint we stopped all contact. Re-quarantined
-  it (until 2026-07-18 ~11:16, accurate reason) so it doesn't falsely read "free" when the
-  old marker expired at 17:09. `.244` stays out of `POLL_IPS`. **Remaining human step:**
-  physical touchscreen reboot, then `clear_quarantine` → restore counters → re-add to
-  `POLL_IPS`.
+- **Task 1 (.244 recovery): DONE 2026-07-16.** Probed at 10:41 (bounded ws login): timed
+  out after 8 s → it did NOT self-heal after ~11.5 h at deep stage-3 (confirms a deep
+  stage-3 wedge needs a physical reboot). After the touchscreen reboot, the whole
+  `POST_REBOOT_244_CHECKLIST.md` ran clean: bounded probe replied in 0.0 s →
+  `clear_quarantine` → `restore_244_counters.py` (all four sections → `counter`) →
+  verified counting (SEC_A ~700 Hz on all channels) → re-added `.244` to
+  `poll_modules.POLL_IPS` (`240–245`) → Board Access card shows **free**.
+  `n1081b/CLAUDE.md` board-state line updated to HEALTHY. Acceptance met.
 - **Task 2 (daemons): DONE + deployed automatically.** `poll_modules.py` and the
   `n1081b_scan_watcher.py` primitives (also used in-process by `scan_control.py`) now go
   through `board_session()`. `n1081b_session.py` gained `auto_quarantine` (read-only

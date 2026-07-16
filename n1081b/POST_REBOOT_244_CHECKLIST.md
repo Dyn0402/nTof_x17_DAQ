@@ -1,5 +1,11 @@
 # Post-reboot checklist — recover .244 (M5) after the touchscreen reboot (2026-07-16)
 
+> **✅ EXECUTED & COMPLETE 2026-07-16.** Board was touchscreen-rebooted, then all steps
+> below ran clean: bounded login probe replied in 0.0 s → quarantine cleared → all four
+> sections restored to `counter` → verified counting (SEC_A ~700 Hz on all channels) →
+> `.244` re-added to `poll_modules.POLL_IPS` (`240–245`) → Board Access card shows **free**.
+> `n1081b/CLAUDE.md` board-state updated to HEALTHY. Kept here as the runbook for next time.
+
 `.244` was probed 2026-07-16 10:41 and is **still wedged** at stage-3 (ws login timed
 out after 8 s; did NOT self-heal in ~11.5 h). It needs a **physical touchscreen reboot**.
 Run through this AT/AFTER the reboot, in order. All board contact here goes through the
