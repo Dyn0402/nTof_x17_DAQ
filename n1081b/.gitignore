@@ -2,3 +2,9 @@
 docs/*.zip
 # Transient error logs from piped runs
 snapshots/*.err
+snapshots/*_err.txt
+# LaTeX build artifacts (report PDFs + .tex sources are kept)
+snapshots/*.aux
+snapshots/*.out
+# Raw multi-MB time-tag dumps (analysis PNGs are kept)
+snapshots/*.csv

@@ -240,3 +240,21 @@ gas_mixer_control/logs/
 
 # 3He pressure gauge CSV data logs (per-day pressure logs)
 he3_pressure_reader/logs/
+
+# N1081B interprocess locks / quarantine / holder registry (runtime state)
+config/n1081b_access/
+
+# Live runtime state, republished continuously by the watchers/daq_control
+# (a committed copy is stale the moment it lands). Same rationale as backup_state.json.
+config/beam_state.json
+config/n1081b_scan_active.json
+config/n1081b_timetag_state.json
+
+# run_config editor/run backups (mirrors the existing run_config_beam.py.beam_backup rule)
+config/backups/
+run_config_beam.py.run*
+run_config_beam.py.*_backup
+config/n1081b_scan_schedule.json.*_backup
+
+# N1081B time-tag watcher per-day CSV data logs
+n1081b/logs/
