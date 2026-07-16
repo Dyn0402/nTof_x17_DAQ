@@ -1,0 +1,998 @@
+{
+  "gate_ns": 20,
+  "rounds": [
+    {
+      "A": {
+        "wall": {
+          "baseline_mv": 78,
+          "thresholds_mv": [
+            39,
+            58,
+            78,
+            101,
+            133,
+            172
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 670.796,
+              "scint_hz": 817.995,
+              "coinc_hz": 64.8,
+              "accidental_hz": 0.010974,
+              "true_hz": 64.789,
+              "significance": 618.47,
+              "threshold_mv": 39
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 445.597,
+              "scint_hz": 828.595,
+              "coinc_hz": 25.1,
+              "accidental_hz": 0.007384,
+              "true_hz": 25.093,
+              "significance": 250.93,
+              "threshold_mv": 58
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 295.598,
+              "scint_hz": 824.595,
+              "coinc_hz": 29.0,
+              "accidental_hz": 0.004875,
+              "true_hz": 28.995,
+              "significance": 289.95,
+              "threshold_mv": 78
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 80.599,
+              "scint_hz": 340.498,
+              "coinc_hz": 15.0,
+              "accidental_hz": 0.000549,
+              "true_hz": 14.999,
+              "significance": 149.99,
+              "threshold_mv": 101
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 103.399,
+              "scint_hz": 789.195,
+              "coinc_hz": 10.8,
+              "accidental_hz": 0.001632,
+              "true_hz": 10.798,
+              "significance": 107.98,
+              "threshold_mv": 133
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 8.7,
+              "scint_hz": 514.797,
+              "coinc_hz": 1.4,
+              "accidental_hz": 9e-05,
+              "true_hz": 1.4,
+              "significance": 14.0,
+              "threshold_mv": 172
+            }
+          ],
+          "applied_mv": 39
+        },
+        "scint": {
+          "baseline_mv": -65,
+          "thresholds_mv": [
+            -143,
+            -110,
+            -84,
+            -65,
+            -49,
+            -32
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 653.795,
+              "scint_hz": 156.499,
+              "coinc_hz": 11.6,
+              "accidental_hz": 0.002046,
+              "true_hz": 11.598,
+              "significance": 115.98,
+              "threshold_mv": -143
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 653.196,
+              "scint_hz": 274.998,
+              "coinc_hz": 34.2,
+              "accidental_hz": 0.003593,
+              "true_hz": 34.196,
+              "significance": 341.96,
+              "threshold_mv": -110
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 442.197,
+              "scint_hz": 312.898,
+              "coinc_hz": 35.1,
+              "accidental_hz": 0.002767,
+              "true_hz": 35.097,
+              "significance": 350.97,
+              "threshold_mv": -84
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 442.797,
+              "scint_hz": 493.997,
+              "coinc_hz": 65.7,
+              "accidental_hz": 0.004375,
+              "true_hz": 65.696,
+              "significance": 656.96,
+              "threshold_mv": -65
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 325.398,
+              "scint_hz": 451.297,
+              "coinc_hz": 79.6,
+              "accidental_hz": 0.002937,
+              "true_hz": 79.597,
+              "significance": 795.97,
+              "threshold_mv": -49
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 665.696,
+              "scint_hz": 1428.891,
+              "coinc_hz": 63.8,
+              "accidental_hz": 0.019024,
+              "true_hz": 63.781,
+              "significance": 462.42,
+              "threshold_mv": -32
+            }
+          ],
+          "applied_mv": -49
+        }
+      },
+      "B": {
+        "wall": {
+          "baseline_mv": 115,
+          "thresholds_mv": [
+            58,
+            86,
+            115,
+            150,
+            196,
+            253
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 439.293,
+              "scint_hz": 276.595,
+              "coinc_hz": 55.3,
+              "accidental_hz": 0.00243,
+              "true_hz": 55.298,
+              "significance": 552.98,
+              "threshold_mv": 58
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 423.297,
+              "scint_hz": 468.997,
+              "coinc_hz": 14.1,
+              "accidental_hz": 0.003971,
+              "true_hz": 14.096,
+              "significance": 140.96,
+              "threshold_mv": 86
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 77.6,
+              "scint_hz": 108.399,
+              "coinc_hz": 15.9,
+              "accidental_hz": 0.000168,
+              "true_hz": 15.9,
+              "significance": 159.0,
+              "threshold_mv": 115
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 31.5,
+              "scint_hz": 289.898,
+              "coinc_hz": 0.3,
+              "accidental_hz": 0.000183,
+              "true_hz": 0.3,
+              "significance": 3.0,
+              "threshold_mv": 150
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 0.8,
+              "scint_hz": 10.3,
+              "coinc_hz": 0.3,
+              "accidental_hz": 0.0,
+              "true_hz": 0.3,
+              "significance": 3.0,
+              "threshold_mv": 196
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 1.3,
+              "scint_hz": 194.699,
+              "coinc_hz": 0.4,
+              "accidental_hz": 5e-06,
+              "true_hz": 0.4,
+              "significance": 4.0,
+              "threshold_mv": 253
+            }
+          ],
+          "applied_mv": 58
+        },
+        "scint": {
+          "baseline_mv": -80,
+          "thresholds_mv": [
+            -176,
+            -136,
+            -104,
+            -80,
+            -60,
+            -40
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 677.296,
+              "scint_hz": 66.5,
+              "coinc_hz": 6.1,
+              "accidental_hz": 0.000901,
+              "true_hz": 6.099,
+              "significance": 60.99,
+              "threshold_mv": -176
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 434.697,
+              "scint_hz": 83.399,
+              "coinc_hz": 23.0,
+              "accidental_hz": 0.000725,
+              "true_hz": 22.999,
+              "significance": 229.99,
+              "threshold_mv": -136
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 436.497,
+              "scint_hz": 154.199,
+              "coinc_hz": 16.3,
+              "accidental_hz": 0.001346,
+              "true_hz": 16.299,
+              "significance": 162.99,
+              "threshold_mv": -104
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 433.097,
+              "scint_hz": 278.198,
+              "coinc_hz": 49.9,
+              "accidental_hz": 0.00241,
+              "true_hz": 49.898,
+              "significance": 498.98,
+              "threshold_mv": -80
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 446.097,
+              "scint_hz": 464.197,
+              "coinc_hz": 45.3,
+              "accidental_hz": 0.004142,
+              "true_hz": 45.296,
+              "significance": 452.96,
+              "threshold_mv": -60
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 674.096,
+              "scint_hz": 1140.893,
+              "coinc_hz": 90.299,
+              "accidental_hz": 0.015381,
+              "true_hz": 90.284,
+              "significance": 727.98,
+              "threshold_mv": -40
+            }
+          ],
+          "applied_mv": -40
+        }
+      },
+      "C": {
+        "wall": {
+          "baseline_mv": 100,
+          "thresholds_mv": [
+            50,
+            75,
+            100,
+            130,
+            170,
+            220
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 301.698,
+              "scint_hz": 191.799,
+              "coinc_hz": 8.2,
+              "accidental_hz": 0.001157,
+              "true_hz": 8.199,
+              "significance": 81.99,
+              "threshold_mv": 50
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 556.295,
+              "scint_hz": 642.795,
+              "coinc_hz": 7.0,
+              "accidental_hz": 0.007152,
+              "true_hz": 6.993,
+              "significance": 69.93,
+              "threshold_mv": 75
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 175.699,
+              "scint_hz": 271.198,
+              "coinc_hz": 11.1,
+              "accidental_hz": 0.000953,
+              "true_hz": 11.099,
+              "significance": 110.99,
+              "threshold_mv": 100
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 161.699,
+              "scint_hz": 448.997,
+              "coinc_hz": 7.3,
+              "accidental_hz": 0.001452,
+              "true_hz": 7.299,
+              "significance": 72.99,
+              "threshold_mv": 130
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 14.2,
+              "scint_hz": 277.298,
+              "coinc_hz": 16.5,
+              "accidental_hz": 7.9e-05,
+              "true_hz": 16.5,
+              "significance": 165.0,
+              "threshold_mv": 170
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 8.4,
+              "scint_hz": 273.998,
+              "coinc_hz": 7.1,
+              "accidental_hz": 4.6e-05,
+              "true_hz": 7.1,
+              "significance": 71.0,
+              "threshold_mv": 220
+            }
+          ],
+          "applied_mv": 170
+        },
+        "scint": {
+          "baseline_mv": -130,
+          "thresholds_mv": [
+            -286,
+            -221,
+            -169,
+            -130,
+            -98,
+            -65
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 23.2,
+              "scint_hz": 45.5,
+              "coinc_hz": 11.7,
+              "accidental_hz": 2.1e-05,
+              "true_hz": 11.7,
+              "significance": 117.0,
+              "threshold_mv": -286
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 18.7,
+              "scint_hz": 90.899,
+              "coinc_hz": 7.5,
+              "accidental_hz": 3.4e-05,
+              "true_hz": 7.5,
+              "significance": 75.0,
+              "threshold_mv": -221
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 25.4,
+              "scint_hz": 231.299,
+              "coinc_hz": 8.4,
+              "accidental_hz": 0.000117,
+              "true_hz": 8.4,
+              "significance": 84.0,
+              "threshold_mv": -169
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 14.1,
+              "scint_hz": 278.798,
+              "coinc_hz": 12.5,
+              "accidental_hz": 7.9e-05,
+              "true_hz": 12.5,
+              "significance": 125.0,
+              "threshold_mv": -130
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 24.2,
+              "scint_hz": 718.095,
+              "coinc_hz": 10.7,
+              "accidental_hz": 0.000348,
+              "true_hz": 10.7,
+              "significance": 107.0,
+              "threshold_mv": -98
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 15.6,
+              "scint_hz": 681.496,
+              "coinc_hz": 12.2,
+              "accidental_hz": 0.000213,
+              "true_hz": 12.2,
+              "significance": 122.0,
+              "threshold_mv": -65
+            }
+          ],
+          "applied_mv": -130
+        }
+      }
+    },
+    {
+      "A": {
+        "wall": {
+          "baseline_mv": 39,
+          "thresholds_mv": [
+            20,
+            29,
+            39,
+            51,
+            66,
+            86
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 595.396,
+              "scint_hz": 674.796,
+              "coinc_hz": 49.0,
+              "accidental_hz": 0.008035,
+              "true_hz": 48.992,
+              "significance": 489.92,
+              "threshold_mv": 20
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 786.595,
+              "scint_hz": 1094.294,
+              "coinc_hz": 97.699,
+              "accidental_hz": 0.017215,
+              "true_hz": 97.682,
+              "significance": 744.49,
+              "threshold_mv": 29
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 538.597,
+              "scint_hz": 876.094,
+              "coinc_hz": 53.1,
+              "accidental_hz": 0.009437,
+              "true_hz": 53.091,
+              "significance": 530.91,
+              "threshold_mv": 39
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 527.697,
+              "scint_hz": 1087.593,
+              "coinc_hz": 40.6,
+              "accidental_hz": 0.011478,
+              "true_hz": 40.589,
+              "significance": 378.86,
+              "threshold_mv": 51
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 499.397,
+              "scint_hz": 1491.391,
+              "coinc_hz": 27.1,
+              "accidental_hz": 0.014896,
+              "true_hz": 27.085,
+              "significance": 221.92,
+              "threshold_mv": 66
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 249.898,
+              "scint_hz": 1078.894,
+              "coinc_hz": 44.8,
+              "accidental_hz": 0.005392,
+              "true_hz": 44.795,
+              "significance": 447.95,
+              "threshold_mv": 86
+            }
+          ],
+          "applied_mv": 29
+        },
+        "scint": {
+          "baseline_mv": -49,
+          "thresholds_mv": [
+            -108,
+            -83,
+            -64,
+            -49,
+            -37,
+            -24
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 552.396,
+              "scint_hz": 172.399,
+              "coinc_hz": 43.0,
+              "accidental_hz": 0.001905,
+              "true_hz": 42.998,
+              "significance": 429.98,
+              "threshold_mv": -108
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 528.597,
+              "scint_hz": 331.698,
+              "coinc_hz": 90.299,
+              "accidental_hz": 0.003507,
+              "true_hz": 90.295,
+              "significance": 902.95,
+              "threshold_mv": -83
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 528.997,
+              "scint_hz": 512.597,
+              "coinc_hz": 81.5,
+              "accidental_hz": 0.005423,
+              "true_hz": 81.495,
+              "significance": 814.95,
+              "threshold_mv": -64
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 1192.093,
+              "scint_hz": 1689.79,
+              "coinc_hz": 58.8,
+              "accidental_hz": 0.040288,
+              "true_hz": 58.76,
+              "significance": 292.75,
+              "threshold_mv": -49
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 791.995,
+              "scint_hz": 1318.792,
+              "coinc_hz": 68.0,
+              "accidental_hz": 0.02089,
+              "true_hz": 67.979,
+              "significance": 470.33,
+              "threshold_mv": -37
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 1082.793,
+              "scint_hz": 2249.386,
+              "coinc_hz": 60.7,
+              "accidental_hz": 0.048712,
+              "true_hz": 60.651,
+              "significance": 274.8,
+              "threshold_mv": -24
+            }
+          ],
+          "applied_mv": -83
+        }
+      },
+      "B": {
+        "wall": {
+          "baseline_mv": 58,
+          "thresholds_mv": [
+            29,
+            44,
+            58,
+            75,
+            99,
+            128
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 988.994,
+              "scint_hz": 1127.693,
+              "coinc_hz": 188.599,
+              "accidental_hz": 0.022306,
+              "true_hz": 188.577,
+              "significance": 1262.64,
+              "threshold_mv": 29
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 536.597,
+              "scint_hz": 714.096,
+              "coinc_hz": 110.999,
+              "accidental_hz": 0.007664,
+              "true_hz": 110.991,
+              "significance": 1109.91,
+              "threshold_mv": 44
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 444.197,
+              "scint_hz": 705.796,
+              "coinc_hz": 130.899,
+              "accidental_hz": 0.00627,
+              "true_hz": 130.893,
+              "significance": 1308.93,
+              "threshold_mv": 58
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 339.698,
+              "scint_hz": 695.096,
+              "coinc_hz": 64.7,
+              "accidental_hz": 0.004722,
+              "true_hz": 64.695,
+              "significance": 646.95,
+              "threshold_mv": 75
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 276.298,
+              "scint_hz": 917.395,
+              "coinc_hz": 3.7,
+              "accidental_hz": 0.005069,
+              "true_hz": 3.695,
+              "significance": 36.95,
+              "threshold_mv": 99
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 19.8,
+              "scint_hz": 53.3,
+              "coinc_hz": 17.3,
+              "accidental_hz": 2.1e-05,
+              "true_hz": 17.3,
+              "significance": 173.0,
+              "threshold_mv": 128
+            }
+          ],
+          "applied_mv": 58
+        },
+        "scint": {
+          "baseline_mv": -40,
+          "thresholds_mv": [
+            -88,
+            -68,
+            -52,
+            -40,
+            -30,
+            -20
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 738.196,
+              "scint_hz": 398.098,
+              "coinc_hz": 28.8,
+              "accidental_hz": 0.005877,
+              "true_hz": 28.794,
+              "significance": 287.94,
+              "threshold_mv": -88
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 448.997,
+              "scint_hz": 384.498,
+              "coinc_hz": 101.199,
+              "accidental_hz": 0.003453,
+              "true_hz": 101.196,
+              "significance": 1011.96,
+              "threshold_mv": -68
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 445.397,
+              "scint_hz": 565.996,
+              "coinc_hz": 75.3,
+              "accidental_hz": 0.005042,
+              "true_hz": 75.295,
+              "significance": 752.95,
+              "threshold_mv": -52
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 444.697,
+              "scint_hz": 704.795,
+              "coinc_hz": 95.099,
+              "accidental_hz": 0.006268,
+              "true_hz": 95.093,
+              "significance": 950.93,
+              "threshold_mv": -40
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 451.497,
+              "scint_hz": 856.395,
+              "coinc_hz": 71.8,
+              "accidental_hz": 0.007733,
+              "true_hz": 71.792,
+              "significance": 717.92,
+              "threshold_mv": -30
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 1016.893,
+              "scint_hz": 2599.583,
+              "coinc_hz": 74.0,
+              "accidental_hz": 0.05287,
+              "true_hz": 73.947,
+              "significance": 321.6,
+              "threshold_mv": -20
+            }
+          ],
+          "applied_mv": -68
+        }
+      },
+      "C": {
+        "wall": {
+          "baseline_mv": 170,
+          "thresholds_mv": [
+            85,
+            128,
+            170,
+            221,
+            289,
+            374
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 352.298,
+              "scint_hz": 450.297,
+              "coinc_hz": 7.1,
+              "accidental_hz": 0.003173,
+              "true_hz": 7.097,
+              "significance": 70.97,
+              "threshold_mv": 85
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 174.899,
+              "scint_hz": 448.198,
+              "coinc_hz": 10.1,
+              "accidental_hz": 0.001568,
+              "true_hz": 10.098,
+              "significance": 100.98,
+              "threshold_mv": 128
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 16.7,
+              "scint_hz": 270.198,
+              "coinc_hz": 17.4,
+              "accidental_hz": 9e-05,
+              "true_hz": 17.4,
+              "significance": 174.0,
+              "threshold_mv": 170
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 9.5,
+              "scint_hz": 272.098,
+              "coinc_hz": 13.0,
+              "accidental_hz": 5.2e-05,
+              "true_hz": 13.0,
+              "significance": 130.0,
+              "threshold_mv": 221
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 0.0,
+              "scint_hz": 272.598,
+              "coinc_hz": 11.8,
+              "accidental_hz": 0.0,
+              "true_hz": 11.8,
+              "significance": 118.0,
+              "threshold_mv": 289
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 0.0,
+              "scint_hz": 11.6,
+              "coinc_hz": 3.9,
+              "accidental_hz": 0.0,
+              "true_hz": 3.9,
+              "significance": 39.0,
+              "threshold_mv": 374
+            }
+          ],
+          "applied_mv": 170
+        },
+        "scint": {
+          "baseline_mv": -130,
+          "thresholds_mv": [
+            -286,
+            -221,
+            -169,
+            -130,
+            -98,
+            -65
+          ],
+          "points": [
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 36.4,
+              "scint_hz": 61.2,
+              "coinc_hz": 9.3,
+              "accidental_hz": 4.5e-05,
+              "true_hz": 9.3,
+              "significance": 93.0,
+              "threshold_mv": -286
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 21.7,
+              "scint_hz": 107.7,
+              "coinc_hz": 10.2,
+              "accidental_hz": 4.7e-05,
+              "true_hz": 10.2,
+              "significance": 102.0,
+              "threshold_mv": -221
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 21.8,
+              "scint_hz": 223.899,
+              "coinc_hz": 11.7,
+              "accidental_hz": 9.8e-05,
+              "true_hz": 11.7,
+              "significance": 117.0,
+              "threshold_mv": -169
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 16.1,
+              "scint_hz": 263.298,
+              "coinc_hz": 15.6,
+              "accidental_hz": 8.5e-05,
+              "true_hz": 15.6,
+              "significance": 156.0,
+              "threshold_mv": -130
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 10.3,
+              "scint_hz": 305.198,
+              "coinc_hz": 14.0,
+              "accidental_hz": 6.3e-05,
+              "true_hz": 14.0,
+              "significance": 140.0,
+              "threshold_mv": -98
+            },
+            {
+              "dwell_singles_s": 10.0,
+              "dwell_coinc_s": 10.0,
+              "wall_hz": 24.9,
+              "scint_hz": 1087.195,
+              "coinc_hz": 11.4,
+              "accidental_hz": 0.000541,
+              "true_hz": 11.399,
+              "significance": 113.99,
+              "threshold_mv": -65
+            }
+          ],
+          "applied_mv": -130
+        }
+      }
+    }
+  ],
+  "sector_d_estimate": {
+    "wall_baseline_mv": 105,
+    "wall_applied_mv": 96,
+    "scint_baseline_mv": -85,
+    "scint_applied_mv": -124,
+    "post_apply_measurement": {
+      "dwell_singles_s": 10.0,
+      "dwell_coinc_s": null,
+      "wall_hz": 320.698,
+      "scint_hz": 94.099,
+      "coinc_hz": null,
+      "accidental_hz": 0.000604,
+      "true_hz": null,
+      "significance": null
+    },
+    "method": "relative-move-from-ABC-average, coincidence NOT independently verified"
+  }
+}
