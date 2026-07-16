@@ -222,7 +222,12 @@ class Config(RunConfigBase):
         }
 
         # Detector D back in service 2026-07-12 (held 520 V through the gas change).
-        self.included_detectors = ['mx17_A', 'mx17_B', 'mx17_C', 'mx17_D']
+        self.included_detectors = [
+            'mx17_A', 'mx17_B', 'mx17_C', 'mx17_D',
+            'plastic_A_L', 'plastic_A_R', 'plastic_B_L', 'plastic_B_R',
+            'plastic_C_L', 'plastic_C_R', 'plastic_D_L', 'plastic_D_R',
+            'liquid_A', 'liquid_B', 'liquid_C', 'liquid_D',
+        ]
 
         self.detectors = [
             {
@@ -540,39 +545,153 @@ class Config(RunConfigBase):
                     'y_8': '2 m',
                 },
             },
+            # =================================================================
+            # SCINTILLATOR STACK (per arm, behind each Micromegas: MM -> SiPM wall
+            # -> plastics -> 1 liquid layer).  Geometry taken from the Geant sim
+            # ~/CLionProjects/MX17_Full_Geant (GEOMETRY_COORDINATE_CONVENTION.md
+            # §5 stack + SimConfig.hh dims; stack flip 2026-07-15, single LS layer).
+            # Rough placement for now — refine positions later.
+            #
+            #   Coords: same frame as the mx17 detectors.  Each layer sits along the
+            #   arm outward normal at a depth measured from the MM drift-mylar FRONT
+            #   face (w=0): plastics center 225.72 mm, liquid center 300.76 mm.
+            #   Plastics + LS inherit the per-arm pinwheel tangential shift (centered
+            #   on the MM), so their tangential offset equals the mx17 value.
+            #   Plastics are two 20x30x2.5 cm bars side-by-side, split +/-101.72 mm
+            #   along the arm's in-plane tangent (uHat); L = detn 1, R = detn 2
+            #   ("left/right seen from the back", per mx_july_beam_qa).
+            #
+            #   ntof DAQ mapping (mx_july_beam_qa trees): plastics -> PSS{A,B,C,D}
+            #   with detn 1=L / 2=R; liquids -> LIQ{A,B,C,D} (single PMT per arm).
+            #
+            #   HV: NOT included yet — TODO add scintillator PMT bias later.  The CAEN
+            #   card/channel and the 2026-07-16 GUI setpoint are noted per detector so
+            #   they are easy to wire in (plastics card 07, liquids card 08).  The 4
+            #   liquid PMTs are currently NOT connected.
+            # =================================================================
+
+            # ----- Plastic scintillators (card 07): 2 bars/arm, L = detn 1, R = detn 2 -----
             {
-                'name': 'scint_A',
+                'name': 'plastic_A_L',
                 'det_type': 'scintillator_PMT',
-                'det_center_coords': {  # Center of detector
-                    'x': 0,  # mm
-                    'y': 0,  # mm
-                    'z': 10,  # mm
-                },
-                'det_orientation': {
-                    'x': 0,  # deg  Rotation about x axis
-                    'y': 0,  # deg  Rotation about y axis
-                    'z': 0,  # deg  Rotation about z axis
-                },
-                'hv_channels': {
-                    'bias': (8, 0),
-                },
+                'scint_medium': 'plastic (PVT)',
+                'description': '20x30x2.5 cm plastic bar, left (seen from back)',
+                'det_center_coords': {'x': -118.07, 'y': 0, 'z': 430.22},  # mm
+                'det_orientation': {'x': 0, 'y': 0, 'z': 0},  # deg (+Z normal, arm A)
+                # HV TODO: add later — CAEN 07.000 PLASTIC_A_L, ~1325 V (2026-07-16 GUI)
+                'ntof_daq': {'tree': 'PSSA', 'detn': 1},
             },
             {
-                'name': 'scint_B',
+                'name': 'plastic_A_R',
                 'det_type': 'scintillator_PMT',
-                'det_center_coords': {  # Center of detector
-                    'x': 0,  # mm
-                    'y': 0,  # mm
-                    'z': 7,  # mm
-                },
-                'det_orientation': {
-                    'x': 0,  # deg  Rotation about x axis
-                    'y': 0,  # deg  Rotation about y axis
-                    'z': 0,  # deg  Rotation about z axis
-                },
-                'hv_channels': {
-                    'bias': (8, 1),
-                },
+                'scint_medium': 'plastic (PVT)',
+                'description': '20x30x2.5 cm plastic bar, right (seen from back)',
+                'det_center_coords': {'x': 85.37, 'y': 0, 'z': 430.22},  # mm
+                'det_orientation': {'x': 0, 'y': 0, 'z': 0},  # deg (+Z normal, arm A)
+                # HV TODO: add later — CAEN 07.001 PLASTIC_A_R, ~1275 V (2026-07-16 GUI)
+                'ntof_daq': {'tree': 'PSSA', 'detn': 2},
+            },
+            {
+                'name': 'plastic_B_L',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'plastic (PVT)',
+                'description': '20x30x2.5 cm plastic bar, left (seen from back)',
+                'det_center_coords': {'x': -429.72, 'y': 0, 'z': -117.47},  # mm
+                'det_orientation': {'x': 0, 'y': -90, 'z': 0},  # deg (-X normal, arm B)
+                # HV TODO: add later — CAEN 07.002 PLASTIC_B_L, ~1325 V (2026-07-16 GUI)
+                'ntof_daq': {'tree': 'PSSB', 'detn': 1},
+            },
+            {
+                'name': 'plastic_B_R',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'plastic (PVT)',
+                'description': '20x30x2.5 cm plastic bar, right (seen from back)',
+                'det_center_coords': {'x': -429.72, 'y': 0, 'z': 85.97},  # mm
+                'det_orientation': {'x': 0, 'y': -90, 'z': 0},  # deg (-X normal, arm B)
+                # HV TODO: add later — CAEN 07.003 PLASTIC_B_R, ~1300 V (2026-07-16 GUI)
+                'ntof_daq': {'tree': 'PSSB', 'detn': 2},
+            },
+            {
+                'name': 'plastic_C_L',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'plastic (PVT)',
+                'description': '20x30x2.5 cm plastic bar, left (seen from back)',
+                'det_center_coords': {'x': 119.02, 'y': 0, 'z': -430.22},  # mm
+                'det_orientation': {'x': 0, 'y': 180, 'z': 0},  # deg (-Z normal, arm C)
+                # HV TODO: add later — CAEN 07.004 PLASTIC_C_L, ~1300 V (2026-07-16 GUI)
+                'ntof_daq': {'tree': 'PSSC', 'detn': 1},
+            },
+            {
+                'name': 'plastic_C_R',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'plastic (PVT)',
+                'description': '20x30x2.5 cm plastic bar, right (seen from back)',
+                'det_center_coords': {'x': -84.42, 'y': 0, 'z': -430.22},  # mm
+                'det_orientation': {'x': 0, 'y': 180, 'z': 0},  # deg (-Z normal, arm C)
+                # HV TODO: add later — CAEN 07.005 PLASTIC_C_R, ~1300 V (2026-07-16 GUI)
+                'ntof_daq': {'tree': 'PSSC', 'detn': 2},
+            },
+            {
+                'name': 'plastic_D_L',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'plastic (PVT)',
+                'description': '20x30x2.5 cm plastic bar, left (seen from back)',
+                'det_center_coords': {'x': 429.72, 'y': 0, 'z': 117.22},  # mm
+                'det_orientation': {'x': 0, 'y': 90, 'z': 0},  # deg (+X normal, arm D)
+                # HV TODO: add later — CAEN 07.006 PLASTIC_D_L, ~1300 V (2026-07-16 GUI)
+                'ntof_daq': {'tree': 'PSSD', 'detn': 1},
+            },
+            {
+                'name': 'plastic_D_R',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'plastic (PVT)',
+                'description': '20x30x2.5 cm plastic bar, right (seen from back)',
+                'det_center_coords': {'x': 429.72, 'y': 0, 'z': -86.22},  # mm
+                'det_orientation': {'x': 0, 'y': 90, 'z': 0},  # deg (+X normal, arm D)
+                # HV TODO: add later — CAEN 07.007 PLASTIC_D_R, ~1300 V (2026-07-16 GUI)
+                'ntof_daq': {'tree': 'PSSD', 'detn': 2},
+            },
+
+            # ----- Liquid scintillators (card 08): single LS layer per arm, one PMT -----
+            {
+                'name': 'liquid_A',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'liquid (LAB)',
+                'description': 'single 45x45x2 cm LAB layer in CFRP box, behind the plastics',
+                'det_center_coords': {'x': -16.35, 'y': 0, 'z': 505.26},  # mm
+                'det_orientation': {'x': 0, 'y': 0, 'z': 0},  # deg (+Z normal, arm A)
+                # HV TODO: add later — CAEN 08.000 LIQUID_A, ~2000 V (2026-07-16 GUI); PMT not connected
+                'ntof_daq': {'tree': 'LIQA', 'detn': 1},
+            },
+            {
+                'name': 'liquid_B',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'liquid (LAB)',
+                'description': 'single 45x45x2 cm LAB layer in CFRP box, behind the plastics',
+                'det_center_coords': {'x': -504.76, 'y': 0, 'z': -15.75},  # mm
+                'det_orientation': {'x': 0, 'y': -90, 'z': 0},  # deg (-X normal, arm B)
+                # HV TODO: add later — CAEN 08.001 LIQUID_B, ~2000 V (2026-07-16 GUI); PMT not connected
+                'ntof_daq': {'tree': 'LIQB', 'detn': 1},
+            },
+            {
+                'name': 'liquid_C',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'liquid (LAB)',
+                'description': 'single 45x45x2 cm LAB layer in CFRP box, behind the plastics',
+                'det_center_coords': {'x': 17.3, 'y': 0, 'z': -505.26},  # mm
+                'det_orientation': {'x': 0, 'y': 180, 'z': 0},  # deg (-Z normal, arm C)
+                # HV TODO: add later — CAEN 08.002 LIQUID_C, ~2000 V (2026-07-16 GUI); PMT not connected
+                'ntof_daq': {'tree': 'LIQC', 'detn': 1},
+            },
+            {
+                'name': 'liquid_D',
+                'det_type': 'scintillator_PMT',
+                'scint_medium': 'liquid (LAB)',
+                'description': 'single 45x45x2 cm LAB layer in CFRP box, behind the plastics',
+                'det_center_coords': {'x': 504.76, 'y': 0, 'z': 15.5},  # mm
+                'det_orientation': {'x': 0, 'y': 90, 'z': 0},  # deg (+X normal, arm D)
+                # HV TODO: add later — CAEN 08.003 LIQUID_D, ~2000 V (2026-07-16 GUI); PMT not connected
+                'ntof_daq': {'tree': 'LIQD', 'detn': 1},
             },
 
         ]
