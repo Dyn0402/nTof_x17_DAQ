@@ -234,6 +234,12 @@ __marimo__/
 
 # linux-gpib build tree (see he3_pressure_reader/KEITHLEY2000_GPIB_SETUP.md)
 he3_pressure_reader/gpib_build/
+pressure_reader/gpib_build/
+
+# N1081B firmware images (large binaries; distribute out-of-band, not via git)
+n1081b/docs/*.NIU
+n1081b/docs/*.niu
+n1081b/docs/*.niu.bak
 
 # Gas mixer CSV data logs (per-day flow logs)
 gas_mixer_control/logs/
