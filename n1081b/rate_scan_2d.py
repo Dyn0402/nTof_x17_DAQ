@@ -80,12 +80,12 @@ WRITE_GAP_S = 0.3
 # 12.5/13.5/12.5/13.5 digitizer-mV; hardware mapping unknown, so these are the
 # x1.0 anchors (rounded to int mV) and the multiplier ladder spans the mapping
 # uncertainty. Relative per-wall offsets from the calibration are kept.
-WALL_NOMINAL = {"A": 13, "B": 14, "C": 13, "D": 14}
+WALL_NOMINAL = {"A": 15, "B": 16, "C": 15, "D": 16}   # post-FIFO 2026-07-17 calib
 WALL_MULTS = [1.0, 1.5, 2.2, 3.3]
-PLASTIC_LADDER = [-10, -15, -22, -33]   # uniform (fleet HV-equalized), floor first
+PLASTIC_LADDER = [-20, -30, -44, -66]   # post-FIFO (2x amplitude); D dead at -20
 PASSES = [("AC", ("A", "C"), ("B", "D")),
           ("BD", ("B", "D"), ("A", "C"))]
-PLASTIC_BASELINE = -10
+PLASTIC_BASELINE = -30                  # post-FIFO standing baseline (A/B/C; D runs -38)
 
 SAFE_MODES = {"flash", "flash_random"}
 CALIB_HV = os.path.join(_REPO, "calibrations", "pss", "hv_equalization_run224466.json")

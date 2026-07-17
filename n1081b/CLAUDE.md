@@ -53,6 +53,13 @@ Runtime state lives in `config/n1081b_access/` (gitignored):
 Quick check: `python -c "from n1081b.n1081b_session import quarantine_status; print(quarantine_status('192.168.10.244'))"`.
 
 ## Current board state (update when it changes)
+- **Standing front-end config since 2026-07-17 night (post-FIFO recalibration):**
+  M1 walls +15/+16/+15/+16 mV; M2 plastics −30/−30/−30/−38 mV (**M2 D1 broken —
+  wall D dead ≤ −24 mV, never shallower than ~−36**); M3 wall-leg (ch0) G&D
+  delay **+20 ns** all sectors (scint leg 0, gates 20 ns). Canonical restore
+  point: `snapshots/dump_2026-07-18_postfifo_canonical.json`. **Do NOT restore
+  any pre-07-18 dump onto M1/M2/M3** — stale ~2×-shallow thresholds + delay=0.
+  Details: `HANDOFF_2026-07-17_night_trigger_scans.md`, `RUN_MODES_2026-07.md` §top.
 - `.244` (M5): **fully HEALTHY** (2026-07-17 midday: power-cycled at closeout, standard
   cabling, all four sections `counter` + verified counting, login 0.06 s). The
   **"per-section TT wedge" turned out not to exist** — TT sections silently emit zero

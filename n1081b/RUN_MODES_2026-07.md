@@ -10,6 +10,23 @@ flash_random | scint [--singles|--doubles|--both]`). These are volatile
 live-board settings on .243 — **re-apply after any power cycle** (log of every
 switch: `snapshots/trigger_mode_log.jsonl`).
 
+> ## ⚠ STANDING FRONT-END CONFIG — recalibrated 2026-07-17 night (post-FIFO)
+> The M2 plastics moved to linear fan-in/fan-out (~2× amplitude) on 2026-07-17;
+> everything below that quotes older M1/M2 thresholds or M3 delay=0 is
+> **superseded**. Current standing values, applied + verified 2026-07-17 23:47:
+> * **M1 walls: A +15, B +16, C +15, D +16 mV** (plateau +14..+50; noise bump
+>   +12, inversion +10)
+> * **M2 plastics: A/B/C −30 mV, D −38 mV** — M2 **D1 input is BROKEN**
+>   (baseline ~ −15 mV low): wall D is **completely dead ≤ −24 mV**; never set
+>   D shallower than ~ −36 mV
+> * **M3 all sectors: wall leg (ch0) G&D delay +20 ns, scint leg (ch1) 0,
+>   both gate 20 ns** (measured FIFO+cable lateness; plateau centers
+>   B +17.8 / C +22.3 / D +23.6 ns, FWHM 34–45)
+> * Canonical restore point: **`snapshots/dump_2026-07-18_postfifo_canonical.json`**
+>   — do NOT restore any pre-07-18 dump onto M1/M2/M3 (they silently revert the
+>   thresholds ~2× shallow and zero the +20 ns delay).
+> Full story: `HANDOFF_2026-07-17_night_trigger_scans.md`.
+
 ---
 
 ## 1. The three run modes — WHAT TO SET
@@ -131,18 +148,21 @@ Module N = 192.168.10.(239+N). All fw 2025.3.27.0 (M6 was upgraded from
 2022.3.0.0 during the July-11 switch recovery). "pN" = front-panel LEMO N
 (1-based) = SDK lemo N−1.
 
-### M1 (.240) — 4× wall OR   [DISCR +30 mV, 50 Ω]
+### M1 (.240) — 4× wall OR   [DISCR A/C +15, B/D +16 mV since 2026-07-17 (was +30), 50 Ω]
 | Sec | function | inputs | outputs |
 |---|---|---|---|
 | A–D = walls 1–4 | `or` (lemos 0–3) | 428F pair-sums of SiPM wall N | out ch0 → M3 secN in-p1 (mono 50 ns); ch1 → M5.A scaler; **SEC_A ch3 = stray inverted RAW copy, unknown cable** |
 
-### M2 (.241) — 4× scint OR   [DISCR −15 mV]  (2 plastics/wall, all four sections)
+### M2 (.241) — 4× scint OR   [DISCR A/B/C −30, D −38 mV since 2026-07-17]  (2 plastics/wall via linear fan-in/fan-out)
 | Sec | function | inputs | thr | outputs |
 |---|---|---|---|---|
-| A–D = scint 1–4 | `or` (lemos 0–1) | 2 plastic scints | **−15 mV** (calibrated) | out ch0 → M3 secN in-p2 (mono 50); ch1 → M5.B (mono 100) |
+| A–D = scint 1–4 | `or` (lemos 0–1) | 2 plastic scints (FIFO fan-out, ~2× amplitude) | **A/B/C −30, D −38 mV** (post-FIFO calib; D dead ≤ −24) | out ch0 → M3 secN in-p2 (mono 50); ch1 → M5.B (mono 100) |
+
+**2026-07-17: plastics re-cabled through linear fan-in/fan-out (~2× amplitude)
+and re-calibrated to −30 mV (D −38) — the −15 mV era below is historical.**
 
 **2026-07-14: liquid-scint plan REVERSED — back to 2 plastics/wall on all four
-sections**, at a new calibrated threshold of **−15 mV** (replaces both the
+sections**, at a then-calibrated threshold of **−15 mV** (replaces both the
 −80 mV plastic level and the −50 mV liquid-scint level used 2026-07-13/14).
 Applied by `setup_plastic_pairs.py` (read-back verified; snapshots
 `dump_2026-07-14_{pre,post}_revert_plastic_pairs.json`). Walls A, D had briefly
@@ -158,7 +178,7 @@ swap is revisited later.
 ### M3 (.242) — 4× sector AND
 | Sec | function | inputs | outputs |
 |---|---|---|---|
-| A–D = sectors 1–4 | `and` (lemos 0–1) | p1 = wall N (M1), p2 = scint N (M2); **both G&D gate=20 ns delay=0** (the 20 ns coincidence window lives HERE) | mono 30 ns → M4.A, M4.B, M5.C |
+| A–D = sectors 1–4 | `and` (lemos 0–1) | p1 = wall N (M1), p2 = scint N (M2); **both G&D gate=20 ns; wall leg (ch0) delay +20 ns, scint leg (ch1) delay 0 since 2026-07-17** (the 20 ns coincidence window lives HERE; +20 compensates the FIFO+cable plastic lateness) | mono 30 ns → M4.A, M4.B, M5.C |
 
 ### M4 (.243) — trigger builder  ← `trigger_mode.py` touches ONLY C/D lemo enables
 | Sec | function | inputs | outputs |

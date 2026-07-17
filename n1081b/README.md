@@ -21,22 +21,26 @@ list: `~/Documents/ntof_trigger_logic/TRIGGER_SETUP_2026-07.md` §0.5, snapshot
 
 | IP | Module | Serial | SW version | Role (A/B/C/D) as of 2026-07-09 |
 |----|--------|--------|-----------|----------------------------------|
-| 192.168.10.240 | 1 | 49323 | 2025.3.27.0 | SiPM wall OR ×4 (DISCR, th +30 mV) |
-| 192.168.10.241 | 2 | 22428 | 2025.3.27.0 | plastic-pair OR ×4 (DISCR, th −15 mV; 2 plastics/wall on all four sections — liquid-scint swap reversed 2026-07-14) |
+| 192.168.10.240 | 1 | 49323 | 2025.3.27.0 | SiPM wall OR ×4 (DISCR, th A/C +15, B/D +16 mV since 2026-07-17) |
+| 192.168.10.241 | 2 | 22428 | 2025.3.27.0 | plastic-pair OR ×4 via linear fan-in/fan-out (DISCR, th A/B/C −30, D −38 mV since 2026-07-17; D1 input broken — wall D dead ≤ −24 mV) |
 | 192.168.10.242 | 3 | 49325 | 2025.3.27.0 | sector AND ×4 (wall_i × scint_i) |
 | 192.168.10.243 | 4 | 49326 | 2025.3.27.0 | Singles `or` / Doubles `majority` / `or_veto` / final `or` |
 | 192.168.10.244 | 5 | 32429 | 2025.3.27.0 | scalers: counter ×4 |
 | 192.168.10.245 | 6 | 23011 | 2025.3.27.0 | fanout (PS/T0) / fanout → **mesh charge-injection** (4 outs) / fanout → **SiPM enable** (TTL inv., 2 outs) / **pulse_gen** Poisson 667 Hz → Module 4.C p5 |
 
-**Coincidence timing as-built 2026-07-11** (details in TRIGGER_SETUP §0.5 item 11;
-trigger rates are **beam-driven**, tracked in `config/beam_state.json`): the 20 ns
-sector-AND window is imposed at **M3 (.242) input Gate&Delay** — both legs gate=20 ns,
-delay=0, all sectors — because **Module 1 (.240) is OFFLINE** (network dead; still
-outputs walls but unreconfigurable). Per-sector residual skew ≤7 ns (delay scan
-`timing_scan_run2.*`) → no per-sector delay; four walls aligned ≤11 ns (`walls_tt_v1.*`).
-**M3 output monos 30 ns**, **M4.B Doubles window 50 ns**. Final dump
-`snapshots/dump_2026-07-11_timing_final.json`. *TODO: restore M1 mono thinning once
-.240's network is power-cycled back.*
+**Coincidence timing as-built 2026-07-17 night** (post-FIFO recalibration —
+`HANDOFF_2026-07-17_night_trigger_scans.md`; trigger rates are **beam-driven**,
+tracked in `config/beam_state.json`): the 20 ns sector-AND window is imposed at
+**M3 (.242) input Gate&Delay** — both legs gate=20 ns, **wall leg (ch0) delay
++20 ns / scint leg (ch1) delay 0**, all sectors, compensating the FIFO+cable
+plastic lateness (plateau centers B +17.8 / C +22.3 / D +23.6 ns, FWHM 34–45,
+`timing_scan_night_v2run1.*`; scan tool `timing_delay_scan_v2.py`, which
+supersedes `timing_task3_scan.py`). M1/M2 leg monos 15 ns (thinned 2026-07-14).
+**M3 output monos 30 ns**, **M4.B Doubles window 50 ns**. Canonical dump
+`snapshots/dump_2026-07-18_postfifo_canonical.json` — **do NOT restore any
+older dump onto M1/M2/M3** (stale thresholds + delay=0). Historical (2026-07-11,
+delay=0 era): `snapshots/dump_2026-07-11_timing_final.json`, delay scans
+`timing_scan_run2.*`, walls aligned ≤11 ns (`walls_tt_v1.*`).
 
 Board layout: 4 **sections** A–D (enum 0–3), each with 6 LEMO inputs (0–5). One
 *function* is assigned per section.
@@ -90,7 +94,7 @@ mv "$SP/n1081b-sdk" "$SP/n1081b_sdk"
 | `poll_modules.py` | Read-only per-**sub-run** config snapshot, wired into `daq_control.py`: a background thread dumps each module's full state to `<run>/<sub_run>/n1081b_config.json` at DAQ-start, in parallel with data-taking. Fired right after the inline trigger apply so it records the as-built state; still waits on `.pause_run` (now only set by a manual pause). **Scope: all six** (`POLL_IPS`); drop `.244` if a time-tag run is concurrent. Full write-up: `SUBRUN_CONFIG_SNAPSHOT.md`. | server (board net) |
 | `scan_control.py` | **In-process** per-sub-run trigger/mesh modulation, imported by `daq_control.py` (`N1081BScanControl`). For each sub-run it maps the leading name tag → `config/n1081b_scan_schedule.json` `scans[tag]` and applies it, verified by read-back, BEFORE taking data; snapshots the boards at run start and restores on exit. `mode='auto'` (run-config `n1081b_scan`) enables it whenever a sub-run tag matches a scan entry, else it's a no-op. **This replaced the standalone watcher process** — the modulation is now part of the run and can't be forgotten (the run_30/run_33 corruption). Also publishes to `config/n1081b_scan_active.json` on each apply (and marks it inactive on restore/exit), same as the old watcher, so the DAQ-GUI Trigger tab diagram band tracks the active scan for inline runs too. Does NOT set function types / pulser — that's `setup_run30_trigger.py`, still a one-time pre-run step. | server (board net) |
 | `setup_liqscint_walls.py` | One-time per-wall conversion of Module 2 (.241) from the 2-plastic OR (Input 1+2) to a single **liquid-scint** input (Input 1 only). `--walls`, `--threshold`, `--dry-run`. Applied to walls A,D 2026-07-13; **reversed 2026-07-14** (see `setup_plastic_pairs.py`) — kept in the repo in case the swap is revisited. | server (board net) |
-| `setup_plastic_pairs.py` | Sets Module 2 (.241) walls to the **2-plastic-scintillator OR** (Input 1+2, both enabled) at a given threshold — the current standing config (**−15 mV, all four sections**, since 2026-07-14). `--walls`, `--threshold`, `--dry-run`. Read-back verified, logs to `snapshots/plastic_pairs_log.jsonl`. | server (board net) |
+| `setup_plastic_pairs.py` | Sets Module 2 (.241) walls to the **2-plastic-scintillator OR** (Input 1+2, both enabled) at a given threshold. **Standing thresholds since 2026-07-17 (post-FIFO): A/B/C −30 mV, D −38 mV** (default is −30; wall D refuses values shallower than −36 — its D1 input is broken, dead ≤ −24). `--walls`, `--threshold`, `--dry-run`. Read-back verified, logs to `snapshots/plastic_pairs_log.jsonl`. | server (board net) |
 | `n1081b_scan_watcher.py` | **Legacy / manual only, CLI-only (no GUI button).** The old standalone watcher that synced the board via `.subrun_complete` + `.pause_run`. Superseded by `scan_control.py` for data runs — do NOT run it during a daq_control run (both would drive the board). Still useful standalone for `--restore-baseline`, `--dry-run`, and as the home of the shared board primitives `scan_control` imports. | server (board net) |
 
 Typical flow (from the dev laptop):

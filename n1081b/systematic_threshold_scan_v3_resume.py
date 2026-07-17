@@ -5,6 +5,15 @@ Checkpointed JSON had sector A/B fully done (49/49 each, applied), sector C at
 42/49 (missing the wall=+141mV row), sector D not started. Picks up exactly
 there instead of re-running ~1h53min of already-good data.
 """
+import os as _os, sys as _sys
+if _os.environ.get("N1081B_ALLOW_LEGACY") != "1":
+    _sys.exit(
+        "REFUSING TO RUN: pre-FIFO legacy tool (thresholds/grids are ~2x stale "
+        "since the 2026-07-17 fan-in/fan-out re-cabling + recalibration; wall D "
+        "is DEAD <= -24 mV). Use n1081b/threshold_ladder.py / rate_scan_2d.py. "
+        "See HANDOFF_2026-07-17_night_trigger_scans.md. "
+        "Set N1081B_ALLOW_LEGACY=1 to override.")
+
 import json
 import sys
 import time

@@ -38,6 +38,16 @@ import os
 import sys
 import time
 
+if os.environ.get("N1081B_ALLOW_LEGACY") != "1":
+    sys.exit(
+        "REFUSING TO RUN: superseded by timing_delay_scan_v2.py (2026-07-17).\n"
+        "This script's exit restore sets ALL M3 sectors to gate=20/delay=0, which\n"
+        "silently UNDOES the standing +20 ns wall-leg delay (post-FIFO plastic\n"
+        "lateness compensation — see HANDOFF_2026-07-17_night_trigger_scans.md).\n"
+        "Use: .venv/bin/python n1081b/timing_delay_scan_v2.py --center 20 "
+        "--restore-delay 20\n"
+        "(or set N1081B_ALLOW_LEGACY=1 to run this legacy version anyway).")
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from m3_timing_lib import (  # noqa: E402
     connect, set_m3_gd, read_m5_rates, M3_IP, WALL_CH, SCINT_CH, SECTIONS,

@@ -91,7 +91,7 @@ def _module1():
     secs = []
     for sid, wall in zip("ABCD", (1, 2, 3, 4)):
         ins = [_in(i, src=f"428F#{wall} Σ seg{i+1} (T{i+1}+B{i+1})",
-                   standard="DISCR", threshold=30) for i in range(4)]
+                   standard="DISCR", threshold=(15 if sect in (1, 3) else 16)) for i in range(4)]
         ins += [_unused_in(4), _unused_in(5)]
         outs = [
             _out(0, dst=f"M3.{sid} in0 — wall leg", mono=50),
@@ -125,8 +125,10 @@ def _module2():
     rolling plastic->liquid swap)."""
     secs = []
     for sid, sect in zip("ABCD", (1, 2, 3, 4)):
-        ins = [_in(0, src=f"plastic A L1 S{sect} (BNC-T)", standard="DISCR", threshold=-15),
-               _in(1, src=f"plastic B L1 S{sect} (BNC-T)", standard="DISCR", threshold=-15)]
+        ins = [_in(0, src=f"plastic A L1 S{sect} (FIFO fan-out)", standard="DISCR",
+                   threshold=(-38 if sect == 4 else -30)),
+               _in(1, src=f"plastic B L1 S{sect} (FIFO fan-out)", standard="DISCR",
+                   threshold=(-38 if sect == 4 else -30))]
         ins += [_unused_in(i) for i in range(2, 6)]
         outs = [
             _out(0, dst=f"M3.{sid} in1 — liq leg", mono=50),
@@ -146,7 +148,7 @@ def _module2():
         "n": 2, "ip": "192.168.10.241", "role": "L1 discriminator",
         "color": "liq", "role_long": "Discriminate the layer-1 scintillator (behind each wall) → one 'liq fired' per sector",
         "online_expected": True,
-        "note": "2 plastics/wall (lemo 0-1 OR) on all four sections at -15 mV, "
+        "note": "2 plastics/wall (lemo 0-1 OR) via linear fan-in/fan-out since 2026-07-17 at -30 mV (D -38; D1 broken, wall D dead <= -24 mV), previously -15 mV, "
                 "reverted 2026-07-14 via setup_plastic_pairs.py. Threshold is "
                 "per-section; the two plastic inputs of a section share its level. "
                 "This is the scint singles-rate knob for the ZS-vs-rate study.",

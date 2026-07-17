@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Set Module 2 (.241) walls back to the 2-plastic-scintillator OR configuration.
 
+2026-07-17 UPDATE (post-FIFO): the plastics now arrive via linear fan-in/fan-out
+(~2x amplitude). Standing calibration: **A/B/C -30 mV, D -38 mV** (default is
+now -30). **Wall D's Input-1 (D1) is BROKEN** (baseline ~ -15 mV low): the wall
+is completely dead at thresholds shallower than -24 mV, so this script REFUSES
+to set D shallower than -36 mV (override only with --allow-shallow-d if the D1
+hardware gets fixed). The -15 mV era below is historical.
+
 Background: the plan to swap the L1 layer to a single liquid scintillator per
 wall (see `setup_liqscint_walls.py`, applied to walls A+D on 2026-07-13) was
-**reversed on 2026-07-14** — we are going back to 2 plastic scintillators per
-wall (Input 1 + Input 2, OR'd) on all four sections, at a new calibrated
-threshold of **-15 mV** (replaces both the old -80 mV plastic-pair level and
+**reversed on 2026-07-14** — we went back to 2 plastic scintillators per
+wall (Input 1 + Input 2, OR'd) on all four sections, at a then-calibrated
+threshold of -15 mV (replaces both the old -80 mV plastic-pair level and
 the -50 mV liquid-scint level).
 
   per wall (= Module 2 section):
@@ -15,9 +22,9 @@ the -50 mV liquid-scint level).
       it disabled during the liquid-scint conversion)
 
 Usage (run on mx17-daq; boards are on the private DAQ net):
-  .venv/bin/python n1081b/setup_plastic_pairs.py                  # A B C D, -15 mV
-  .venv/bin/python n1081b/setup_plastic_pairs.py --walls A D      # just the walls that were converted
-  .venv/bin/python n1081b/setup_plastic_pairs.py --threshold -20  # override level
+  .venv/bin/python n1081b/setup_plastic_pairs.py                  # A B C D, -30 mV (D refused: run D at -38)
+  .venv/bin/python n1081b/setup_plastic_pairs.py --walls A B C    # standing -30 on A/B/C
+  .venv/bin/python n1081b/setup_plastic_pairs.py --walls D --threshold -38   # standing D
   .venv/bin/python n1081b/setup_plastic_pairs.py --dry-run        # read-only preview
 
 Before/after per-section state is appended to snapshots/plastic_pairs_log.jsonl.
@@ -111,8 +118,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--walls", nargs="+", default=["A", "B", "C", "D"],
                     metavar="X", help="wall/section letters to set (default: A B C D)")
-    ap.add_argument("--threshold", type=int, default=-15,
-                    help="calibrated per-section threshold in mV (default: -15)")
+    ap.add_argument("--threshold", type=int, default=-30,
+                    help="calibrated per-section threshold in mV (default: -30, "
+                         "post-FIFO 2026-07-17; wall D standing value is -38)")
+    ap.add_argument("--allow-shallow-d", action="store_true",
+                    help="override the wall-D >= -36 mV refusal (broken D1 "
+                         "baseline kills D at <= -24 mV; only use if D1 is fixed)")
     ap.add_argument("--dry-run", action="store_true",
                     help="read + print current state only, write nothing")
     args = ap.parse_args()
@@ -121,6 +132,11 @@ def main():
     for w in walls:
         if w not in ("A", "B", "C", "D"):
             ap.error(f"bad wall {w!r}; must be one of A B C D")
+    if "D" in walls and args.threshold > -36 and not args.allow_shallow_d and not args.dry_run:
+        ap.error(f"wall D at {args.threshold} mV refused: broken D1 baseline makes D "
+                 "completely dead <= -24 mV (standing D value is -38; see "
+                 "HANDOFF_2026-07-17_night_trigger_scans.md). Run D separately with "
+                 "--walls D --threshold -38, or --allow-shallow-d if D1 is fixed.")
 
     ok = True
     records = {}
