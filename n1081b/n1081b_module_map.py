@@ -299,7 +299,8 @@ def _module5():
         "A": ("walls (M1)", ["wall1", "wall2", "wall3", "wall4"]),
         "B": ("liq (M2)", ["liq1", "liq2", "liq3", "liq4"]),
         "C": ("sectors (M3)", ["sector1", "sector2", "sector3", "sector4"]),
-        "D": ("physics (M4)", ["Singles", "Doubles", "PS/pulser", "spare"]),
+        "D": ("physics (M4)", ["Singles", "Doubles", "gated pulser (M4.C out)",
+                               "master trigger (M4.D out)"]),
     }
     src_mod = {"A": 1, "B": 2, "C": 3, "D": 4}
     secs = []
@@ -321,8 +322,13 @@ def _module5():
         "color": "scaler", "role_long": "Free-running counters tapping every upstream stage — monitoring only, not in the trigger path",
         "online_expected": True,
         "note": "Do NOT poll while mod5_timetag_logger is streaming this board "
-                "(broadcast send_data would desync reads). A ch2 once read status "
-                "False yet counted — verify the panel↔SDK mapping.",
+                "(broadcast send_data would desync reads). Panel↔SDK mapping "
+                "VERIFIED 2026-07-16 (rate_scan_2d preflight + TT stream): physical "
+                "cables sit on front-panel inputs 1,2,4,5 per section (3 and 6 "
+                "empty, the rack-wide convention); the 4 counter values returned "
+                "by get_function_results are those four inputs IN ORDER, and the "
+                "reply's 'lemo' keys are input indices 0-3, NOT panel positions. "
+                "Time-tag 'channel' = true panel number (1,2,4,5 appear).",
         "sections": secs,
     }
 

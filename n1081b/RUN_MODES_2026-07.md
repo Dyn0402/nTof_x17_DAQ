@@ -210,6 +210,21 @@ survive). Latencies are unaffected.
 
 ## 4. Gotchas (cost hours — read before touching)
 
+- **Discriminator threshold floor: |threshold| ≥ 10 mV** — the N1081B input
+  discriminators have a hardware minimum of 10 mV magnitude (+10 mV on
+  positive-signal boards like M1/walls, −10 mV on negative like M2/scints).
+  Do NOT program values below it (the 2026-07-15 ZS study probed −8 mV, which
+  is invalid). Every scan/set script must validate `abs(mv) >= 10`;
+  `systematic_threshold_scan_v3.thresholds_grid` now clamps to this floor.
+  **Keep a margin above the floor too**: AT the floor a channel can sit inside
+  its noise and the discriminator retriggers continuously — the counted edge
+  rate then COLLAPSES instead of rising (inverted response). Observed live
+  2026-07-16: plastic sector D at −10 mV read 112 Hz vs 601 Hz at −30 mV
+  (D_R had just taken +117 V in the HV equalization), while A/B/C behaved.
+  Practical rule: operate ≥ ~1.5× the floor where possible, and treat any
+  NON-MONOTONIC rate-vs-threshold response as noise saturation, not physics.
+  ⚠ The SiPM wall thresholds (M1, calibration-nominal 13–14 mV) sit within
+  ~30–40 % of the floor — re-check monotonicity whenever they are lowered.
 - **Window-start artifact**: every DREAM event's first ~5–10 samples carry
   decaying transients on all FEUs, at FIXED window position (does not move
   with latency), coincident across planes. Any early-window "signal" is fake

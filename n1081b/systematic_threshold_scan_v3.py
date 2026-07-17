@@ -313,15 +313,20 @@ class Rig:
                 for s in COINC_SECTORS}
 
 
+THRESHOLD_FLOOR_MV = 10  # hardware minimum |threshold| for the discriminators
+                         # (+10 mV walls/M1, -10 mV scints/M2); see RUN_MODES_2026-07.md §4
+
+
 def thresholds_grid(baseline, n):
-    """n candidate thresholds spanning ~0.4x-2.2x the baseline magnitude."""
+    """n candidate thresholds spanning ~0.4x-2.2x the baseline magnitude,
+    clamped to the |10| mV hardware floor (values below it are invalid)."""
     mults = [0.4, 0.55, 0.7, 0.85, 1.0, 1.3, 1.6, 2.0, 2.4][:n]
     if n < len(mults):
         step = len(mults) / n
         mults = [mults[int(round(i * step))] for i in range(n)]
     sign = 1 if baseline >= 0 else -1
     mag = abs(baseline)
-    return sorted({int(round(sign * mag * m)) for m in mults})
+    return sorted({int(round(sign * max(THRESHOLD_FLOOR_MV, mag * m))) for m in mults})
 
 
 def main():
