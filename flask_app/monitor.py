@@ -130,6 +130,24 @@ class DaqMonitor:
     # rule_long_run_warning.
     _EVENT_RULES = {"rule_run_ended", "rule_long_run_warning"}
 
+    # Per-rule recovery text, shown after the ✅ when an alert condition clears.
+    # (The alert body itself is the rule's own returned `detail`, already tailored;
+    # recovery has no detail, so it needs a tailored line of its own here.)
+    # A rule with no entry falls back to "<rule label> is back to normal."
+    _RECOVERY_MESSAGES = {
+        "rule_dream_daq_session_dead": "dream_daq tmux session is back up.",
+        "rule_daq_control_session_dead": "daq_control tmux session is back up.",
+        "rule_hv_control_monitoring": "hv_control is monitoring HV again.",
+        "rule_dream_daq_unknown_state": "dream_daq state is back to normal.",
+        "rule_daq_control_unknown_state": "daq_control state is back to normal.",
+        "rule_gas_watcher_dead": "gas_watcher is back up.",
+        "rule_beam_watcher_dead": "beam_watcher is back up.",
+        "rule_beam_off": "n_TOF beam is back.",
+        "rule_gas_flow_starved": "gas flow is back to normal.",
+        "rule_ssd_disk_space": "SSD (/) disk space is back to normal.",
+        "rule_hdd_disk_space": "HDD (/mnt/data) disk space is back to normal.",
+    }
+
     def __init__(self, config_path):
         self.config_path = config_path
         self.config = self._load_config()
@@ -422,8 +440,7 @@ class DaqMonitor:
             print(f"[monitor] Alert triggered ({rule_name}) but Telegram not configured.")
             return
         meta = SEVERITY_META.get(severity, SEVERITY_META["alert"])
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"{meta['emoji']} <b>DAQ {meta['label']}</b>\n<code>{rule_name}</code>\n{detail}\n<i>{ts}</i>"
+        msg = f"{meta['emoji']} {detail}"
         ok, err = send_telegram(self.token, self.chat_id, msg)
         if ok:
             self._alert_sent_at[rule_name] = datetime.now()
@@ -435,8 +452,9 @@ class DaqMonitor:
     def _send_recovery(self, rule_name):
         if not self.token or not self.chat_id:
             return
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"✅ <b>DAQ RECOVERED</b>\n<code>{rule_name}</code>\n<i>{ts}</i>"
+        label = rule_name[len("rule_"):].replace("_", " ")
+        detail = self._RECOVERY_MESSAGES.get(rule_name, f"{label} is back to normal.")
+        msg = f"✅ {detail}"
         ok, err = send_telegram(self.token, self.chat_id, msg)
         if ok:
             print(f"[monitor] Recovery sent: {rule_name}")
@@ -446,8 +464,7 @@ class DaqMonitor:
     def send_test_alert(self):
         if not self.token or not self.chat_id:
             return False, "Telegram token or chat_id not configured."
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"🔔 <b>DAQ monitor test</b>\nMonitoring is active.\n<i>{ts}</i>"
+        msg = "🔔 DAQ monitor test — monitoring is active."
         ok, err = send_telegram(self.token, self.chat_id, msg)
         return ok, err
 
@@ -585,8 +602,7 @@ class DaqMonitor:
             if gap_min >= float(thr):
                 severity = sev
         if severity:
-            return severity, (f"n_TOF beam has been OFF for {gap_min:.0f} min "
-                              f"(last pulse {st.get('last_pulse_time')}).")
+            return severity, f"n_TOF beam has been OFF for {gap_min:.0f} min."
         return False, f"beam on (last pulse {gap:.0f}s ago)"
 
     def rule_gas_flow_starved(self):
