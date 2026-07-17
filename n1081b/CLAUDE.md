@@ -53,13 +53,19 @@ Runtime state lives in `config/n1081b_access/` (gitignored):
 Quick check: `python -c "from n1081b.n1081b_session import quarantine_status; print(quarantine_status('192.168.10.244'))"`.
 
 ## Current board state (update when it changes)
-- `.244` (M5): **HEALTHY — recovered 2026-07-16.** Was stress-wedged 2026-07-15 eve
-  (stage-3 ws-upgrade hang), did NOT self-heal in ~11.5 h; recovered by a **physical
-  touchscreen reboot** 2026-07-16. Post-reboot: bounded login probe clean (0.0 s),
-  quarantine cleared, all four sections restored to `counter` via
-  `restore_244_counters.py`, verified counting (SEC_A ~700 Hz all ch), and **re-added to
-  `poll_modules.POLL_IPS`** (`240–245`). Walls-monitoring only (no trigger impact). Lesson:
-  a deep stage-3 wedge needs a physical reboot — there is no reliable remote reboot.
+- `.244` (M5): **fully HEALTHY** (2026-07-17 midday: power-cycled at closeout, standard
+  cabling, all four sections `counter` + verified counting, login 0.06 s). The
+  **"per-section TT wedge" turned out not to exist** — TT sections silently emit zero
+  tags whenever their input rate is above a live ceiling (~50 Hz streams, ~800 Hz
+  silent, bracketed 2026-07-17) and stream fine below it; nothing is wedged and
+  reboots are irrelevant to it. Walls (A) / liq (B) at current beam-off kHz rates
+  cannot be TT-streamed. Full story + evidence table:
+  `HANDOFF_2026-07-17_tt_rate_ceiling.md` (supersedes the per-section-wedge passages
+  in TIMETAG_WATCHER.md, POST_REBOOT_244_CHECKLIST.md ROUND 2, and
+  TIMETAG_MULTISECTION_2026-07-13.md §3). Probe TT health only with
+  `n1081b/tt_probe_v2.py` (rate-aware); the single-tap `tt_section_probe.py` verdict
+  is unreliable. Lessons that stand: a deep stage-3 wedge needs a physical reboot —
+  there is no reliable remote reboot.
 - `.240–.243, .245`: healthy, in the live trigger. Board access now goes through
   `board_session()` for the daemons (`poll_modules`, `scan_watcher`/`scan_control`)
   AND the migrated scripts — the interprocess lock spans them all. Watch the Trigger
