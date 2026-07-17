@@ -288,6 +288,27 @@
         .table-dark { --bs-table-bg: var(--panel-2); border-color: var(--border); }
 
         /* ---------- Shift Overview ---------- */
+        /* Contact ribbon: full-width strip at the top of the Shift tab. */
+        .shift-contact-ribbon {
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--accent);
+            background: var(--panel-2);
+            color: var(--text);
+            padding: 0.55rem 1.1rem;
+            margin-bottom: 0.9rem;
+            text-align: center;
+            font-size: 0.95rem;
+            letter-spacing: 0.01em;
+        }
+        .shift-contact-ribbon a {
+            color: var(--accent);
+            font-weight: 600;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .shift-contact-ribbon a:hover { text-decoration: underline; }
+
         /* Big glanceable banner: the whole strip takes the run-state color. */
         .shift-banner {
             border-radius: 10px;
