@@ -18,48 +18,54 @@ PROJECT       = 'beam_july'
 BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
 
 # ===========================================================================
-# run_49 — OVERNIGHT SCINT-DOUBLES repeated HV scan in 95/5 gas (Mode 3,
-# doubles only). Follows the run_48 qualification (~90 verified MM tracks per
-# 5 min at 460/440 V, ~5 Hz avg trigger, latency 35 confirmed): same trigger
-# and readout, now a repeated RESIST scan to map track yield/gain vs HV
-# overnight. Ar/Iso 95/5 gas, 3He target, 20 mm Pb beamline filter.
-# RESIST: A/B/C 480 -> 440 V in -5 V steps (9 points); det D 20 V below
-# throughout (460 -> 420 V; 460 V max per spark-safety). Drift 800 V.
-# 15 min per point; the full sweep (~2.4 h) repeats N_REPEATS times
-# (~9.6 h) so each HV point gets sampled across the night (beam-condition
-# variation averages out; sweeps are comparable to each other).
+# run_52 — GAS-CHANGE monitoring run: RANDOM trigger at FIXED resist HV while
+# the gas transitions Ar/Iso 95/5 -> 90/10 (2026-07-17). Resist voltages are
+# PINNED at the 95/5 operational maxima and held fixed across the whole run so
+# the detector response (pedestal/noise + gain-on-tracks) can be tracked as the
+# gas composition changes. NO HV scan this run.
+#   Physics/safety: Garfield says 90/10 needs ~+72 V for equal gain vs 95/5
+#   (see run-iso-equivalence-comparison / detD-hv-95-5 memories), so holding
+#   resist at the 95/5 max while switching to 90/10 makes gain -- and spark
+#   risk -- DROP as the gas transitions. Safe direction.
+# GAS: switched to Ar/Iso 90/10 (from 95/5).
+# RESIST (FIXED): A/B/C = 480 V (95/5 operational max = top of the run_49/51
+#   scan); det D = 460 V (DET_D_OFFSET below A/B/C; 460 V is D's spark-safe max).
+# DRIFT (FIXED): B/C/D = 800 V; det A = 550 V (sparks at 800 V in 95/5,
+#   2026-07-17 midday -- kept at 550 V until investigated).
 #
-#   Mode 3 trigger, DOUBLES ONLY (RUN_MODES_2026-07.md §1.3 + rate_scan_2d
-#   study 2026-07-16): M4.C = or_veto(lemo1 = Doubles = M4.B >=2-of-4 sector
-#   coincidence), gated by the 30 ms N93B veto window; M4.D = OR(lemo1 = C-out).
-#   Singles + flash + pulser all cut. run_48 measured ~5 Hz average (~1.5 k
-#   events / 5 min), flash-type ~10 % of triggers — well inside DREAM budget.
-#   Thresholds: walls at calibration nominal (13/14/13/14 mV), plastics -15 mV
-#   (C/D saturate at -10, keep off the floor).
-#   32 samples x 60 ns (1.92 us window), LATENCY 35: doubles-path track
-#   clusters land at samples ~15-18 (run_48 subruns 00-06), window well framed.
+#   Mode 2 trigger, RANDOM pulser + gamma flash (RUN_MODES_2026-07.md §1.2,
+#   `flash_random`): M4.C = or_veto(lemo4 = M6.D ~667 Hz Poisson pulser),
+#   gated by the 30 ms N93B veto window; M4.D = OR(lemo0 = flash, lemo1 = C-out).
+#   The 30 ms gate (~1 % duty) turns the 667 Hz pulser into a comfortable
+#   ~5-6 Hz average of DREAM triggers. Random events read out flat pedestal at
+#   a random time (uncorrelated -> latency irrelevant for them); the flash
+#   events (~0.29 Hz) mark beam pulses and are framed by latency 5.
+#   32 samples x 60 ns (1.92 us window), LATENCY 5 (Mode 2 canonical: flash
+#   peak ~= latency + 13).
 #   STATIC board settings, applied ONCE before the run:
-#     .venv/bin/python n1081b/trigger_mode.py scint --doubles
+#     .venv/bin/python n1081b/trigger_mode.py flash_random
 #   Verify with `.venv/bin/python n1081b/trigger_mode.py status` before
-#   starting DAQ (expect "looks like mode: scint(doubles)").
+#   starting DAQ (expect "flash_random"). Confirm the M6.D pulser is running
+#   at the design 1.5 ms Poisson period (do NOT set period 150 ms -- silently
+#   kills the output; see RUN_MODES §1.2).
 #
-#   Mesh grounded/disconnected — n1081b_scan stays 'off' (no inline
+#   Mesh grounded/disconnected -- n1081b_scan stays 'off' (no inline
 #   trigger/mesh modulation, no cycling; do NOT start n1081b_scan_watcher.py).
 #
-#   STRUCTURE: N_REPEATS x 9 HV points x 15 min (+1 min overhead each)
-#   ~= 9.6 h. Sub-run names carry the HV point AND a global index, so resume
-#   re-takes only the interrupted point. Track QA per sub-run:
-#   ~/beam_july/analysis/scint_doubles/analyze_subrun.py + event_display.py.
+#   STRUCTURE: 24 x 60 min sub-runs = 24 h, all at the SAME fixed HV. Chunked
+#   so resume re-takes only an interrupted hour and files stay manageable; the
+#   run auto-caps at 24 h but is expected to be STOPPED MANUALLY.
 # ===========================================================================
 OVERHEAD_MIN = 1      # per-subrun ramp poll + DAQ prep + inter-subrun wait
 
-SCAN_DRIFT    = 800   # V, drift, all four detectors (A/B/C/D = card 9 ch 0-3)
-RESIST_TOP    = 480   # V, resist starting point (A/B/C); D = 460 (its safe max)
-RESIST_STEP   = 5     # V, step DOWN between points
-RESIST_BOTTOM = 440   # V, resist final point (A/B/C), inclusive
-DET_D_OFFSET  = 20    # V, det D resist runs this many volts BELOW A/B/C
-N_REPEATS     = 4     # full-sweep repetitions across the night (~2.4 h each)
-SUBRUN_MIN    = 15    # minutes per sub-run (one HV point per sub-run)
+RESIST_ABC    = 480   # V, resist dets A/B/C (card 5 ch 1-3) -- 95/5 operational max, held FIXED
+DET_D_OFFSET  = 20    # V, det D resist runs this many volts BELOW A/B/C (-> 460 V, D spark-safe max)
+DRIFT_BCD     = 800   # V, drift dets B/C/D (card 9 ch 1-3), held FIXED
+DRIFT_A       = 550   # V, drift det A ONLY (card 9 ch 0) -- sparks at 800 V in 95/5
+                      # (2026-07-17 midday, run_50 sub-run 00); held at 550 V until investigated
+RUN_HOURS     = 24    # total run length; expected to be stopped MANUALLY
+SUBRUN_MIN    = 60    # minutes per sub-run (fixed HV; chunked for resume + file size)
+N_SUBRUNS     = RUN_HOURS * 60 // SUBRUN_MIN  # = 24
 
 POST_PAUSE_S = 0  # no inline scan control in play this run; nothing to re-apply between sub-runs.
 
@@ -77,7 +83,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_49'  # Overnight scint-DOUBLES repeated HV scan (95/5 gas), resist A/B/C 480->440 V step -5 (D 20 V below, max 460), drift 800 V, 4 sweeps x 9 pts x 15 min; 20 mm Pb beam filter
+        self.run_name = 'run_52'  # Gas-change RANDOM-trigger monitoring run (Mode 2 flash_random): resist FIXED at 95/5 maxima (A/B/C 480 V, D 460 V), drift 800 V B/C/D + 550 V det A (spark), gas switched to 90/10, 24 x 60 min = 24 h, manual stop
         self.base_out_dir = BASE_DATA_DIR
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -100,7 +106,7 @@ class Config(RunConfigBase):
         # self.gas = 'Ar/CF4/CO2 45/40/15'  # Gas type for run
         # self.gas = 'Ar/CF4 90/10'  # Gas type for run
         # self.gas = 'Ar/CO2 70/30'  # Gas type for run
-        self.gas = 'Ar/Iso 95/5'  # Gas type for run (gas-change run: changed from 90/10 on 2026-07-16)
+        self.gas = 'Ar/Iso 90/10'  # Gas type for run (gas-change run: switched from 95/5 on 2026-07-17; resist held at 95/5 maxima)
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         # self.gas = 'Ne/Iso 95/5'  # Gas type for run
         # self.beam_type = 'cosmics'
@@ -120,23 +126,25 @@ class Config(RunConfigBase):
         self.target_type = '3He'  # new 3He target installed 2026-07-15
         # Beamline filter (upstream of the target). Recorded 2026-07-16: 20 mm of
         # lead inserted into the beamline. 'none' when no filter is present.
-        self.beam_filter = 'Pb 20 mm (beamline, upstream of target)'
+        # self.beam_filter = 'Pb 20 mm (beamline, upstream of target)'
+        self.beam_filter = 'none'
         # self.trigger = "Det 3 SiPM Wall + Det 3 Scint"
         # self.trigger = "PS Pickup"
-        self.trigger = ("External (N1081B M4.D out0): SCINT DOUBLES trigger "
-                        "(M4.C = or_veto(lemo1 = Doubles = M4.B >=2-of-4 sector wall*scint "
-                        "coincidence), gated by the 30 ms N93B window; M4.D = OR(lemo1 = "
-                        "C-out); Singles/flash/pulser all cut) — Mode 3 of "
-                        "RUN_MODES_2026-07.md, doubles-only, qualified by run_48 (~90 MM "
-                        "tracks / 5 min on all four detectors at 460/440 V, ~5 Hz avg). "
-                        "Static setup via n1081b/trigger_mode.py scint --doubles. Walls at "
-                        "calibration nominal (13/14/13/14 mV), plastics -15 mV. Mesh "
-                        "grounded/disconnected. 20 mm Pb filter in beamline. OVERNIGHT "
-                        "REPEATED RESIST HV SCAN in 95/5 gas: A/B/C 480->440 V in -5 V "
-                        "steps (det D 20 V below, 460->420 V, 460 V spark-safe max), drift "
-                        "800 V; 9 points x 15 min per sweep, 4 sweeps (~9.6 h). 32 smp x "
-                        "60 ns (1.92 us window), latency 35 (doubles-path track clusters "
-                        "at samples ~15-18, run_48-verified).")
+        self.trigger = ("External (N1081B M4.D out0): RANDOM pulser + gamma flash "
+                        "(M4.C = or_veto(lemo4 = M6.D ~667 Hz Poisson pulser), gated by the "
+                        "30 ms N93B window; M4.D = OR(lemo0 = flash, lemo1 = C-out)) — Mode 2 "
+                        "'flash_random' of RUN_MODES_2026-07.md. The 30 ms gate turns the "
+                        "667 Hz pulser into ~5-6 Hz average DREAM triggers; random events read "
+                        "out flat pedestal at random times, flash events (~0.29 Hz) mark beam "
+                        "pulses. Static setup via n1081b/trigger_mode.py flash_random. Mesh "
+                        "grounded/disconnected. NO beamline filter (20 mm Pb removed "
+                        "2026-07-17). GAS-CHANGE MONITORING: gas switched to Ar/Iso 90/10, "
+                        "resist HELD FIXED at the 95/5 operational maxima (A/B/C 480 V, det D "
+                        "460 V = 20 V below, D spark-safe max); drift 800 V B/C/D, det A drift "
+                        "550 V (sparks at 800 V, lowered 2026-07-17). 24 x 60 min = 24 h at "
+                        "fixed HV, manual stop. 32 smp x 60 ns (1.92 us window), latency 5 "
+                        "(Mode 2 canonical; flash peak ~= latency + 13, random events "
+                        "latency-independent).")
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
@@ -149,7 +157,7 @@ class Config(RunConfigBase):
             'run_directory': f'/home/mx17/july_dream/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-            'n_samples_per_waveform': 32,  # scint config (Mode 3): 32 x 60 ns = 1920 ns window
+            'n_samples_per_waveform': 32,  # flash_random config (Mode 2): 32 x 60 ns = 1920 ns window
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -157,11 +165,10 @@ class Config(RunConfigBase):
             'zero_suppress': False,  # True to run in zero suppression mode, False to run in full readout mode
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
-            'latency': 35,  # scint value (Mode 3, RUN_MODES_2026-07.md; MM pulse arrives
-                            # ~1.4 us BEFORE the trigger => peak ~= latency - 24, i.e.
-                            # samples ~11-13; window-start artifact smp 0-5. Calibrated on
-                            # the SINGLES path — verify on the first doubles sub-run and
-                            # shift 1:1 in samples if needed)
+            'latency': 5,   # flash_random value (Mode 2, RUN_MODES_2026-07.md): frames the
+                            # flash events (flash peak ~= latency + 13, i.e. samples ~16-20;
+                            # det A rails from ~11). Random pulser events are uncorrelated so
+                            # latency is irrelevant for them (flat pedestal).
             'sample_period': 60,  # ns (20 or 60)
             # No daq_run_events cap: runs are purely time-based (5 min sub-runs), like run_15.
             'zs_check_sample': 4,  # Number of samples to read out beyond threshold crossing
@@ -207,33 +214,29 @@ class Config(RunConfigBase):
             self.hv_info['password'] = lines[1].strip()
 
         # ----- SUB-RUN BUILD (from constants above) -----
-        # Single phase, static scint-doubles trigger (no scan tags — n1081b_scan='off',
-        # so sub_run_name has no special leading token). REPEATED RESIST SCAN: each
-        # sweep steps A/B/C from RESIST_TOP down to RESIST_BOTTOM by -RESIST_STEP with
-        # det D DET_D_OFFSET volts below at every point; the sweep repeats N_REPEATS
-        # times. Names carry sweep + HV point + global index k so resume re-takes only
-        # the interrupted point. Drift SCAN_DRIFT for all four throughout.
-        def _drift(v):
-            return {'0': v, '1': v, '2': v, '3': v}  # card 9 ch 0-3 = drifts A/B/C/D
+        # Single phase, static flash_random trigger (no scan tags — n1081b_scan='off',
+        # so sub_run_name has no special leading token). FIXED HV: every sub-run applies
+        # the SAME resist (A/B/C = RESIST_ABC, det D = RESIST_ABC - DET_D_OFFSET) and drift
+        # (B/C/D = DRIFT_BCD, det A = DRIFT_A). The run is chunked into N_SUBRUNS hourly
+        # sub-runs only for resume + file-size management — the HV never changes. Names
+        # carry the fixed HV point and a global index k so resume re-takes only an
+        # interrupted hour.
+        def _drift():
+            # card 9 ch 0-3 = drifts A/B/C/D; A pinned to DRIFT_A (sparks at 800 V)
+            return {'0': DRIFT_A, '1': DRIFT_BCD, '2': DRIFT_BCD, '3': DRIFT_BCD}
 
-        def _resist(v):
+        def _resist():
             # card 5 ch 1-4 = det A/B/C/D; D runs DET_D_OFFSET volts below A/B/C
-            return {'1': v, '2': v, '3': v, '4': v - DET_D_OFFSET}
+            return {'1': RESIST_ABC, '2': RESIST_ABC, '3': RESIST_ABC, '4': RESIST_ABC - DET_D_OFFSET}
 
         self.sub_runs = []
-
-        k = 0
-        for sweep in range(N_REPEATS):
-            v = RESIST_TOP
-            while v >= RESIST_BOTTOM - 1e-9:
-                self.sub_runs.append({
-                    'sub_run_name': (f'scintd_s{sweep}_dr{SCAN_DRIFT}_A{fmt_v(v)}'
-                                     f'_D{fmt_v(v - DET_D_OFFSET)}_{k:02d}'),
-                    'run_time': SUBRUN_MIN, 'post_pause_s': POST_PAUSE_S,
-                    'hvs': {'5': _resist(v), '9': _drift(SCAN_DRIFT)},
-                })
-                k += 1
-                v -= RESIST_STEP
+        for k in range(N_SUBRUNS):
+            self.sub_runs.append({
+                'sub_run_name': (f'gaschg_A{fmt_v(RESIST_ABC)}_D{fmt_v(RESIST_ABC - DET_D_OFFSET)}'
+                                 f'_dr{DRIFT_BCD}_dA{fmt_v(DRIFT_A)}_{k:02d}'),
+                'run_time': SUBRUN_MIN, 'post_pause_s': POST_PAUSE_S,
+                'hvs': {'5': _resist(), '9': _drift()},
+            })
 
 
         self.bench_geometry = {
@@ -780,21 +783,20 @@ if __name__ == '__main__':
     n_pts = len(config.sub_runs)
     print(f'Gas: {config.gas}   Beam: {config.beam_type}   Target: {config.target_type}')
     print(f'Beam filter: {getattr(config, "beam_filter", "none")}')
-    print(f'Run: {config.run_name}  — OVERNIGHT scint-DOUBLES repeated HV scan, all 4 detectors')
+    print(f'Run: {config.run_name}  — GAS-CHANGE random-trigger monitoring, all 4 detectors, FIXED HV')
     print(f'Trigger: {config.trigger}')
-    print(f'DAQ: {ns} smp x {sp} ns = {ns*sp} ns window, latency {lat}; RESIST scan '
-          f'{RESIST_TOP}->{RESIST_BOTTOM} V step -{RESIST_STEP} V for A/B/C '
-          f'(det D {RESIST_TOP-DET_D_OFFSET}->{RESIST_BOTTOM-DET_D_OFFSET} V), drift '
-          f'{SCAN_DRIFT} V; {N_REPEATS} sweeps x {n_pts//N_REPEATS} pts x {SUBRUN_MIN} min '
-          f'~= {n_pts*(SUBRUN_MIN+OVERHEAD_MIN)/60:.1f} h.')
-    print('*** PRE-RUN: apply the STATIC scint-doubles trigger once — '
-          '.venv/bin/python n1081b/trigger_mode.py scint --doubles (M4.C = or_veto(lemo1 = '
-          'Doubles), 30 ms N93B veto gate; M4.D = OR(lemo1 = C-out); Singles/flash/pulser '
-          'cut). Verify with n1081b/trigger_mode.py status before starting DAQ (expect '
-          '"scint(doubles)"). Mesh grounded — nothing else to set. n1081b_scan is "off": no '
-          'inline trigger/mesh modulation. Do NOT run n1081b_scan_watcher.py during the run. '
-          'Track QA per finished sub-run: ~/beam_july/analysis/scint_doubles/'
-          'analyze_subrun.py + event_display.py. ***')
+    print(f'DAQ: {ns} smp x {sp} ns = {ns*sp} ns window, latency {lat}; RESIST FIXED '
+          f'{RESIST_ABC} V A/B/C (det D {RESIST_ABC-DET_D_OFFSET} V), drift '
+          f'{DRIFT_BCD} V B/C/D + {DRIFT_A} V det A (spark-limited); held constant across '
+          f'{N_SUBRUNS} x {SUBRUN_MIN} min = {RUN_HOURS} h (manual stop).')
+    print('*** PRE-RUN: apply the STATIC flash_random trigger once — '
+          '.venv/bin/python n1081b/trigger_mode.py flash_random (M4.C = or_veto(lemo4 = M6.D '
+          '~667 Hz Poisson pulser), 30 ms N93B veto gate; M4.D = OR(lemo0 = flash, lemo1 = '
+          'C-out)). Verify with n1081b/trigger_mode.py status before starting DAQ (expect '
+          '"flash_random"); confirm the M6.D pulser is at the 1.5 ms Poisson period (do NOT '
+          'set period 150 ms — it silently kills the output). Mesh grounded — nothing else to '
+          'set. n1081b_scan is "off": no inline trigger/mesh modulation. Do NOT run '
+          'n1081b_scan_watcher.py during the run. ***')
     print(f'resume={getattr(config, "resume", False)}: sub-runs with a .subrun_complete '
           'marker are shown [done] and skipped.\n')
 
