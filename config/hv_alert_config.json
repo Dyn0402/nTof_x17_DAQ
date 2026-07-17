@@ -1,0 +1,18 @@
+{
+  "_comment": "HV alert thresholds for CAEN drift (card 9) / resist (card 5) channels. Evaluated on the 1 Hz reads hv_control.monitor_hvs already does (no extra crate reads). Edited live: hv_control re-reads this on mtime change, no restart needed. A condition must persist for sustain_s seconds before it alerts; transient blips are ignored. resend_interval_minutes throttles repeats of the same channel's alert.",
+  "enabled": true,
+  "resend_interval_minutes": 15,
+  "ramp_grace_s": 30,
+  "overcurrent_droop_v": 1.0,
+  "poweroff_sustain_s": 5,
+  "drift": {
+    "v_tol": 2.0,
+    "sustain_s": 5,
+    "overcurrent_frac": 0.90
+  },
+  "resist": {
+    "v_tol": 5.0,
+    "sustain_s": 15,
+    "overcurrent_frac": 0.90
+  }
+}

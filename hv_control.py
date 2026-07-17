@@ -16,6 +16,7 @@ import csv
 from Server import Server
 from caen_hv_py.CAENHVController import CAENHVController
 from caen_hv_py.exceptions import CAENHVError
+from hv_alerts import HVAlerter
 
 # from run_config import Config
 
@@ -32,6 +33,9 @@ def main():
     # config = Config()
     port = 1100
     monitor_stop_event, monitor_print_event, monitor_thread = threading.Event(), threading.Event(), None
+    # One alerter for the process lifetime: its resend throttle survives sub-run
+    # boundaries so a persistently-bad channel is not re-announced each sub-run.
+    hv_alerter = HVAlerter()
     while True:
         try:
             with Server(port=port) as server:
@@ -86,7 +90,8 @@ def main():
                             monitor_stop_event.clear()
                             monitor_print_event.set()
                             monitor_args = (hv_info, sub_run['hvs'], sub_run['sub_run_name'],
-                                            monitor_stop_event, monitor_print_event, caen_hv, caen_lock)
+                                            monitor_stop_event, monitor_print_event, caen_hv, caen_lock,
+                                            hv_alerter)
                             monitor_thread = threading.Thread(target=monitor_hvs, args=monitor_args)
                             monitor_thread.start()
                             server.send(f'HV monitoring started for {sub_run["sub_run_name"]}')
@@ -177,10 +182,16 @@ def power_off_hvs(hv_info, caen_hv, caen_lock):
     print('HV Powered Off')
 
 
-def monitor_hvs(hv_info, hvs, sub_run_name, stop_event, print_event, caen_hv, caen_lock):
+def monitor_hvs(hv_info, hvs, sub_run_name, stop_event, print_event, caen_hv, caen_lock,
+                alerter=None):
     """
     Monitor the voltage and current of each HV channel and log the readings.
     Logs to CSV and prints human-readable output to the screen.
+
+    If an ``alerter`` (hv_alerts.HVAlerter) is passed, each poll's readings are
+    also fed to it for sustained-deviation / over-current Telegram alerting. This
+    reuses the reads done here — no extra crate traffic beyond a one-time I0Set
+    read per sub-run for the over-current reference.
     """
     run_out_dir = hv_info['run_out_dir']
     monitor_interval = hv_info.get('monitor_interval', 10)  # seconds
@@ -195,12 +206,29 @@ def monitor_hvs(hv_info, hvs, sub_run_name, stop_event, print_event, caen_hv, ca
             prefix = f"{slot}:{channel}"
             headers.extend([f"{prefix} power", f"{prefix} v0", f"{prefix} vmon", f"{prefix} imon"])
 
+    # One-time over-current reference: read each channel's I0Set current limit
+    # under the lock, then hand the sub-run over to the alerter.
+    if alerter is not None:
+        i0set = {}
+        with caen_lock:
+            for slot, channel_v0s in hvs.items():
+                for channel in channel_v0s.keys():
+                    try:
+                        i0set[f"{slot}:{channel}"] = caen_hv.get_ch_i0set(int(slot), int(channel))
+                    except CAENHVError as e:
+                        print(f"HV alert: I0Set read failed for {slot}:{channel}: {e}")
+        try:
+            alerter.begin_sub_run(sub_run_name, i0set)
+        except Exception as e:  # noqa: BLE001 — alerting must never break monitoring
+            print(f"HV alert setup failed: {e}")
+
     with open(log_file_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(headers)  # write headers once
 
         while not stop_event.is_set():
             row = [time.strftime("%Y-%m-%d %H:%M:%S")]
+            readings = {}  # (slot, channel) -> dict, fed to the alerter
 
             with caen_lock:
                 if print_event.is_set():
@@ -219,6 +247,8 @@ def monitor_hvs(hv_info, hvs, sub_run_name, stop_event, print_event, caen_hv, ca
                             power, vmon, imon = '', float('nan'), float('nan')
 
                         row.extend([power, v0, vmon, imon])  # Append to row
+                        readings[(slot, channel)] = {
+                            "power": power, "vmon": vmon, "imon": imon, "v0": v0}
 
                         if print_event.is_set():
                             v0_str = 'manual' if v0 is None else f'{v0:.2f}'
@@ -227,6 +257,14 @@ def monitor_hvs(hv_info, hvs, sub_run_name, stop_event, print_event, caen_hv, ca
                                 f"power={'on' if power else 'off'}, "
                                 f"v set={v0_str}, v mon={vmon:.2f}, i mon={imon:.3f}"
                             )
+
+            # Alert evaluation runs OUTSIDE caen_lock: pure in-memory work plus a
+            # fire-and-forget send thread, so a slow Telegram never stalls HV I/O.
+            if alerter is not None:
+                try:
+                    alerter.evaluate(readings)
+                except Exception as e:  # noqa: BLE001
+                    print(f"HV alert eval failed: {e}")
 
             writer.writerow(row)
             csvfile.flush()  # ensure data is written to disk
