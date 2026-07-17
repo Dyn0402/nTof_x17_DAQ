@@ -380,8 +380,19 @@ def preflight_baseline(dwell):
 
 
 def main():
+    global WALL_NOMINAL, WALL_MULTS, PLASTIC_LADDER, PLASTIC_BASELINE
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dwell", type=float, default=20.0, help="counter-phase seconds")
+    # Grid overrides (2026-07-17: FIFO fan-out doubled the plastic amplitudes and
+    # the SiPM sums were re-zeroed -- the baked-in ladders are stale; pick new
+    # ones from a threshold_ladder.py run and pass them here).
+    ap.add_argument("--wall-nominal", default=None,
+                    help='per-wall x1.0 anchors, e.g. "A:15,B:16,C:15,D:16"')
+    ap.add_argument("--wall-mults", default=None, help='e.g. "1.0,1.5,2.2,3.3"')
+    ap.add_argument("--plastic-ladder", default=None, help='e.g. "-20,-30,-44,-66"')
+    ap.add_argument("--plastic-baseline", type=int, default=None,
+                    help="held-sector plastic mV (avoid at-floor values: a held "
+                         "sector saturated at -10 biased the 07-16 scan)")
     ap.add_argument("--tt-pulses", type=int, default=12,
                     help="anchor (PS) edges to collect per TT phase")
     ap.add_argument("--tt-min", type=float, default=40.0)
@@ -395,6 +406,26 @@ def main():
     ap.add_argument("--dry-run", action="store_true",
                     help="print the grid and time estimate; no hardware contact")
     args = ap.parse_args()
+
+    if args.wall_nominal:
+        WALL_NOMINAL = {k.strip().upper(): int(v) for k, v in
+                        (kv.split(":") for kv in args.wall_nominal.split(","))}
+        if sorted(WALL_NOMINAL) != list("ABCD"):
+            raise SystemExit(f'--wall-nominal needs all of A:..,B:..,C:..,D:.. '
+                             f'(got {args.wall_nominal})')
+    if args.wall_mults:
+        WALL_MULTS = [float(x) for x in args.wall_mults.replace(" ", "").split(",") if x]
+    if args.plastic_ladder:
+        PLASTIC_LADDER = [int(x) for x in args.plastic_ladder.replace(" ", "").split(",") if x]
+    if args.plastic_baseline is not None:
+        PLASTIC_BASELINE = args.plastic_baseline
+    for v in list(PLASTIC_LADDER) + [PLASTIC_BASELINE]:
+        if v >= 0 or abs(v) < THRESHOLD_FLOOR_MV:
+            raise SystemExit(f"plastic value {v} must be negative and |>= {THRESHOLD_FLOOR_MV}| mV")
+    for s in "ABCD":
+        if WALL_NOMINAL[s] < THRESHOLD_FLOOR_MV:
+            raise SystemExit(f"wall nominal {s}:{WALL_NOMINAL[s]} below the "
+                             f"{THRESHOLD_FLOOR_MV} mV floor")
 
     grid = [(m, p) for m in WALL_MULTS for p in PLASTIC_LADDER]
     n_pts = len(PASSES) * len(grid)

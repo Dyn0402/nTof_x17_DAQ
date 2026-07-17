@@ -1,0 +1,1017 @@
+{
+ "count_s": 60,
+ "settle_s": 2,
+ "gate_ns": 20,
+ "hold_delay": 25,
+ "signed_delays": [
+  25,
+  -5,
+  5,
+  10,
+  15,
+  20,
+  25,
+  25,
+  30,
+  35,
+  40,
+  45,
+  55,
+  70,
+  25
+ ],
+ "sets": [
+  {
+   "name": "set1",
+   "hold": [
+    "SEC_C",
+    "SEC_D"
+   ],
+   "sweep": [
+    "SEC_A",
+    "SEC_B"
+   ],
+   "rows": [
+    {
+     "signed_delay": 25,
+     "wall_delay": 25,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 907.422,
+       "scint": 1393.566,
+       "C": 154.694
+      },
+      "SEC_B": {
+       "wall": 913.891,
+       "scint": 1230.077,
+       "C": 141.081
+      },
+      "SEC_C": {
+       "wall": 970.29,
+       "scint": 1562.599,
+       "C": 163.951
+      },
+      "SEC_D": {
+       "wall": 965.373,
+       "scint": 1055.896,
+       "C": 113.822
+      }
+     },
+     "c_ref": 277.773,
+     "beam_stable": true,
+     "beam_e10_before": 841.42,
+     "beam_e10_after": 846.61,
+     "pulses_10min": 144
+    },
+    {
+     "signed_delay": -5,
+     "wall_delay": 0,
+     "scint_delay": 5,
+     "sectors": {
+      "SEC_A": {
+       "wall": 1042.693,
+       "scint": 1630.694,
+       "C": 111.924
+      },
+      "SEC_B": {
+       "wall": 1076.272,
+       "scint": 1462.668,
+       "C": 85.16
+      },
+      "SEC_C": {
+       "wall": 1123.299,
+       "scint": 1834.84,
+       "C": 194.229
+      },
+      "SEC_D": {
+       "wall": 1139.503,
+       "scint": 1257.433,
+       "C": 138.622
+      }
+     },
+     "c_ref": 332.851,
+     "beam_stable": true,
+     "beam_e10_before": 846.61,
+     "beam_e10_after": 851.39,
+     "pulses_10min": 145
+    },
+    {
+     "signed_delay": 5,
+     "wall_delay": 5,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 928.727,
+       "scint": 1459.621,
+       "C": 160.948
+      },
+      "SEC_B": {
+       "wall": 958.213,
+       "scint": 1292.518,
+       "C": 143.441
+      },
+      "SEC_C": {
+       "wall": 1002.93,
+       "scint": 1637.565,
+       "C": 170.386
+      },
+      "SEC_D": {
+       "wall": 1014.778,
+       "scint": 1099.08,
+       "C": 117.683
+      }
+     },
+     "c_ref": 288.069,
+     "beam_stable": true,
+     "beam_e10_before": 844.32,
+     "beam_e10_after": 406.72,
+     "pulses_10min": 147
+    },
+    {
+     "signed_delay": 10,
+     "wall_delay": 10,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 963.146,
+       "scint": 1486.697,
+       "C": 164.496
+      },
+      "SEC_B": {
+       "wall": 989.91,
+       "scint": 1314.496,
+       "C": 149.034
+      },
+      "SEC_C": {
+       "wall": 1048.917,
+       "scint": 1664.805,
+       "C": 180.254
+      },
+      "SEC_D": {
+       "wall": 1034.842,
+       "scint": 1132.542,
+       "C": 122.534
+      }
+     },
+     "c_ref": 302.788,
+     "beam_stable": true,
+     "beam_e10_before": 406.72,
+     "beam_e10_after": 850.21,
+     "pulses_10min": 145
+    },
+    {
+     "signed_delay": 15,
+     "wall_delay": 15,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 990.618,
+       "scint": 1596.82,
+       "C": 176.805
+      },
+      "SEC_B": {
+       "wall": 1007.927,
+       "scint": 1415.279,
+       "C": 162.119
+      },
+      "SEC_C": {
+       "wall": 1069.92,
+       "scint": 1787.815,
+       "C": 190.484
+      },
+      "SEC_D": {
+       "wall": 1061.422,
+       "scint": 1215.638,
+       "C": 130.636
+      }
+     },
+     "c_ref": 321.12,
+     "beam_stable": true,
+     "beam_e10_before": 850.21,
+     "beam_e10_after": 848.3,
+     "pulses_10min": 158
+    },
+    {
+     "signed_delay": 20,
+     "wall_delay": 20,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 907.413,
+       "scint": 1405.044,
+       "C": 151.972
+      },
+      "SEC_B": {
+       "wall": 929.227,
+       "scint": 1246.24,
+       "C": 142.22
+      },
+      "SEC_C": {
+       "wall": 979.983,
+       "scint": 1567.297,
+       "C": 164.761
+      },
+      "SEC_D": {
+       "wall": 980.544,
+       "scint": 1053.94,
+       "C": 111.925
+      }
+     },
+     "c_ref": 276.686,
+     "beam_stable": true,
+     "beam_e10_before": 848.3,
+     "beam_e10_after": 849.67,
+     "pulses_10min": 171
+    },
+    {
+     "signed_delay": 25,
+     "wall_delay": 25,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 1047.579,
+       "scint": 1641.587,
+       "C": 182.102
+      },
+      "SEC_B": {
+       "wall": 1066.901,
+       "scint": 1460.773,
+       "C": 166.739
+      },
+      "SEC_C": {
+       "wall": 1129.142,
+       "scint": 1838.605,
+       "C": 194.015
+      },
+      "SEC_D": {
+       "wall": 1135.544,
+       "scint": 1260.504,
+       "C": 134.382
+      }
+     },
+     "c_ref": 328.397,
+     "beam_stable": true,
+     "beam_e10_before": 846.17,
+     "beam_e10_after": 409.24,
+     "pulses_10min": 172
+    },
+    {
+     "signed_delay": 25,
+     "wall_delay": 25,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 924.531,
+       "scint": 1495.173,
+       "C": 163.637
+      },
+      "SEC_B": {
+       "wall": 959.347,
+       "scint": 1335.645,
+       "C": 151.327
+      },
+      "SEC_C": {
+       "wall": 1004.328,
+       "scint": 1687.356,
+       "C": 176.837
+      },
+      "SEC_D": {
+       "wall": 1009.691,
+       "scint": 1135.195,
+       "C": 121.28
+      }
+     },
+     "c_ref": 298.11699999999996,
+     "beam_stable": true,
+     "beam_e10_before": 409.24,
+     "beam_e10_after": 850.16,
+     "pulses_10min": 173
+    },
+    {
+     "signed_delay": 30,
+     "wall_delay": 30,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 995.618,
+       "scint": 1546.09,
+       "C": 171.973
+      },
+      "SEC_B": {
+       "wall": 1021.591,
+       "scint": 1367.071,
+       "C": 155.34
+      },
+      "SEC_C": {
+       "wall": 1077.149,
+       "scint": 1725.967,
+       "C": 184.943
+      },
+      "SEC_D": {
+       "wall": 1084.509,
+       "scint": 1172.36,
+       "C": 126.034
+      }
+     },
+     "c_ref": 310.97700000000003,
+     "beam_stable": true,
+     "beam_e10_before": 850.16,
+     "beam_e10_after": 414.22,
+     "pulses_10min": 173
+    },
+    {
+     "signed_delay": 35,
+     "wall_delay": 35,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 933.91,
+       "scint": 1454.402,
+       "C": 118.345
+      },
+      "SEC_B": {
+       "wall": 964.37,
+       "scint": 1296.322,
+       "C": 123.461
+      },
+      "SEC_C": {
+       "wall": 1012.851,
+       "scint": 1644.51,
+       "C": 165.835
+      },
+      "SEC_D": {
+       "wall": 1009.55,
+       "scint": 1104.481,
+       "C": 113.56
+      }
+     },
+     "c_ref": 279.395,
+     "beam_stable": true,
+     "beam_e10_before": 414.22,
+     "beam_e10_after": 854.93,
+     "pulses_10min": 173
+    },
+    {
+     "signed_delay": 40,
+     "wall_delay": 40,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 966.519,
+       "scint": 1487.895,
+       "C": 69.32
+      },
+      "SEC_B": {
+       "wall": 981.898,
+       "scint": 1318.102,
+       "C": 81.069
+      },
+      "SEC_C": {
+       "wall": 1047.802,
+       "scint": 1668.447,
+       "C": 179.611
+      },
+      "SEC_D": {
+       "wall": 1045.409,
+       "scint": 1131.23,
+       "C": 123.509
+      }
+     },
+     "c_ref": 303.12,
+     "beam_stable": true,
+     "beam_e10_before": 846.87,
+     "beam_e10_after": 836.94,
+     "pulses_10min": 173
+    },
+    {
+     "signed_delay": 45,
+     "wall_delay": 45,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 992.088,
+       "scint": 1537.833,
+       "C": 44.898
+      },
+      "SEC_B": {
+       "wall": 1012.533,
+       "scint": 1367.364,
+       "C": 48.199
+      },
+      "SEC_C": {
+       "wall": 1071.605,
+       "scint": 1735.527,
+       "C": 182.58
+      },
+      "SEC_D": {
+       "wall": 1072.48,
+       "scint": 1168.217,
+       "C": 124.943
+      }
+     },
+     "c_ref": 307.523,
+     "beam_stable": true,
+     "beam_e10_before": 836.94,
+     "beam_e10_after": 846.81,
+     "pulses_10min": 172
+    },
+    {
+     "signed_delay": 55,
+     "wall_delay": 55,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 938.781,
+       "scint": 1454.35,
+       "C": 41.797
+      },
+      "SEC_B": {
+       "wall": 958.45,
+       "scint": 1301.041,
+       "C": 44.354
+      },
+      "SEC_C": {
+       "wall": 1012.903,
+       "scint": 1636.321,
+       "C": 172.054
+      },
+      "SEC_D": {
+       "wall": 1001.089,
+       "scint": 1097.272,
+       "C": 114.054
+      }
+     },
+     "c_ref": 286.108,
+     "beam_stable": true,
+     "beam_e10_before": 846.81,
+     "beam_e10_after": 410.84,
+     "pulses_10min": 171
+    },
+    {
+     "signed_delay": 70,
+     "wall_delay": 70,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 1021.183,
+       "scint": 1585.773,
+       "C": 52.423
+      },
+      "SEC_B": {
+       "wall": 1038.426,
+       "scint": 1407.268,
+       "C": 51.598
+      },
+      "SEC_C": {
+       "wall": 1098.885,
+       "scint": 1782.908,
+       "C": 192.102
+      },
+      "SEC_D": {
+       "wall": 1098.835,
+       "scint": 1208.45,
+       "C": 129.085
+      }
+     },
+     "c_ref": 321.187,
+     "beam_stable": true,
+     "beam_e10_before": 410.84,
+     "beam_e10_after": 412.59,
+     "pulses_10min": 173
+    },
+    {
+     "signed_delay": 25,
+     "wall_delay": 25,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 963.124,
+       "scint": 1493.595,
+       "C": 163.326
+      },
+      "SEC_B": {
+       "wall": 995.796,
+       "scint": 1333.09,
+       "C": 152.501
+      },
+      "SEC_C": {
+       "wall": 1038.649,
+       "scint": 1688.536,
+       "C": 177.55
+      },
+      "SEC_D": {
+       "wall": 1044.754,
+       "scint": 1137.324,
+       "C": 122.041
+      }
+     },
+     "c_ref": 299.591,
+     "beam_stable": true,
+     "beam_e10_before": 412.59,
+     "beam_e10_after": 413.5,
+     "pulses_10min": 173
+    }
+   ]
+  },
+  {
+   "name": "set2",
+   "hold": [
+    "SEC_A",
+    "SEC_B"
+   ],
+   "sweep": [
+    "SEC_C",
+    "SEC_D"
+   ],
+   "rows": [
+    {
+     "signed_delay": 25,
+     "wall_delay": 25,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 995.173,
+       "scint": 1544.729,
+       "C": 173.95
+      },
+      "SEC_B": {
+       "wall": 1020.287,
+       "scint": 1374.458,
+       "C": 157.747
+      },
+      "SEC_C": {
+       "wall": 1071.225,
+       "scint": 1726.253,
+       "C": 182.877
+      },
+      "SEC_D": {
+       "wall": 1080.069,
+       "scint": 1177.357,
+       "C": 124.481
+      }
+     },
+     "c_ref": 331.697,
+     "beam_stable": true,
+     "beam_e10_before": 413.5,
+     "beam_e10_after": 410.38,
+     "pulses_10min": 171
+    },
+    {
+     "signed_delay": -5,
+     "wall_delay": 0,
+     "scint_delay": 5,
+     "sectors": {
+      "SEC_A": {
+       "wall": 959.116,
+       "scint": 1538.998,
+       "C": 168.224
+      },
+      "SEC_B": {
+       "wall": 986.969,
+       "scint": 1371.945,
+       "C": 157.02
+      },
+      "SEC_C": {
+       "wall": 1039.557,
+       "scint": 1728.92,
+       "C": 96.628
+      },
+      "SEC_D": {
+       "wall": 1048.582,
+       "scint": 1176.594,
+       "C": 55.294
+      }
+     },
+     "c_ref": 325.244,
+     "beam_stable": true,
+     "beam_e10_before": 410.38,
+     "beam_e10_after": 853.15,
+     "pulses_10min": 171
+    },
+    {
+     "signed_delay": 5,
+     "wall_delay": 5,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 936.058,
+       "scint": 1461.081,
+       "C": 158.424
+      },
+      "SEC_B": {
+       "wall": 956.832,
+       "scint": 1285.842,
+       "C": 143.062
+      },
+      "SEC_C": {
+       "wall": 1012.655,
+       "scint": 1640.923,
+       "C": 88.378
+      },
+      "SEC_D": {
+       "wall": 1017.885,
+       "scint": 1103.36,
+       "C": 52.638
+      }
+     },
+     "c_ref": 301.486,
+     "beam_stable": true,
+     "beam_e10_before": 853.15,
+     "beam_e10_after": 410.95,
+     "pulses_10min": 171
+    },
+    {
+     "signed_delay": 10,
+     "wall_delay": 10,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 1014.577,
+       "scint": 1583.95,
+       "C": 178.356
+      },
+      "SEC_B": {
+       "wall": 1039.312,
+       "scint": 1405.511,
+       "C": 161.228
+      },
+      "SEC_C": {
+       "wall": 1095.53,
+       "scint": 1782.981,
+       "C": 205.862
+      },
+      "SEC_D": {
+       "wall": 1100.067,
+       "scint": 1208.856,
+       "C": 137.253
+      }
+     },
+     "c_ref": 339.584,
+     "beam_stable": true,
+     "beam_e10_before": 413.0,
+     "beam_e10_after": 409.44,
+     "pulses_10min": 169
+    },
+    {
+     "signed_delay": 15,
+     "wall_delay": 15,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 971.301,
+       "scint": 1500.943,
+       "C": 164.909
+      },
+      "SEC_B": {
+       "wall": 996.712,
+       "scint": 1329.335,
+       "C": 151.758
+      },
+      "SEC_C": {
+       "wall": 1047.667,
+       "scint": 1680.422,
+       "C": 184.611
+      },
+      "SEC_D": {
+       "wall": 1049.861,
+       "scint": 1136.193,
+       "C": 125.356
+      }
+     },
+     "c_ref": 316.66700000000003,
+     "beam_stable": true,
+     "beam_e10_before": 409.44,
+     "beam_e10_after": 409.48,
+     "pulses_10min": 171
+    },
+    {
+     "signed_delay": 20,
+     "wall_delay": 20,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 1017.661,
+       "scint": 1600.695,
+       "C": 175.187
+      },
+      "SEC_B": {
+       "wall": 1052.857,
+       "scint": 1423.544,
+       "C": 162.531
+      },
+      "SEC_C": {
+       "wall": 1116.533,
+       "scint": 1804.016,
+       "C": 204.971
+      },
+      "SEC_D": {
+       "wall": 1112.952,
+       "scint": 1223.177,
+       "C": 138.985
+      }
+     },
+     "c_ref": 337.718,
+     "beam_stable": true,
+     "beam_e10_before": 409.48,
+     "beam_e10_after": 846.69,
+     "pulses_10min": 171
+    },
+    {
+     "signed_delay": 25,
+     "wall_delay": 25,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 881.482,
+       "scint": 1357.213,
+       "C": 159.314
+      },
+      "SEC_B": {
+       "wall": 896.828,
+       "scint": 1205.11,
+       "C": 147.466
+      },
+      "SEC_C": {
+       "wall": 952.452,
+       "scint": 1525.635,
+       "C": 169.594
+      },
+      "SEC_D": {
+       "wall": 946.775,
+       "scint": 1024.972,
+       "C": 118.277
+      }
+     },
+     "c_ref": 306.78,
+     "beam_stable": true,
+     "beam_e10_before": 846.69,
+     "beam_e10_after": 413.3,
+     "pulses_10min": 169
+    },
+    {
+     "signed_delay": 25,
+     "wall_delay": 25,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 1002.959,
+       "scint": 1456.966,
+       "C": 161.99
+      },
+      "SEC_B": {
+       "wall": 1021.391,
+       "scint": 1282.072,
+       "C": 145.505
+      },
+      "SEC_C": {
+       "wall": 1076.636,
+       "scint": 1628.74,
+       "C": 170.851
+      },
+      "SEC_D": {
+       "wall": 1077.857,
+       "scint": 1098.203,
+       "C": 119.038
+      }
+     },
+     "c_ref": 307.495,
+     "beam_stable": true,
+     "beam_e10_before": 847.52,
+     "beam_e10_after": 842.29,
+     "pulses_10min": 174
+    },
+    {
+     "signed_delay": 30,
+     "wall_delay": 30,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 1033.26,
+       "scint": 1601.043,
+       "C": 166.957
+      },
+      "SEC_B": {
+       "wall": 1054.018,
+       "scint": 1420.506,
+       "C": 149.483
+      },
+      "SEC_C": {
+       "wall": 1116.805,
+       "scint": 1796.2,
+       "C": 173.36
+      },
+      "SEC_D": {
+       "wall": 1124.742,
+       "scint": 1224.177,
+       "C": 121.563
+      }
+     },
+     "c_ref": 316.44,
+     "beam_stable": true,
+     "beam_e10_before": 842.29,
+     "beam_e10_after": 413.63,
+     "pulses_10min": 174
+    },
+    {
+     "signed_delay": 35,
+     "wall_delay": 35,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 933.976,
+       "scint": 1452.901,
+       "C": 157.651
+      },
+      "SEC_B": {
+       "wall": 958.579,
+       "scint": 1296.784,
+       "C": 147.222
+      },
+      "SEC_C": {
+       "wall": 1008.594,
+       "scint": 1640.765,
+       "C": 147.602
+      },
+      "SEC_D": {
+       "wall": 1016.762,
+       "scint": 1102.699,
+       "C": 110.739
+      }
+     },
+     "c_ref": 304.87300000000005,
+     "beam_stable": true,
+     "beam_e10_before": 413.63,
+     "beam_e10_after": 851.08,
+     "pulses_10min": 172
+    },
+    {
+     "signed_delay": 40,
+     "wall_delay": 40,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 1053.893,
+       "scint": 1635.77,
+       "C": 181.342
+      },
+      "SEC_B": {
+       "wall": 1079.881,
+       "scint": 1454.032,
+       "C": 170.435
+      },
+      "SEC_C": {
+       "wall": 1149.134,
+       "scint": 1838.661,
+       "C": 99.169
+      },
+      "SEC_D": {
+       "wall": 1147.468,
+       "scint": 1249.045,
+       "C": 85.341
+      }
+     },
+     "c_ref": 351.77700000000004,
+     "beam_stable": true,
+     "beam_e10_before": 851.08,
+     "beam_e10_after": 413.14,
+     "pulses_10min": 173
+    },
+    {
+     "signed_delay": 45,
+     "wall_delay": 45,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 929.698,
+       "scint": 1446.532,
+       "C": 158.951
+      },
+      "SEC_B": {
+       "wall": 961.973,
+       "scint": 1287.746,
+       "C": 146.361
+      },
+      "SEC_C": {
+       "wall": 1004.182,
+       "scint": 1623.98,
+       "C": 50.212
+      },
+      "SEC_D": {
+       "wall": 1010.584,
+       "scint": 1096.453,
+       "C": 38.166
+      }
+     },
+     "c_ref": 305.312,
+     "beam_stable": true,
+     "beam_e10_before": 413.14,
+     "beam_e10_after": 841.87,
+     "pulses_10min": 172
+    },
+    {
+     "signed_delay": 55,
+     "wall_delay": 55,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 1025.575,
+       "scint": 1596.816,
+       "C": 178.456
+      },
+      "SEC_B": {
+       "wall": 1051.349,
+       "scint": 1418.921,
+       "C": 161.988
+      },
+      "SEC_C": {
+       "wall": 1106.709,
+       "scint": 1800.981,
+       "C": 58.033
+      },
+      "SEC_D": {
+       "wall": 1107.534,
+       "scint": 1222.677,
+       "C": 40.113
+      }
+     },
+     "c_ref": 340.44399999999996,
+     "beam_stable": true,
+     "beam_e10_before": 841.87,
+     "beam_e10_after": 412.04,
+     "pulses_10min": 171
+    },
+    {
+     "signed_delay": 70,
+     "wall_delay": 70,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 944.764,
+       "scint": 1446.683,
+       "C": 158.06
+      },
+      "SEC_B": {
+       "wall": 950.424,
+       "scint": 1286.098,
+       "C": 144.662
+      },
+      "SEC_C": {
+       "wall": 1000.702,
+       "scint": 1622.564,
+       "C": 51.499
+      },
+      "SEC_D": {
+       "wall": 1007.599,
+       "scint": 1103.155,
+       "C": 35.939
+      }
+     },
+     "c_ref": 302.722,
+     "beam_stable": true,
+     "beam_e10_before": 412.04,
+     "beam_e10_after": 847.46,
+     "pulses_10min": 171
+    },
+    {
+     "signed_delay": 25,
+     "wall_delay": 25,
+     "scint_delay": 0,
+     "sectors": {
+      "SEC_A": {
+       "wall": 935.307,
+       "scint": 1451.613,
+       "C": 160.255
+      },
+      "SEC_B": {
+       "wall": 961.049,
+       "scint": 1279.132,
+       "C": 145.47
+      },
+      "SEC_C": {
+       "wall": 1015.039,
+       "scint": 1619.937,
+       "C": 172.135
+      },
+      "SEC_D": {
+       "wall": 1012.712,
+       "scint": 1100.628,
+       "C": 119.036
+      }
+     },
+     "c_ref": 305.725,
+     "beam_stable": true,
+     "beam_e10_before": 847.46,
+     "beam_e10_after": 412.82,
+     "pulses_10min": 171
+    }
+   ]
+  }
+ ],
+ "sec_idx": {
+  "SEC_A": 0,
+  "SEC_B": 1,
+  "SEC_C": 2,
+  "SEC_D": 3
+ }
+}
