@@ -68,16 +68,23 @@ Grid: walls x{1.0,1.5,2.2,3.3} of new nominals x plastics {−20,−30,−44,−
 held baseline −30, `--skip-hv` (plastic HV untouched tonight; scint_hv plastic_scan_2
 ended 19:05 restoring per-channel nominals).
 
-* Pass AC complete (16 pts): sector coincidences 100–200 Hz everywhere; harshest
-  corner (x3.3, −66) costs only ~40% on A / ~30% on C. Rate leverage of
-  thresholds remains weak, consistent with the 07-16 conclusion.
-* D reads 0 at plastic −20 (expected — dead channel below −24).
-* **Beam OFF 21:27–(ongoing at writeup)**; scan parked in its beam gate mid pass
-  BD. Points `BD_w1.0_p-44` and `BD_w1.0_p-66` were caught by the beam-death
-  transition (beam_e10 ~10) — EXCLUDE both from analysis (retake queued if beam
-  returns in time).
+* COMPLETE (finished 23:39 after a 21:27–~23:15 beam stop parked it in its
+  beam gate; M5 restored to counters, verified). 30/32 points valid.
+* Sector coincidences 100–280 Hz everywhere; harshest corner (x3.3, −66) costs
+  ~40% on A / ~35-45% on B/D. Rate leverage of thresholds remains weak,
+  consistent with the 07-16 conclusion; ~30-45k TT tags/point banked for the
+  offline in-window analysis (analyze.py from ~/beam_july/analysis/rate_scan_2d).
+* D reads 0 at plastic −20 in pass BD (expected — dead channel below −24).
+* Points `BD_w1.0_p-44` and `BD_w1.0_p-66` were caught by the beam-death
+  transition (beam_e10 ~10) — EXCLUDE from the main scan; clean retakes (plus
+  AC duplicates as consistency checks) in
+  `~/beam_july/rate_scan_2d/2026-07-17_23-40-18_night_2d_retake/`
+  (BD retakes: D coinc 130 Hz @ −44, 110 Hz @ −66).
 
 ## 4. State left on the boards (intended, do not blindly revert)
+Final verify 23:47: `applied+verified: {'wall': {'A': 15, 'B': 16, 'C': 15,
+'D': 16}, 'plastic': {'A': -30, 'B': -30, 'C': -30, 'D': -38}}` (rate_scan_2d's
+exit restore had put D back to −30; re-applied −38 as the last board write).
 * M1 thresholds A:15 B:16 C:15 D:16 mV; M2 thresholds A/B/C −30, D −38 mV.
 * M3: all sectors ch0 (wall) G&D delay **+20 ns**, ch1 (scint) delay 0, both
   gate 20 ns. Output monos unchanged (30 ns). M1/M2 leg monos unchanged (15 ns).
