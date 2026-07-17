@@ -1,4 +1,39 @@
-# Post-reboot checklist — recover .244 (M5) after the touchscreen reboot (2026-07-16)
+# Post-reboot checklist — recover .244 (M5) after a reboot
+
+> **ROUND 2 below is OBSOLETE (2026-07-17 midday):** the power-cycle happened and the
+> "A/B per-section TT wedge" was disproven — TT silence is a live input-rate ceiling
+> (~50 Hz streams, ~800 Hz silent), not a wedge; reboots are irrelevant to it. See
+> `HANDOFF_2026-07-17_tt_rate_ceiling.md`. Steps 1–4 of ROUND 1 remain the valid
+> post-reboot recovery runbook.
+
+## ROUND 2 — 2026-07-17 physical access: POWER-CYCLE to clear the A/B per-section TT wedges
+
+Found overnight 2026-07-17 while qualifying the v2 time-tag watcher: sections **A and B
+never stream TT** (zero tags on every tap; `reset_channel` replies fine; counters count
+normally), while **C and D stream fine**. This is the known **per-section TT wedge**
+(TIMETAG_MULTISECTION_2026-07-13.md §3) left over from the 07-15 all-section stream kill —
+the 07-16 **touchscreen reboot cleared C/D but not A/B**, and re-arming (counter→TT function
+cycling) does NOT clear it. SEC_A is the four scintillator walls — the watcher's main target
+— so this matters.
+
+At the crate:
+1. **POWER-CYCLE the NIM unit** (harder reset than the touchscreen reboot, which left A/B
+   wedged). Then run steps 1–4 of the 07-16 checklist below (bounded probe → clear any
+   quarantine → `restore_244_counters.py` → verify counting).
+2. **Probe per-section TT health** (gentle, one tap per section, auto-restores counters):
+   ```bash
+   .venv/bin/python n1081b/tt_section_probe.py
+   ```
+   Every section should report tags (walls/scints/sectors/taps all have off-beam rate).
+   A section with 0 tags but counting counters is still TT-wedged.
+3. If A/B stream again → switch the watcher to all four sections (it was soak-tested on
+   `--sections CD` overnight 07-17; see TIMETAG_WATCHER.md §Rollout). If a power-cycle does
+   NOT clear them, that's strong evidence the wedge is in nonvolatile state → CAEN support
+   question (reference the 2026-07-15 email draft).
+
+---
+
+## ROUND 1 — 2026-07-16 touchscreen reboot (executed; kept as runbook)
 
 > **✅ EXECUTED & COMPLETE 2026-07-16.** Board was touchscreen-rebooted, then all steps
 > below ran clean: bounded login probe replied in 0.0 s → quarantine cleared → all four

@@ -613,13 +613,14 @@ def get_n1081b_timetag_watcher_status():
     if not st.get("connected"):
         return small("No Board", "warning")   # session up but .244 not reachable
 
-    # Session + connection OK: flag stale if the state file isn't being updated. The poll
-    # cycle is ~1-2 s, so 15 s of silence means the loop is wedged.
+    # Session + connection OK: flag stale if the state file isn't being updated. v2
+    # heartbeats every ~5 s while streaming but rests up to ~30 s around a reconnect /
+    # re-arm, so give it 60 s before calling the loop wedged.
     try:
         age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
     except Exception:
         age = None
-    if age is not None and age > 15:
+    if age is not None and age > 60:
         return small("Stale", "warning")
     return small("Logging", "success")
 
