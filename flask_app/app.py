@@ -1552,32 +1552,61 @@ def he3_pressure_status():
     return jsonify(_he3_pressure_read_state())
 
 
+# The 3He gauge was installed Wed 2026-07-15 and settled by ~18:00; earlier CSV rows are
+# pre-install garbage (negative/out-of-range). Plots anchor here and extend with time.
+HE3_PLOT_START = "2026-07-15 18:00:00"
+
+
 @app.route("/he3_pressure/history")
 def he3_pressure_history():
-    """Logged 3He pressure history from the per-day CSV(s) for the plot. `hours` trims to
-    a recent window; the result is downsampled to keep the payload light. Reads the CSVs
-    the he3_pressure_watcher writes, so this is real persisted history."""
+    """Logged 3He pressure history from the per-day CSV(s) for the plot. Anchored at the
+    gauge install time (HE3_PLOT_START) and extends to now, so the window grows with the
+    measurement. Pass `start=<ISO>` to override the anchor or `hours=<N>` for a recent
+    rolling window instead. To keep the payload light as the range grows, points are
+    binned into a moving average (mean per time-bin), with the bin width scaled so the
+    trace stays near `max_points`. Reads the CSVs the he3_pressure_watcher writes, so this
+    is real persisted history."""
     import glob
-    hours = request.args.get("hours", default=6.0, type=float)
-    max_points = request.args.get("max_points", default=1500, type=int)
+    import re
+    start = request.args.get("start", default=HE3_PLOT_START, type=str)
+    hours = request.args.get("hours", default=None, type=float)
+    max_points = max(1, request.args.get("max_points", default=1500, type=int))
     try:
         files = sorted(glob.glob(os.path.join(HE3_PRESSURE_LOG_DIR, "he3_pressure_*.csv")))
         if not files:
             return jsonify({"success": True, "time": [], "pressure": [], "unit": PRESS_UNIT})
-        # Read the last couple of day-files so a window spanning midnight still works.
-        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
+        # Window start: a rolling `hours` window if asked, else the fixed install anchor.
+        if hours and hours > 0:
+            start_ts = pd.Timestamp(datetime.now() - timedelta(hours=hours))
+        else:
+            start_ts = pd.to_datetime(start)
+        # Only read day-files on/after the window start (keeps the read cheap as the
+        # campaign's history grows). Files are named he3_pressure_YYYY-MM-DD.csv.
+        def _file_date(f):
+            m = re.search(r"(\d{4}-\d{2}-\d{2})", os.path.basename(f))
+            return pd.to_datetime(m.group(1)).date() if m else None
+        start_date = start_ts.date()
+        keep = [f for f in files if (_file_date(f) is None or _file_date(f) >= start_date)]
+        if not keep:
+            keep = files[-1:]
+        df = pd.concat([pd.read_csv(f) for f in keep], ignore_index=True)
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
         df = df.dropna(subset=["timestamp"])
-        if hours and hours > 0:
-            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
-        # Downsample by striding so the trace stays light but keeps its shape.
-        if len(df) > max_points:
-            df = df.iloc[:: (len(df) // max_points) + 1]
+        df = df[df["timestamp"] >= start_ts].sort_values("timestamp")
+        if df.empty:
+            return jsonify({"success": True, "time": [], "pressure": [], "unit": PRESS_UNIT})
+        # Bin into a moving average: bin width grows with the span so the point count
+        # stays near max_points and each plotted point is the mean over its bin.
+        span_s = (df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]).total_seconds()
+        bin_s = max(2, int(span_s / max_points) + 1)
+        s = (df.set_index("timestamp")["pressure_bar"]
+               .resample(f"{bin_s}s").mean().dropna())
         return jsonify({
             "success": True,
-            "time": df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
-            "pressure": df["pressure_bar"].round(5).tolist(),
+            "time": s.index.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "pressure": s.round(5).tolist(),
             "unit": PRESS_UNIT,
+            "bin_s": bin_s,
         })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
