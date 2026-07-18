@@ -80,6 +80,57 @@ def fmt_v(v):
     return f'{v:g}'
 
 
+# ---------------------------------------------------------------------------
+# SiPM trigger wall (structure-centered): 16 read-out bars per arm.
+# ---------------------------------------------------------------------------
+# Geometry from the Geant sim (~/CLionProjects/MX17_Full_Geant, SimConfig.hh /
+# DetectorConstruction.cc).  Bars run along the beam (v); the array runs along
+# the in-plane tangent (u), centered on the mechanical STRUCTURE (u=0, NOT the
+# pinwheel-shifted MM).  Of the 20 bars across the 50 cm wall, 16 are read out,
+# the window shifted 1 bar toward the MM -> instrumented bars i=1..16 with
+# u_i = SIPM_BAR_W_MM*(i - (SIPM_N_BARS-1)/2).  Scint-plane depth from the mylar
+# front face = sipm_front(110) + container(35)/2 = 127.5 mm.
+SIPM_N_BARS     = 20        # total bars across the wall
+SIPM_N_READOUT  = 16        # instrumented bars
+SIPM_SHIFT_BARS = 1         # read-out window shift toward the MM [bars]
+SIPM_BAR_W_MM   = 25.0      # bar pitch / width (u) [mm]
+SIPM_DEPTH_MM   = 127.5     # scint-plane depth from mylar front face [mm]
+
+# Per-arm mapping from a tangential offset u (mm, along +uHat) and the fixed
+# scint-plane depth to world (x, z), plus the arm outward-normal orientation.
+# Arms: A(+Z), B(-X), C(-Z), D(+X); same frame/rotations as the mx17 detectors.
+_SIPM_ARM_PLACE = {
+    'A': (lambda u: {'x': u,      'y': 0, 'z': 332.0}, 0),     # +Z normal
+    'B': (lambda u: {'x': -331.5, 'y': 0, 'z': u},    -90),    # -X normal
+    'C': (lambda u: {'x': -u,     'y': 0, 'z': -332.0}, 180),  # -Z normal
+    'D': (lambda u: {'x': 331.5,  'y': 0, 'z': -u},    90),    # +X normal
+}
+
+
+def build_sipm_wall_detectors():
+    """Return the SiPM trigger-wall bar detectors (16 per arm, structure-centered).
+
+    Bar index i runs 1..SIPM_N_READOUT (the read-out window, shifted toward the
+    MM); its tangential offset from the structure centre is
+    u_i = SIPM_BAR_W_MM*(i - (SIPM_N_BARS-1)/2), matching the sim's bar loop.
+    HV / ntof-DAQ channel mapping are TODO (added with the rest in the next pass).
+    """
+    dets = []
+    for arm, (place, orient_y) in _SIPM_ARM_PLACE.items():
+        for i in range(1, SIPM_N_READOUT + 1):
+            u = SIPM_BAR_W_MM * (i - (SIPM_N_BARS - 1) / 2.0)  # mm along +uHat
+            dets.append({
+                'name': f'sipm_{arm}_{i:02d}',
+                'det_type': 'scintillator_SiPM',
+                'scint_medium': 'plastic (PVT)',
+                'description': f'SiPM trigger-wall bar {i}/16 (25x500 mm), structure-centered',
+                'det_center_coords': place(u),  # mm  bar center (scint plane)
+                'det_orientation': {'x': 0, 'y': orient_y, 'z': 0},  # deg (arm outward normal)
+                # HV / ntof_daq mapping: TODO (next pass)
+            })
+    return dets
+
+
 class Config(RunConfigBase):
     def __init__(self, config_path=None):
         if not config_path:
@@ -232,6 +283,11 @@ class Config(RunConfigBase):
             'plastic_A_L', 'plastic_A_R', 'plastic_B_L', 'plastic_B_R',
             'plastic_C_L', 'plastic_C_R', 'plastic_D_L', 'plastic_D_R',
             'liquid_A', 'liquid_B', 'liquid_C', 'liquid_D',
+        ]
+        # SiPM trigger-wall bars (16/arm), appended programmatically below.
+        self.included_detectors += [
+            f'sipm_{arm}_{i:02d}' for arm in ('A', 'B', 'C', 'D')
+            for i in range(1, SIPM_N_READOUT + 1)
         ]
 
         self.detectors = [
@@ -554,25 +610,41 @@ class Config(RunConfigBase):
             # SCINTILLATOR STACK (per arm, behind each Micromegas: MM -> SiPM wall
             # -> plastics -> 1 liquid layer).  Geometry taken from the Geant sim
             # ~/CLionProjects/MX17_Full_Geant (GEOMETRY_COORDINATE_CONVENTION.md
-            # §5 stack + SimConfig.hh dims; stack flip 2026-07-15, single LS layer).
-            # Rough placement for now — refine positions later.
+            # §5 stack + SimConfig.hh dims).  Updated 2026-07-18 to the 2026-07-17/18
+            # placement survey: SiPM container 3.5 cm (back at 145.0 mm from mylar
+            # front), per-arm plastics gaps, and the STEP-derived LS vessel.
             #
-            #   Coords: same frame as the mx17 detectors.  Each layer sits along the
-            #   arm outward normal at a depth measured from the MM drift-mylar FRONT
-            #   face (w=0): plastics center 225.72 mm, liquid center 300.76 mm.
-            #   Plastics + LS inherit the per-arm pinwheel tangential shift (centered
-            #   on the MM), so their tangential offset equals the mx17 value.
+            #   Coords: same frame as the mx17 detectors.  Depths are measured from
+            #   the MM drift-mylar FRONT face (w=0): SiPM scint plane 127.5 mm;
+            #   plastics center per arm (D 222.72 / B 218.72 / A 220.72 / C 218.72 mm);
+            #   LS slab center per arm (D/A 278.6, B/C 282.6 mm from mylar front).
+            #
+            #   Tangential (u) reference differs by layer:
+            #     - SiPM wall + LS vessel are centered on the mechanical STRUCTURE
+            #       (u=0, NOT the pinwheel-shifted MM).  The LS slab centre carries
+            #       the surveyed u offset (ls_center_u: D +8.3 / B -13.4 / A +6.3 /
+            #       C -17.4 mm) and a sub-mm v (beam) offset.
+            #     - Plastics still inherit the per-arm pinwheel MM shift, so their
+            #       tangential offset equals the mx17 value.
             #   Plastics are two 20x30x2.5 cm bars side-by-side, split +/-101.72 mm
             #   along the arm's in-plane tangent (uHat); L = detn 1, R = detn 2
             #   ("left/right seen from the back", per mx_july_beam_qa).
+            #   SiPM wall: 16 read-out bars/arm (of 20), 2.5 cm pitch, read-out window
+            #   shifted 1 bar toward the MM (bars i=1..16, u_i = 25 mm*(i-9.5));
+            #   appended programmatically below (build_sipm_wall_detectors).
+            #   LS vessel: STEP-derived (VERTICAL PMT-up on B/C, HORIZONTAL PMT-+u on
+            #   A/D); det_center_coords is the LAB slab centre.
             #
             #   ntof DAQ mapping (mx_july_beam_qa trees): plastics -> PSS{A,B,C,D}
             #   with detn 1=L / 2=R; liquids -> LIQ{A,B,C,D} (single PMT per arm).
+            #   SiPM-wall tree/channel mapping: TODO (next pass).
             #
-            #   HV: NOT included yet — TODO add scintillator PMT bias later.  The CAEN
-            #   card/channel and the 2026-07-16 GUI setpoint are noted per detector so
-            #   they are easy to wire in (plastics card 07, liquids card 08).  The 4
-            #   liquid PMTs are currently NOT connected.
+            #   HV: plastics on CAEN card 07 (ch 0-7) and liquids on card 08 (ch 0-3)
+            #   are wired in per detector ('hv_channels' bias + 'hv_setpoint', from the
+            #   2026-07-18 GUI; current limits crate-managed).  The setpoints are merged
+            #   into every sub-run's hvs below so the PMT bias is held on for the whole
+            #   run and appears in HV monitoring.  SiPM-wall PMT bias: TODO (not in the
+            #   2026-07-18 GUI screenshot).
             # =================================================================
 
             # ----- Plastic scintillators (card 07): 2 bars/arm, L = detn 1, R = detn 2 -----
@@ -581,9 +653,10 @@ class Config(RunConfigBase):
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'plastic (PVT)',
                 'description': '20x30x2.5 cm plastic bar, left (seen from back)',
-                'det_center_coords': {'x': -118.07, 'y': 0, 'z': 430.22},  # mm
+                'det_center_coords': {'x': -118.07, 'y': 0, 'z': 425.22},  # mm
                 'det_orientation': {'x': 0, 'y': 0, 'z': 0},  # deg (+Z normal, arm A)
-                # HV TODO: add later — CAEN 07.000 PLASTIC_A_L, ~1325 V (2026-07-16 GUI)
+                'hv_channels': {'bias': (7, 0)},  # CAEN 07.000 PLASTIC_A_L
+                'hv_setpoint': 1303,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSA', 'detn': 1},
             },
             {
@@ -591,9 +664,10 @@ class Config(RunConfigBase):
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'plastic (PVT)',
                 'description': '20x30x2.5 cm plastic bar, right (seen from back)',
-                'det_center_coords': {'x': 85.37, 'y': 0, 'z': 430.22},  # mm
+                'det_center_coords': {'x': 85.37, 'y': 0, 'z': 425.22},  # mm
                 'det_orientation': {'x': 0, 'y': 0, 'z': 0},  # deg (+Z normal, arm A)
-                # HV TODO: add later — CAEN 07.001 PLASTIC_A_R, ~1275 V (2026-07-16 GUI)
+                'hv_channels': {'bias': (7, 1)},  # CAEN 07.001 PLASTIC_A_R
+                'hv_setpoint': 1242,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSA', 'detn': 2},
             },
             {
@@ -601,9 +675,10 @@ class Config(RunConfigBase):
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'plastic (PVT)',
                 'description': '20x30x2.5 cm plastic bar, left (seen from back)',
-                'det_center_coords': {'x': -429.72, 'y': 0, 'z': -117.47},  # mm
+                'det_center_coords': {'x': -422.72, 'y': 0, 'z': -117.47},  # mm
                 'det_orientation': {'x': 0, 'y': -90, 'z': 0},  # deg (-X normal, arm B)
-                # HV TODO: add later — CAEN 07.002 PLASTIC_B_L, ~1325 V (2026-07-16 GUI)
+                'hv_channels': {'bias': (7, 2)},  # CAEN 07.002 PLASTIC_B_L
+                'hv_setpoint': 1376,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSB', 'detn': 1},
             },
             {
@@ -611,9 +686,10 @@ class Config(RunConfigBase):
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'plastic (PVT)',
                 'description': '20x30x2.5 cm plastic bar, right (seen from back)',
-                'det_center_coords': {'x': -429.72, 'y': 0, 'z': 85.97},  # mm
+                'det_center_coords': {'x': -422.72, 'y': 0, 'z': 85.97},  # mm
                 'det_orientation': {'x': 0, 'y': -90, 'z': 0},  # deg (-X normal, arm B)
-                # HV TODO: add later — CAEN 07.003 PLASTIC_B_R, ~1300 V (2026-07-16 GUI)
+                'hv_channels': {'bias': (7, 3)},  # CAEN 07.003 PLASTIC_B_R
+                'hv_setpoint': 1279,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSB', 'detn': 2},
             },
             {
@@ -621,9 +697,10 @@ class Config(RunConfigBase):
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'plastic (PVT)',
                 'description': '20x30x2.5 cm plastic bar, left (seen from back)',
-                'det_center_coords': {'x': 119.02, 'y': 0, 'z': -430.22},  # mm
+                'det_center_coords': {'x': 119.02, 'y': 0, 'z': -423.22},  # mm
                 'det_orientation': {'x': 0, 'y': 180, 'z': 0},  # deg (-Z normal, arm C)
-                # HV TODO: add later — CAEN 07.004 PLASTIC_C_L, ~1300 V (2026-07-16 GUI)
+                'hv_channels': {'bias': (7, 4)},  # CAEN 07.004 PLASTIC_C_L
+                'hv_setpoint': 1180,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSC', 'detn': 1},
             },
             {
@@ -631,9 +708,10 @@ class Config(RunConfigBase):
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'plastic (PVT)',
                 'description': '20x30x2.5 cm plastic bar, right (seen from back)',
-                'det_center_coords': {'x': -84.42, 'y': 0, 'z': -430.22},  # mm
+                'det_center_coords': {'x': -84.42, 'y': 0, 'z': -423.22},  # mm
                 'det_orientation': {'x': 0, 'y': 180, 'z': 0},  # deg (-Z normal, arm C)
-                # HV TODO: add later — CAEN 07.005 PLASTIC_C_R, ~1300 V (2026-07-16 GUI)
+                'hv_channels': {'bias': (7, 5)},  # CAEN 07.005 PLASTIC_C_R
+                'hv_setpoint': 1307,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSC', 'detn': 2},
             },
             {
@@ -641,9 +719,10 @@ class Config(RunConfigBase):
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'plastic (PVT)',
                 'description': '20x30x2.5 cm plastic bar, left (seen from back)',
-                'det_center_coords': {'x': 429.72, 'y': 0, 'z': 117.22},  # mm
+                'det_center_coords': {'x': 426.72, 'y': 0, 'z': 117.22},  # mm
                 'det_orientation': {'x': 0, 'y': 90, 'z': 0},  # deg (+X normal, arm D)
-                # HV TODO: add later — CAEN 07.006 PLASTIC_D_L, ~1300 V (2026-07-16 GUI)
+                'hv_channels': {'bias': (7, 6)},  # CAEN 07.006 PLASTIC_D_L
+                'hv_setpoint': 1303,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSD', 'detn': 1},
             },
             {
@@ -651,9 +730,10 @@ class Config(RunConfigBase):
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'plastic (PVT)',
                 'description': '20x30x2.5 cm plastic bar, right (seen from back)',
-                'det_center_coords': {'x': 429.72, 'y': 0, 'z': -86.22},  # mm
+                'det_center_coords': {'x': 426.72, 'y': 0, 'z': -86.22},  # mm
                 'det_orientation': {'x': 0, 'y': 90, 'z': 0},  # deg (+X normal, arm D)
-                # HV TODO: add later — CAEN 07.007 PLASTIC_D_R, ~1300 V (2026-07-16 GUI)
+                'hv_channels': {'bias': (7, 7)},  # CAEN 07.007 PLASTIC_D_R
+                'hv_setpoint': 1417,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSD', 'detn': 2},
             },
 
@@ -662,44 +742,75 @@ class Config(RunConfigBase):
                 'name': 'liquid_A',
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'liquid (LAB)',
-                'description': 'single 45x45x2 cm LAB layer in CFRP box, behind the plastics',
-                'det_center_coords': {'x': -16.35, 'y': 0, 'z': 505.26},  # mm
-                'det_orientation': {'x': 0, 'y': 0, 'z': 0},  # deg (+Z normal, arm A)
-                # HV TODO: add later — CAEN 08.000 LIQUID_A, ~2000 V (2026-07-16 GUI); PMT not connected
+                'description': 'STEP LS vessel (45x45 cm LAB slab in CFRP box), HORIZONTAL, PMT toward +X (North)',
+                'det_center_coords': {'x': 6.3, 'y': 0.6, 'z': 483.1},  # mm  slab center (structure-referenced u)
+                'det_orientation': {'x': 0, 'y': 0, 'z': 0},  # deg (+Z normal, arm A); vessel roll -90 (horizontal)
+                'hv_channels': {'bias': (8, 0)},  # CAEN 08.000 LIQUID_A
+                'hv_setpoint': 2000,  # V (set 2026-07-18 GUI; 2000 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'LIQA', 'detn': 1},
             },
             {
                 'name': 'liquid_B',
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'liquid (LAB)',
-                'description': 'single 45x45x2 cm LAB layer in CFRP box, behind the plastics',
-                'det_center_coords': {'x': -504.76, 'y': 0, 'z': -15.75},  # mm
-                'det_orientation': {'x': 0, 'y': -90, 'z': 0},  # deg (-X normal, arm B)
-                # HV TODO: add later — CAEN 08.001 LIQUID_B, ~2000 V (2026-07-16 GUI); PMT not connected
+                'description': 'STEP LS vessel (45x45 cm LAB slab in CFRP box), VERTICAL, PMT up (+beam)',
+                'det_center_coords': {'x': -486.6, 'y': 0.3, 'z': -13.4},  # mm  slab center (structure-referenced u)
+                'det_orientation': {'x': 0, 'y': -90, 'z': 0},  # deg (-X normal, arm B); vessel roll 0 (vertical)
+                'hv_channels': {'bias': (8, 1)},  # CAEN 08.001 LIQUID_B
+                'hv_setpoint': 2000,  # V (set 2026-07-18 GUI; 2000 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'LIQB', 'detn': 1},
             },
             {
                 'name': 'liquid_C',
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'liquid (LAB)',
-                'description': 'single 45x45x2 cm LAB layer in CFRP box, behind the plastics',
-                'det_center_coords': {'x': 17.3, 'y': 0, 'z': -505.26},  # mm
-                'det_orientation': {'x': 0, 'y': 180, 'z': 0},  # deg (-Z normal, arm C)
-                # HV TODO: add later — CAEN 08.002 LIQUID_C, ~2000 V (2026-07-16 GUI); PMT not connected
+                'description': 'STEP LS vessel (45x45 cm LAB slab in CFRP box), VERTICAL, PMT up (+beam)',
+                'det_center_coords': {'x': 17.4, 'y': -0.7, 'z': -487.1},  # mm  slab center (structure-referenced u)
+                'det_orientation': {'x': 0, 'y': 180, 'z': 0},  # deg (-Z normal, arm C); vessel roll 0 (vertical)
+                'hv_channels': {'bias': (8, 2)},  # CAEN 08.002 LIQUID_C
+                'hv_setpoint': 2000,  # V (set 2026-07-18 GUI; 2000 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'LIQC', 'detn': 1},
             },
             {
                 'name': 'liquid_D',
                 'det_type': 'scintillator_PMT',
                 'scint_medium': 'liquid (LAB)',
-                'description': 'single 45x45x2 cm LAB layer in CFRP box, behind the plastics',
-                'det_center_coords': {'x': 504.76, 'y': 0, 'z': 15.5},  # mm
-                'det_orientation': {'x': 0, 'y': 90, 'z': 0},  # deg (+X normal, arm D)
-                # HV TODO: add later — CAEN 08.003 LIQUID_D, ~2000 V (2026-07-16 GUI); PMT not connected
+                'description': 'STEP LS vessel (45x45 cm LAB slab in CFRP box), HORIZONTAL, PMT toward -Z (West)',
+                'det_center_coords': {'x': 482.6, 'y': -0.4, 'z': -8.3},  # mm  slab center (structure-referenced u)
+                'det_orientation': {'x': 0, 'y': 90, 'z': 0},  # deg (+X normal, arm D); vessel roll -90 (horizontal)
+                'hv_channels': {'bias': (8, 3)},  # CAEN 08.003 LIQUID_D
+                'hv_setpoint': 2000,  # V (set 2026-07-18 GUI; 2000 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'LIQD', 'detn': 1},
             },
 
         ]
+
+        # SiPM trigger-wall bars (16 per arm), generated to match the sim's bar
+        # layout (see build_sipm_wall_detectors / the SCINTILLATOR STACK note).
+        self.detectors += build_sipm_wall_detectors()
+
+        # Hold the scintillator PMT bias on for the whole run: merge each included
+        # scintillator's setpoint into every sub-run's hvs (plastics card 07,
+        # liquids card 08).  set_hvs only asserts v0 + powers on, so re-listing the
+        # channels each sub-run simply holds them at voltage; it also adds them to
+        # HV monitoring.  Detectors without an hv_setpoint (e.g. the SiPM bars) are
+        # skipped.  Done here so it also covers the leading gas_change sub-run.
+        scint_hvs = {}
+        for det in self.detectors:
+            if det['name'] not in self.included_detectors:
+                continue
+            if not str(det.get('det_type', '')).startswith('scintillator'):
+                continue
+            hv_channels = det.get('hv_channels')
+            setpoint = det.get('hv_setpoint')
+            if not isinstance(hv_channels, dict) or setpoint is None:
+                continue
+            for slot, channel in hv_channels.values():
+                scint_hvs.setdefault(str(slot), {})[str(channel)] = setpoint
+        for sub_run in self.sub_runs:
+            hvs = sub_run.setdefault('hvs', {})
+            for slot, chans in scint_hvs.items():
+                hvs.setdefault(slot, {}).update(chans)
 
         if not self.write_all_detectors_to_json:
             self.detectors = [det for det in self.detectors if det['name'] in self.included_detectors]
