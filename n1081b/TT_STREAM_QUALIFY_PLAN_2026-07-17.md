@@ -135,7 +135,18 @@ the M5 part of the per-subrun config snapshot. Interlocks verified 2026-07-17:
   every streaming case had max channel ≤ ~220 Hz. Bracket: **per-channel streams
   ≤ ~220 Hz, silent ≥ ~700 Hz**. Consequence: C works as long as no single
   sector exceeds the per-channel ceiling; D is hostage to Singles alone.
-- T2 C sustain (2 h, launched 00:25 in the `n1081b_timetag_watcher` tmux): pending.
+- **T2 C sustain: PASSED** (00:25–02:20, 115 min, 5.1M edges, zero gaps >2 s,
+  max packet gap 0.8 s; stopped cleanly for a threshold scan).
+- **TT engine stall found + recovery protocol** (02:47): silent starts at healthy
+  rates; healed by ~50 min rest + one probe. Production supervisor
+  (`tt_stream_supervisor.py`) now encodes rest+probe+resume automatically.
+- **T3 (2026-07-18): BOARD TICK IS 1 ns, NOT 10 ns** (measured 1000.0 MHz vs
+  host over 6 h; all repo constants fixed). With the correct tick, 100% of
+  DREAM events sit within the delivered TT structure (envelope overlap = 1.00,
+  offset ≈ −5.9 s, ppm drift). Per-event matching: up to 82%/5 ms so far,
+  limited by DREAM accept-time pipeline artifacts (4 µs multi-pack quantization,
+  ~10 ms readout-gap timing), NOT by stream loss. Full numbers + open items:
+  `~/beam_july/analysis/tt_dream_match/FINDINGS_2026-07-18.md`.
 
 ## Bookkeeping
 

@@ -291,7 +291,7 @@ def main():
                     rec = {"t_wall": datetime.fromtimestamp(last_pkt_t)
                            .isoformat(timespec="seconds"),
                            "host_gap_s": round(gap, 2),
-                           "tboard_gap_s": (round((first[1] - last_edge["tboard"]) / 1e8, 2)
+                           "tboard_gap_s": (round((first[1] - last_edge["tboard"]) / 1e9, 2)
                                             if first and last_edge["tboard"] else None)}
                     stats["gaps"].append(rec)
                     log(f"  GAP {rec}")

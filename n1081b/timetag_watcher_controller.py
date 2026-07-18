@@ -138,7 +138,9 @@ N1081B_TT_STATE_PATH = os.path.join(_REPO_DIR, "config", "n1081b_timetag_state.j
 N1081B_TT_CONFIG_PATH = os.path.join(_REPO_DIR, "config", "n1081b_timetag_config.json")
 BEAM_STATE_PATH = os.path.join(_REPO_DIR, "config", "beam_state.json")
 
-NS_PER_S = 1e8               # board clock: 10 ns steps -> 1e8 ticks / second
+NS_PER_S = 1e9               # board TT clock: 1 ns ticks (MEASURED 2026-07-18 vs
+                             # host over 6 h, exactly 1000.0 MHz; the older docs'
+                             # "10 ns steps" was wrong — t_board_ns really is ns)
 DEFAULT_IP = "192.168.10.244"
 DEFAULT_SECTIONS = "ABCD"    # sections managed as counters (running totals)
 DEFAULT_TT_SECTIONS = "CD"   # TT-streaming candidates (subset; gated per cycle)

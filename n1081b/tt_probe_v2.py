@@ -129,7 +129,7 @@ def tap(dev, letter, drain_s, label):
         if not rows:
             return None
         tb = [r[2] for r in rows]
-        return round((max(tb) - min(tb)) / 1e8, 1)  # board clock: 10 ns units
+        return round((max(tb) - min(tb)) / 1e9, 1)  # board TT clock: 1 ns units (2026-07-18)
 
     live_hz = round(len(late) / max(drain_s - 1.0, 0.1), 1) if late else 0.0
     r = {"label": label, "n": len(tags), "burst_1s": len(burst), "late": len(late),

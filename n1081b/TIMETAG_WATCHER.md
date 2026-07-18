@@ -93,7 +93,7 @@ alive. On clean exit (SIGINT/SIGTERM/SIGHUP incl. `tmux kill-session`) it restor
 
 ## Matching to DREAM after the fact (unchanged)
 
-1. **Coarse board→wall anchor:** fit `wall ≈ host0 + (t_board − board0)/1e8` on the
+1. **Coarse board→wall anchor:** fit `wall ≈ host0 + (t_board − board0)/1e9` on the
    minimum-offset `(host_unix, t_board_ns)` pairs (newest edge of a tap ≈ "now").
 2. **Fine alignment:** cross-correlate the beam-spill rate structure (walls vs DREAM
    event times), best lag — as with the TIMBER beam matching. Restrict to beam-on
