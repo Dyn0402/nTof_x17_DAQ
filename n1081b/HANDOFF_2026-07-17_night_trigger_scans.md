@@ -81,6 +81,23 @@ ended 19:05 restoring per-channel nominals).
   `~/beam_july/rate_scan_2d/2026-07-17_23-40-18_night_2d_retake/`
   (BD retakes: D coinc 130 Hz @ −44, 110 Hz @ −66).
 
+## 3a. In-window Singles/Doubles analysis (07-18 00:00–00:30)
+Full analysis + LaTeX slides:
+`~/beam_july/analysis/rate_scan_2d/night_0717/` (`FINDINGS_2026-07-18.md`,
+`analyze_night.py`, `key_numbers.json`, `slides/slides.pdf`). Headlines:
+* Singles 1696/window nominal (70–90× DREAM budget grid-wide) — Singles-gated
+  stays infeasible; thresholds buy ≤1.2× merged.
+* Doubles 79/window total, 92% in the first ms; **clean tail 5.6/window
+  (~2× the 07-16 yield, ~50–60k two-arm candidates / 8 h)** →
+  **Doubles-gated remains the overnight trigger** (~7–8 recorded/window).
+* In-window fraction 0.87 (median 0.86, was 0.77) — the +20 ns alignment.
+* ⚠ **PS/γ-flash line on M5 TT panel 3 gave ZERO edges all night** (both
+  scans); windows anchored on pulser clusters instead (07-16 method, results
+  unaffected). **Check panel-3 cabling at next access.**
+* Third exclusion found in analysis: `BD_w1.0_p-30` beam-compromised
+  (nominal cell rests on its clean AC twin). Method fix: t0 = first
+  burst-start tag (lone pre-flash accidentals were faking tail counts).
+
 ## 3b. Equalized-HV re-check (07-18 02:21–02:29) — thresholds RATIFIED
 The night scans above ran on the FLAT plastic-PMT nominals plastic_scan_2
 restored at 19:05 (1325/1275/1325/1300×5), NOT the run224466 gain-equalized
