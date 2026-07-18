@@ -40,17 +40,23 @@ HV_CREDS_PATH = os.path.join(REPO_ROOT, 'hv_creds.txt')
 # Liquids (card 08, ch 0-3, ~2000 V, PMT NOT connected) are deliberately left
 # out -> "liquid fixed". DREAM DAQ uses cards 5 & 9 only, so card 07 is disjoint.
 #
-# 'nominal_v' = the operating voltage to restore at the end of the scan (from
-# the run_config_beam.py GUI comments, 2026-07-16).
+# 'nominal_v' = the operating voltage to restore at the end of the scan.
+# 2026-07-18: standing values are the run224466 GAIN-EQUALIZED set
+# (calibrations/pss/hv_equalization_run224466.json), applied 02:21 and the basis
+# of the post-FIFO M2 threshold calibration (walls rate-matched within ~2%;
+# D at -38 mV == A/B/C at -30 mV). The previous flat operational set
+# (1325/1275/1325/1300/1300/1300/1300/1300, run_config_beam GUI comments
+# 2026-07-16) is what the 07-17 night scans up to 02:21 ran on — do not restore
+# it without redoing the M2 threshold ladder.
 SCINT_CHANNELS = [
-    {'name': 'plastic_A_L', 'slot': 7, 'channel': 0, 'nominal_v': 1325},
-    {'name': 'plastic_A_R', 'slot': 7, 'channel': 1, 'nominal_v': 1275},
-    {'name': 'plastic_B_L', 'slot': 7, 'channel': 2, 'nominal_v': 1325},
-    {'name': 'plastic_B_R', 'slot': 7, 'channel': 3, 'nominal_v': 1300},
-    {'name': 'plastic_C_L', 'slot': 7, 'channel': 4, 'nominal_v': 1300},
-    {'name': 'plastic_C_R', 'slot': 7, 'channel': 5, 'nominal_v': 1300},
-    {'name': 'plastic_D_L', 'slot': 7, 'channel': 6, 'nominal_v': 1300},
-    {'name': 'plastic_D_R', 'slot': 7, 'channel': 7, 'nominal_v': 1300},
+    {'name': 'plastic_A_L', 'slot': 7, 'channel': 0, 'nominal_v': 1303},
+    {'name': 'plastic_A_R', 'slot': 7, 'channel': 1, 'nominal_v': 1242},
+    {'name': 'plastic_B_L', 'slot': 7, 'channel': 2, 'nominal_v': 1376},
+    {'name': 'plastic_B_R', 'slot': 7, 'channel': 3, 'nominal_v': 1279},
+    {'name': 'plastic_C_L', 'slot': 7, 'channel': 4, 'nominal_v': 1180},
+    {'name': 'plastic_C_R', 'slot': 7, 'channel': 5, 'nominal_v': 1307},
+    {'name': 'plastic_D_L', 'slot': 7, 'channel': 6, 'nominal_v': 1303},
+    {'name': 'plastic_D_R', 'slot': 7, 'channel': 7, 'nominal_v': 1417},
 ]
 
 # What to leave the channels at when the scan finishes or is Ctrl-C'd:

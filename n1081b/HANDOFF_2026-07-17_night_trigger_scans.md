@@ -81,6 +81,25 @@ ended 19:05 restoring per-channel nominals).
   `~/beam_july/rate_scan_2d/2026-07-17_23-40-18_night_2d_retake/`
   (BD retakes: D coinc 130 Hz @ −44, 110 Hz @ −66).
 
+## 3b. Equalized-HV re-check (07-18 02:21–02:29) — thresholds RATIFIED
+The night scans above ran on the FLAT plastic-PMT nominals plastic_scan_2
+restored at 19:05 (1325/1275/1325/1300×5), NOT the run224466 gain-equalized
+set (Δ up to +120 V on C_L / −117 V on D_R). At 02:21 the PMTs were ramped to
+the equalized values (now the STANDING HV — `scint_hv_config.py` nominal_v
+updated) and the plastic ladders rerun
+(`~/beam_july/threshold_ladder/2026-07-18_02-{21-43_eqhv_full_ladder,25-49_eqhv_d_zoom}/`):
+* A/B/C singles now track within ~2% at every threshold — equalization works.
+* **D at −38 vs A/B/C at −30: rate ratio 1.03** — the applied baselines are
+  rate-matched; **no threshold change needed** (walls 15/16/15/16 + plastics
+  −30/−30/−30/−38 stand).
+* D dead boundary at equalized HV: partial −26, dead ≤ −24 (module-input
+  baseline effect, HV-independent as expected).
+* A/B/C noise wall now ~−13/−16 (was ~−10/−13 flat) → −30 keeps ~2.3× margin.
+* Caveat inherited by §3: the 2D scan's absolute rates (and the 2.1×-vs-07-16
+  Singles ratio) partly reflect the flat-HV offsets (hot C_L, cold D_R), not
+  FIFO gain alone; in-window fractions and the Doubles-gated conclusion are
+  unaffected (per-window structure, not absolute gain).
+
 ## 4. State left on the boards (intended, do not blindly revert)
 Final verify 23:47: `applied+verified: {'wall': {'A': 15, 'B': 16, 'C': 15,
 'D': 16}, 'plastic': {'A': -30, 'B': -30, 'C': -30, 'D': -38}}` (rate_scan_2d's
@@ -91,3 +110,7 @@ exit restore had put D back to −30; re-applied −38 as the last board write).
 * M4, M5, M6: untouched by the scans (M5 SEC_D cycled TT<->counter by
   rate_scan_2d and restored; trigger mode flash_random verified before/after
   each phase).
+* Plastic PMT HV (CAEN card 07): **run224466 gain-equalized set since 07-18
+  02:21** (A_L 1303 / A_R 1242 / B_L 1376 / B_R 1279 / C_L 1180 / C_R 1307 /
+  D_L 1303 / D_R 1417) — `scint_hv_config.py` nominal_v now matches, so scan
+  end-restores keep it.
