@@ -14,6 +14,7 @@ EOS_DIR        = '/eos/experiment/ntof/data/x17/july_beam/'
 XROOTD_URL     = 'root://eospublic.cern.ch'
 CERN_PRINCIPAL = 'dneff@CERN.CH'
 GPG_PASS_FILE  = '/home/mx17/.cern_pass.gpg'
+KEYTAB_FILE    = '/home/mx17/.keytab/mx17_cern.keytab'
 
 CONFIG = {
     # Local top-level data directory
@@ -34,7 +35,15 @@ CONFIG = {
     # Subdirs of source_dir to never sync
     'exclude_dirs': ['dream_run', 'analysis'],
 
-    # GPG-encrypted CERN password file (created with: gpg --encrypt -r KEY -o ~/.cern_pass.gpg)
+    # Reboot-safe Kerberos: a keytab lets backup_watcher re-kinit with NO password,
+    # gpg-agent, or tty — so it self-heals after a reboot. Regenerate it whenever the
+    # CERN password changes with bash_scripts/regen_cern_keytab.sh (the AD key salt is
+    # CERN.CHdylan.neff, not the ktutil default, so a naive keytab silently fails).
+    'keytab_file': KEYTAB_FILE,
+
+    # GPG-encrypted CERN password file — LAST-RESORT fallback only. Needs a gpg
+    # passphrase cached in the agent, which a reboot wipes, so it does NOT work
+    # unattended. Kept for manual use. (created with: gpg --encrypt -r KEY -o ~/.cern_pass.gpg)
     'gpg_pass_file': GPG_PASS_FILE,
 
     # Kerberos principal for kinit

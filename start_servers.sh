@@ -3,6 +3,20 @@
 # Source the venv
 source .venv/bin/activate
 
+# Seed a Kerberos ticket from the keytab BEFORE the NXCALS/EOS watchers start.
+# A reboot wipes /tmp/krb5cc_1000, and beam_watcher (Spark) + backup_watcher (EOS
+# xrdcp) both idle in an auth-error state without one. The keytab is reboot-safe
+# (no password / gpg / tty). Regenerate it after a CERN password change with
+# bash_scripts/regen_cern_keytab.sh. A cron entry (crontab -l) renews it hourly.
+KEYTAB="$HOME/.keytab/mx17_cern.keytab"
+if [ -f "$KEYTAB" ]; then
+    kinit -kt "$KEYTAB" dneff@CERN.CH \
+        && echo "[start_servers] kinit from keytab OK" \
+        || echo "[start_servers] WARNING: kinit from keytab FAILED (keytab stale? run regen_cern_keytab.sh)"
+else
+    echo "[start_servers] WARNING: no keytab at $KEYTAB — beam/backup watchers need a manual kinit"
+fi
+
 # Start sessions. 3rd arg = tmux scrollback cap in LINES (memory-saving).
 # hv_control is very chatty (HV monitor every monitor_interval seconds), so
 # keep it short. The others keep a longer buffer for debugging.

@@ -65,12 +65,47 @@ Gotchas learned the hard way (2026-07-10):
 - First query after startup ≈ 30–60 s (local Spark spin-up); after that each
   poll is ~1–2 s.
 
-## Authentication (Kerberos)
+## Authentication (Kerberos) — reboot-safe via keytab
 
-Queries authenticate with the user's Kerberos ticket in the default cache —
-the same `kinit dneff@CERN.CH` the EOS backup uses. The watcher runs
-`kinit -R` periodically, which keeps the ticket alive up to its renewable
-life (~5 days); after that a manual `kinit dneff@CERN.CH` reseed is needed.
+Queries authenticate with the user's Kerberos ticket in the default cache
+(`/tmp/krb5cc_1000`), shared with the EOS backup. This is now **reboot-safe**
+(set up 2026-07-19); before that a reboot wiped the ticket cache and the
+watcher idled in a Spark auth error until someone ran `kinit` by hand.
+
+How the ticket stays valid with no human in the loop:
+
+- **Keytab** `~/.keytab/mx17_cern.keytab` — lets any process run
+  `kinit -kt ~/.keytab/mx17_cern.keytab dneff@CERN.CH` with **no password,
+  gpg, or tty**. This is what makes unattended boot work.
+- **At boot** `../start_servers.sh` (run by `daq-startup.service`) does that
+  `kinit -kt` *before* launching the watchers.
+- **Renewal** a user crontab entry (`crontab -l`, fires at minute :17) re-runs
+  `kinit -kt` hourly — each call is a fresh 25 h ticket, so it never lapses on
+  long uptime. The watcher's own periodic `kinit -R` is now belt-and-suspenders.
+
+**Regenerate the keytab after any CERN password change** (a rotated password
+silently kills it — the 2026-07-19 outage):
+
+```bash
+bash_scripts/regen_cern_keytab.sh   # prompts for the CERN password once
+```
+
+⚠️ **AD salt gotcha:** the principal `dneff@CERN.CH` is a UPN *alias*; the
+AD account's key salt is `CERN.CHdylan.neff` (from the sAMAccountName
+`dylan.neff`), **not** ktutil's default `CERN.CHdneff`. A keytab built with
+the default salt authenticates with the wrong key and fails preauth silently.
+`regen_cern_keytab.sh` passes `-s CERN.CHdylan.neff` explicitly. To rediscover
+the salt if the account ever changes:
+`KRB5_TRACE=/dev/stdout kinit dneff@CERN.CH` and grep for `salt`.
+
+The legacy `~/.cern_pass.gpg` password file remains only as a manual
+last-resort fallback in `backup_watcher` (it needs a gpg-agent passphrase a
+reboot un-caches, so it can't self-heal — that was the whole problem).
+
 The state file exposes `krb_valid_until`; the shift card warns when < 12 h
 remain, and the Telegram monitor's `rule_beam_watcher_dead` fires once
 queries actually start failing.
+
+> Heads-up: an intermittent `kinit: Password incorrect` on a *correct*
+> password usually means a flaky KDC replica (`cerndc.cern.ch` resolves to
+> several IPv6 KDCs), not a bad password — just retry.

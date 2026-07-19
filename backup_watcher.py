@@ -77,6 +77,7 @@ def run_watcher(config: dict, config_path: Path):
     runs_subdir   = config.get('runs_subdir', 'runs')
     exclude_dirs  = set(config.get('exclude_dirs', []))
     gpg_pass_file = Path(config['gpg_pass_file'])
+    keytab_file   = Path(config['keytab_file']) if config.get('keytab_file') else None
     cern_principal = config['cern_principal']
 
     _XROOTD_URL   = config.get('xrootd_url', 'root://eospublic.cern.ch').rstrip('/')
@@ -137,7 +138,7 @@ def run_watcher(config: dict, config_path: Path):
 
         # --- Kerberos refresh ---
         if now - last_kinit_check >= kinit_interval:
-            ok, method = _refresh_kerberos(cern_principal, gpg_pass_file)
+            ok, method = _refresh_kerberos(cern_principal, keytab_file, gpg_pass_file)
             last_kinit_check = now
             kerberos_ok = ok
             _end_idle()
@@ -270,14 +271,32 @@ def run_watcher(config: dict, config_path: Path):
 # Kerberos
 # ---------------------------------------------------------------------------
 
-def _refresh_kerberos(principal: str, gpg_pass_file: Path) -> tuple:
-    """Try kinit -R first; fall back to GPG-decrypted password re-kinit."""
+def _refresh_kerberos(principal: str, keytab_file: Path, gpg_pass_file: Path) -> tuple:
+    """Keep a valid ticket. Order: renew existing -> keytab (non-interactive,
+    survives reboot) -> GPG-decrypted password (last resort; needs a cached gpg
+    passphrase, so it does NOT work unattended after a reboot)."""
     result = subprocess.run(['kinit', '-R'], capture_output=True)
     if result.returncode == 0:
         return True, 'renewed'
 
+    # Keytab: the reboot-safe path. No password, no gpg-agent, no tty. The
+    # keytab is regenerated with bash_scripts/regen_cern_keytab.sh whenever the
+    # CERN password changes (AD salt is CERN.CHdylan.neff, not the default).
+    if keytab_file and keytab_file.exists():
+        kt = subprocess.run(
+            ['kinit', '-kt', str(keytab_file), principal],
+            capture_output=True,
+        )
+        if kt.returncode == 0:
+            return True, 'keytab kinit'
+        stderr = kt.stderr.decode(errors='replace').strip()
+        # fall through to gpg only if the keytab is stale/wrong
+        keytab_err = f'keytab kinit failed: {stderr}'
+    else:
+        keytab_err = f'keytab not found: {keytab_file}'
+
     if not gpg_pass_file.exists():
-        return False, f'GPG password file not found: {gpg_pass_file}'
+        return False, f'{keytab_err}; GPG password file not found: {gpg_pass_file}'
 
     # Decrypt via gpg-agent — prompts for GPG passphrase via pinentry once per
     # boot; subsequent calls use the cached passphrase from the agent.
