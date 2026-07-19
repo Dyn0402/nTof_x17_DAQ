@@ -233,6 +233,9 @@ marimo/_lsp/
 __marimo__/
 
 # linux-gpib build tree (see he3_pressure_reader/KEITHLEY2000_GPIB_SETUP.md)
+# includes the DKMS staging tree gpib_build/dkms_src/ — regenerable; the durable
+# copy DKMS uses lives in /usr/src, not the repo.
+/gpib_build/
 he3_pressure_reader/gpib_build/
 pressure_reader/gpib_build/
 

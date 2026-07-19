@@ -183,10 +183,29 @@ or add them: `! sudo usermod -aG plugdev $USER` then re-login.)
 ! sudo modprobe ni_usb_gpib && sleep 1 && sudo gpib_config --minor 0 && echo CONFIG_OK && ls -l /dev/gpib0
 ```
 
-**Persistence:** on reboot/replug this is automatic — the module auto-loads because
-`3923p709B` is in `modules.alias`, and a udev rule runs `gpib_config`. Verify with:
+**Persistence (same-kernel reboot):** automatic — the module auto-loads because
+`3923p709B` is in `modules.alias`, and the `99-ni_usb_gpib.rules` udev rule runs
+`gpib_config` when the driver binds. Verify with:
 `grep 3923p709B /lib/modules/$(uname -r)/modules.alias`.
-After a **kernel upgrade**, re-run Step 3 (rebuild + install the kernel module).
+**Gotcha (seen 2026-07-19):** `modules.alias` only gets the entry if `depmod -a` ran
+after `make install`. If auto-load ever fails after a clean reboot, run `sudo depmod -a`.
+
+**Persistence across kernel UPGRADES — use DKMS (durable fix, 2026-07-19).** The
+`.ko` is compiled per-kernel, so a kernel bump (here 6.17.0-35 → 7.0.0-28) leaves the
+module unbuilt for the new kernel → no `/dev/gpib0` → the 3He reader reports
+disconnected. Instead of re-running Step 3 by hand each time, register the source with
+DKMS so it auto-rebuilds on every new kernel:
+
+- A trimmed source tree (only `ni_usb_gpib` + `gpib_common` — `ni_usb_gpib` depends on
+  nothing else — so an unrelated GPIB driver breaking on a future kernel can't block us)
+  plus a `dkms.conf` (`AUTOINSTALL="yes"`) lives in `gpib_build/dkms_src/`.
+- Install/refresh it with `he3_pressure_reader/setup_gpib_dkms.sh` (run as root). It
+  copies the tree to `/usr/src/linux-gpib-kernel-4.3.7`, does `dkms add/build/install`,
+  loads the module, and prints a verification block.
+- Confirm with `dkms status` → `linux-gpib-kernel/4.3.7, <kernel>: installed`.
+- After a kernel upgrade DKMS rebuilds automatically during `apt`; nothing to do. Only
+  if that ever fails (e.g. linux-gpib 4.3.7 doesn't compile against a much newer kernel)
+  fall back to Step 2–3 with a newer linux-gpib release, then re-run the DKMS setup.
 
 ## Step 9 — Find the instrument's GPIB address, then test
 
