@@ -20,13 +20,19 @@ Modes:
   flash_random C = or_veto(pulser)    flash + 30 ms-gated random pulser
                D = OR(lemo0, lemo1)
   scint        C = or_veto(Singles and/or Doubles)   scintillator trigger
-               D = OR(lemo1)
+               D = OR(lemo1)  [+ lemo0 PS/flash if --ps-pickup]
+
+--ps-pickup ORs the PS/gamma-flash line (M4.D lemo0) into the scint trigger so a
+run fires on Doubles OR a beam pickup. The PS leg carries its own G&D delay on
+M4.D in0 (set separately via set_ps_trigger_delay.py) so the flash co-frames with
+the scint pulse in the same DREAM window — 1800 ns puts the flash at ~smp 13 next
+to the doubles MM pulse at ~11 (latency 35, 32 smp; measured 2026-07-19).
 
 Usage:
   trigger_mode.py status
   trigger_mode.py flash
   trigger_mode.py flash_random [--pulser-lemo N]
-  trigger_mode.py scint [--singles | --doubles | --both]
+  trigger_mode.py scint [--singles | --doubles | --both] [--ps-pickup]
 
 Every write is read-back verified; C/D config before+after is appended to
 snapshots/trigger_mode_log.jsonl.
@@ -179,7 +185,9 @@ def status():
         if dl == [0]:
             guess = "flash"
         elif dl == [0, 1]:
-            guess = "flash_random" if c == [PULSER_LEMO] else "flash+C(?)"
+            guess = {"[4]": "flash_random", "[1]": "scint(doubles)+ps",
+                     "[0]": "scint(singles)+ps", "[0, 1]": "scint(both)+ps"}.get(
+                         str(c), f"flash+C({c})?")
         elif dl == [1]:
             guess = {"[0]": "scint(singles)", "[1]": "scint(doubles)",
                      "[0, 1]": "scint(both)"}.get(str(c), f"scint? C={c}")
@@ -198,6 +206,9 @@ def main():
     g.add_argument("--both", action="store_true", help="scint: Singles|Doubles (default)")
     ap.add_argument("--pulser-lemo", type=int, default=PULSER_LEMO,
                     help=f"flash_random: C lemo of the M6.D pulser (default {PULSER_LEMO})")
+    ap.add_argument("--ps-pickup", action="store_true",
+                    help="scint: also OR-in the PS/gamma-flash line (M4.D lemo0) -> D=OR([0,1]); "
+                         "co-frame via set_ps_trigger_delay.py")
     args = ap.parse_args()
 
     try:
@@ -211,7 +222,10 @@ def main():
         if args.mode == "scint":
             c = [1] if args.doubles else ([0] if args.singles else [0, 1])
             tag = "doubles" if args.doubles else ("singles" if args.singles else "both")
-            return apply(f"scint({tag})", c, [1])
+            d = [0, 1] if args.ps_pickup else [1]
+            if args.ps_pickup:
+                tag += "+ps"
+            return apply(f"scint({tag})", c, d)
     except BoardBusyError as e:
         print(f"!! board in use by another process: {e}", file=sys.stderr)
         print("   aborted — wait for it to finish, do NOT force.", file=sys.stderr)

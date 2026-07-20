@@ -18,54 +18,68 @@ PROJECT       = 'beam_july'
 BASE_DATA_DIR = f'{BASE_DISK}{PROJECT}/'
 
 # ===========================================================================
-# run_52 — GAS-CHANGE monitoring run: RANDOM trigger at FIXED resist HV while
-# the gas transitions Ar/Iso 95/5 -> 90/10 (2026-07-17). Resist voltages are
-# PINNED at the 95/5 operational maxima and held fixed across the whole run so
-# the detector response (pedestal/noise + gain-on-tracks) can be tracked as the
-# gas composition changes. NO HV scan this run.
-#   Physics/safety: Garfield says 90/10 needs ~+72 V for equal gain vs 95/5
-#   (see run-iso-equivalence-comparison / detD-hv-95-5 memories), so holding
-#   resist at the 95/5 max while switching to 90/10 makes gain -- and spark
-#   risk -- DROP as the gas transitions. Safe direction.
-# GAS: switched to Ar/Iso 90/10 (from 95/5).
-# RESIST (FIXED): A/B/C = 480 V (95/5 operational max = top of the run_49/51
-#   scan); det D = 460 V (DET_D_OFFSET below A/B/C; 460 V is D's spark-safe max).
-# DRIFT (FIXED): B/C/D = 800 V; det A = 550 V (sparks at 800 V in 95/5,
-#   2026-07-17 midday -- kept at 550 V until investigated).
+# run_57 — RANDOM pulser + gamma-flash trigger (flash_random) + SINGLE-PASS resist
+# HV scan in Ar/Iso 90/10 (2026-07-19). A quick random-trigger scan of the high
+# resist values just probed in run_56: the Poisson pulser samples the detector
+# response (flat pedestal at random times) as the resist HV steps down finely.
 #
-#   Mode 2 trigger, RANDOM pulser + gamma flash (RUN_MODES_2026-07.md §1.2,
-#   `flash_random`): M4.C = or_veto(lemo4 = M6.D ~667 Hz Poisson pulser),
-#   gated by the 30 ms N93B veto window; M4.D = OR(lemo0 = flash, lemo1 = C-out).
-#   The 30 ms gate (~1 % duty) turns the 667 Hz pulser into a comfortable
-#   ~5-6 Hz average of DREAM triggers. Random events read out flat pedestal at
-#   a random time (uncorrelated -> latency irrelevant for them); the flash
-#   events (~0.29 Hz) mark beam pulses and are framed by latency 5.
-#   32 samples x 60 ns (1.92 us window), LATENCY 5 (Mode 2 canonical: flash
-#   peak ~= latency + 13).
+# GAS: Ar/Iso 90/10 (still flowing 10.0 % iso). NO Pb filter (beam_filter='none').
+#
+# TRIGGER: RANDOM pulser + gamma flash (Mode 2 flash_random, RUN_MODES §1.2).
+#   -- M4.C = or_veto(lemo4 = M6.D ~667 Hz Poisson pulser), gated by the 30 ms
+#   N93B window;
+#   -- M4.D = OR(lemo0 = PS/gamma-flash line, lemo1 = C-out).
+#   The 30 ms gate (~1 % duty) turns the 667 Hz pulser into ~5-6 Hz average DREAM
+#   triggers; random events read flat pedestal at an uncorrelated time (latency
+#   irrelevant for them), the flash events (~0.29 Hz) mark beam pulses.
+#   32 samples x 60 ns (1.92 us window), LATENCY 5 (flash peak ~= latency + 8).
+#   IMPORTANT: the M4.D in0 PS-leg G&D delay (added for run_56 doubles+PS co-framing)
+#   is DISABLED for this mode, so at latency 5 the flash frames normally.
+#   THRESHOLDS + DELAYS: the standing post-FIFO front-end config is ALREADY on
+#   the boards and is what this run uses -- M1 walls +25/+35/+34/+36 mV (Y88
+#   half-MIP, adopted 2026-07-19; was +15/+16/+15/+16); M2 plastics
+#   -65/-78/-86/-83 mV (0.5-MIP Y88, adopted 2026-07-19; was -30/-30/-30/-38;
+#   M2 D1 broken, wall D dead <= -24 mV); M3 wall-leg (ch0) G&D delay +20 ns all
+#   sectors. NOTE: canonical dump
+#   n1081b/snapshots/dump_2026-07-18_postfifo_canonical.json predates the 07-19
+#   wall+plastic+HV changes (still records +15/+16 walls, -30/-38 plastics, old
+#   HV) -- do not blindly restore onto M1/M2.
 #   STATIC board settings, applied ONCE before the run:
 #     .venv/bin/python n1081b/trigger_mode.py flash_random
-#   Verify with `.venv/bin/python n1081b/trigger_mode.py status` before
-#   starting DAQ (expect "flash_random"). Confirm the M6.D pulser is running
-#   at the design 1.5 ms Poisson period (do NOT set period 150 ms -- silently
-#   kills the output; see RUN_MODES §1.2).
-#
+#     .venv/bin/python n1081b/set_pulser.py                 # M6.D Poisson 1.5 ms / width 100
+#     .venv/bin/python n1081b/set_ps_trigger_delay.py --delay 0 --disable
+#   Verify with `.venv/bin/python n1081b/trigger_mode.py status` before starting DAQ
+#   (expect C fn=or_veto lemos=[4], D lemos=[0, 1] -> "flash_random") and
+#   `set_pulser.py --show` (expect freq_type=1 Poisson, period=1500000, width=100).
 #   Mesh grounded/disconnected -- n1081b_scan stays 'off' (no inline
-#   trigger/mesh modulation, no cycling; do NOT start n1081b_scan_watcher.py).
+#   trigger/mesh modulation; do NOT start n1081b_scan_watcher.py).
 #
-#   STRUCTURE: 24 x 60 min sub-runs = 24 h, all at the SAME fixed HV. Chunked
-#   so resume re-takes only an interrupted hour and files stay manageable; the
-#   run auto-caps at 24 h but is expected to be STOPPED MANUALLY.
+# HV SCAN (SINGLE PASS): resist dets A/B/C (card 5 ch 1-3) step DOWN 580 -> 520 V
+#   in -2 V steps (31 points), top-first, ONE pass -- the run is STOPPED MANUALLY
+#   (the 520 V floor is just ample runway). Det D (card 5 ch 4) tracks 10 V BELOW
+#   A/B/C at every point (570 -> 510) -- D is the spark-prone detector. Drift held
+#   FIXED: B/C/D = 800 V, det A = 600 V (spark-safe).
+#   Physics/safety: same high resist range as run_56. In 90/10 Garfield puts 580 V
+#   resist ~= 508 V-equiv in 95/5 (+72 V iso), i.e. ABOVE the old 95/5 beam-off
+#   resist ceiling estimate (~490 A/B/C, ~475 D) -- deliberate; det D kept 10 V
+#   lower + drift fixed as the hedge. Watch resist current on the high-V points.
+#
+# SCINT PMT HV: plastic (card 07) + liquid (card 08) PMT bias held at the
+#   already-configured 2026-07-18 equalized setpoints (merged into every sub-run).
+#
+#   STRUCTURE: 31 x 5 min sub-runs (~2.6 h of runway), stopped MANUALLY.
 # ===========================================================================
 OVERHEAD_MIN = 1      # per-subrun ramp poll + DAQ prep + inter-subrun wait
 
-RESIST_ABC    = 480   # V, resist dets A/B/C (card 5 ch 1-3) -- 95/5 operational max, held FIXED
-DET_D_OFFSET  = 20    # V, det D resist runs this many volts BELOW A/B/C (-> 460 V, D spark-safe max)
+# SINGLE descending resist ladder (V): A/B/C step from the top DOWN in -RESIST_STEP
+# steps; det D tracks DET_D_OFFSET below A/B/C at every point (D is spark-prone).
+# One pass, top-first — the run is stopped MANUALLY (floor is just ample runway).
+RESIST_LADDER = list(range(580, 520 - 1, -2))  # [580, 578, ..., 520] -- 31 points (A/B/C), -2 V
+DET_D_OFFSET  = 10    # V, det D resist held this far BELOW A/B/C at every scan point (570->510)
 DRIFT_BCD     = 800   # V, drift dets B/C/D (card 9 ch 1-3), held FIXED
-DRIFT_A       = 550   # V, drift det A ONLY (card 9 ch 0) -- sparks at 800 V in 95/5
-                      # (2026-07-17 midday, run_50 sub-run 00); held at 550 V until investigated
-RUN_HOURS     = 24    # total run length; expected to be stopped MANUALLY
-SUBRUN_MIN    = 60    # minutes per sub-run (fixed HV; chunked for resume + file size)
-N_SUBRUNS     = RUN_HOURS * 60 // SUBRUN_MIN  # = 24
+DRIFT_A       = 600   # V, drift det A ONLY (card 9 ch 0) -- spark-safe (sparked at 800 V in 95/5)
+SUBRUN_MIN    = 5     # minutes per sub-run (standard flash/random cadence, run_41/42/47)
+N_SUBRUNS     = len(RESIST_LADDER)  # single pass, no cycling (manual stop)
 
 POST_PAUSE_S = 0  # no inline scan control in play this run; nothing to re-apply between sub-runs.
 
@@ -134,7 +148,7 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_52'  # Gas-change RANDOM-trigger monitoring run (Mode 2 flash_random): resist FIXED at 95/5 maxima (A/B/C 480 V, D 460 V), drift 800 V B/C/D + 550 V det A (spark), gas switched to 90/10, 24 x 60 min = 24 h, manual stop
+        self.run_name = 'run_57'  # RANDOM pulser + gamma-flash trigger (flash_random, Mode 2) + SINGLE-PASS resist HV scan A/B/C 580->520 V (-2 V, 31 pts), det D 10 V lower (570->510), drift 800 V B/C/D + 600 V det A, Ar/Iso 90/10, no Pb filter, 5 min sub-runs, manual stop
         self.base_out_dir = BASE_DATA_DIR
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
@@ -161,7 +175,7 @@ class Config(RunConfigBase):
         # self.gas = 'He/Eth 96.5/3.5'  # Gas type for run
         # self.gas = 'Ne/Iso 95/5'  # Gas type for run
         # self.beam_type = 'cosmics'
-        self.beam_type = 'neutrons'  # noqa: keep
+        self.beam_type = 'neutrons'  # noqa: keep — beam back 2026-07-18
         # self.beam_type = 'cosmics+beam'
         # self.beam_type = 'bi-207'
         # self.beam_type = 'cs-137'
@@ -181,21 +195,24 @@ class Config(RunConfigBase):
         self.beam_filter = 'none'
         # self.trigger = "Det 3 SiPM Wall + Det 3 Scint"
         # self.trigger = "PS Pickup"
-        self.trigger = ("External (N1081B M4.D out0): RANDOM pulser + gamma flash "
-                        "(M4.C = or_veto(lemo4 = M6.D ~667 Hz Poisson pulser), gated by the "
-                        "30 ms N93B window; M4.D = OR(lemo0 = flash, lemo1 = C-out)) — Mode 2 "
-                        "'flash_random' of RUN_MODES_2026-07.md. The 30 ms gate turns the "
-                        "667 Hz pulser into ~5-6 Hz average DREAM triggers; random events read "
-                        "out flat pedestal at random times, flash events (~0.29 Hz) mark beam "
-                        "pulses. Static setup via n1081b/trigger_mode.py flash_random. Mesh "
-                        "grounded/disconnected. NO beamline filter (20 mm Pb removed "
-                        "2026-07-17). GAS-CHANGE MONITORING: gas switched to Ar/Iso 90/10, "
-                        "resist HELD FIXED at the 95/5 operational maxima (A/B/C 480 V, det D "
-                        "460 V = 20 V below, D spark-safe max); drift 800 V B/C/D, det A drift "
-                        "550 V (sparks at 800 V, lowered 2026-07-17). 24 x 60 min = 24 h at "
-                        "fixed HV, manual stop. 32 smp x 60 ns (1.92 us window), latency 5 "
-                        "(Mode 2 canonical; flash peak ~= latency + 13, random events "
-                        "latency-independent).")
+        self.trigger = ("External (N1081B M4.D out0): RANDOM pulser + gamma flash (flash_random, "
+                        "Mode 2 of RUN_MODES_2026-07.md) — M4.C = or_veto(lemo4 = M6.D ~667 Hz "
+                        "Poisson pulser), gated by the 30 ms N93B window; M4.D = OR(lemo0 = PS/gamma-"
+                        "flash line, lemo1 = C-out). The 30 ms gate (~1 % duty) turns the 667 Hz "
+                        "pulser into ~5-6 Hz average DREAM triggers; random events read out flat "
+                        "pedestal at an uncorrelated time (latency irrelevant for them), the flash "
+                        "events (~0.29 Hz) mark beam pulses. Static setup via n1081b/trigger_mode.py "
+                        "flash_random + n1081b/set_pulser.py (M6.D Poisson period 1.5 ms, width 100); "
+                        "the M4.D in0 PS-leg G&D delay is DISABLED for this mode (set_ps_trigger_delay.py "
+                        "--delay 0 --disable) so the flash frames at latency 5 (flash peak ~= latency "
+                        "+ 8). Front-end THRESHOLDS + DELAYS = the standing post-FIFO config (M1 walls "
+                        "+25/+35/+34/+36 mV Y88 half-MIP adopted 07-19; M2 plastics -65/-78/-86/-83 mV 0.5-MIP Y88 adopted 07-19, M2 D1 broken so wall D "
+                        "dead <= -24 mV; M3 wall-leg G&D delay +20 ns), already on the boards. Mesh "
+                        "grounded/disconnected. NO beamline filter. SINGLE-PASS resist HV scan: A/B/C "
+                        "step 580->520 V (-2 V, 31 pts) top-first, det D 10 V lower (570->510); one "
+                        "5 min sub-run/point, stopped MANUALLY; drift FIXED 800 V B/C/D + 600 V det A. "
+                        "Scint PMT bias (plastics card 07 / liquids card 08) held at the 2026-07-18 "
+                        "equalized setpoints. 32 smp x 60 ns (1.92 us window), latency 5.")
 
         self.dream_daq_info = {
             'ip': '192.168.10.8',
@@ -208,7 +225,7 @@ class Config(RunConfigBase):
             'run_directory': f'/home/mx17/july_dream/dream_run/{self.run_name}/',
             'data_out_dir': f'{self.run_out_dir}',
             'raw_daq_inner_dir': self.raw_daq_inner_dir,
-            'n_samples_per_waveform': 32,  # flash_random config (Mode 2): 32 x 60 ns = 1920 ns window
+            'n_samples_per_waveform': 32,  # scint config (Mode 3): 32 x 60 ns = 1920 ns window
             'go_timeout': 5 * 60,  # Seconds to wait for 'Go' response from RunCtrl before assuming failure
             'max_run_time_addition': 60 * 5,  # Seconds to add to requested run time before killing run
             'copy_on_fly': True,  # True to copy raw data to out dir during run, False to copy after run
@@ -217,12 +234,18 @@ class Config(RunConfigBase):
             'pedestals_dir': f'{self.base_out_dir}pedestals/',  # None to ignore, else top directory for pedestal runs
             'pedestals': 'latest',  # 'latest' for most recent, otherwise specify directory name, eg "pedestals_10-22-25_13-43-34"
             'latency': 5,   # flash_random value (Mode 2, RUN_MODES_2026-07.md): frames the
-                            # flash events (flash peak ~= latency + 13, i.e. samples ~16-20;
-                            # det A rails from ~11). Random pulser events are uncorrelated so
-                            # latency is irrelevant for them (flat pedestal).
+                            # flash events (flash peak ~= latency + 8, measured 2026-07-19).
+                            # Random pulser events are uncorrelated -> latency irrelevant (flat
+                            # pedestal). NOTE: M4.D in0 PS-leg delay is DISABLED for this mode.
             'sample_period': 60,  # ns (20 or 60)
             # No daq_run_events cap: runs are purely time-based (5 min sub-runs), like run_15.
             'zs_check_sample': 4,  # Number of samples to read out beyond threshold crossing
+            'inter_packet_delay': 100,  # Feu_InterPacket_Delay (template default 100). Dominant
+                            # knob for per-event deadtime / sustained-rate ceiling
+                            # (dead ~= 1 us * IPD * NbOfSamples/32). SAFETY: low IPD is ONLY safe
+                            # with ZS (mostly-empty packets); Raw/full readout (this run) needs
+                            # IPD >= ~75. ZS beam runs set this to 2 (k8) on the SSD write path.
+                            # See docs/live_zs_run_sources_2026-07-19.md + zs_ipd_safety findings.
             # Full 4-detector readout auto-derived from included detectors (all four = Dat). External
             # trigger, so no trigger FEU (nTof multiplicity path is unused here).
             'set_feus_from_detectors': True,
@@ -273,20 +296,23 @@ class Config(RunConfigBase):
         # carry the fixed HV point and a global index k so resume re-takes only an
         # interrupted hour.
         def _drift():
-            # card 9 ch 0-3 = drifts A/B/C/D; A pinned to DRIFT_A (sparks at 800 V)
+            # card 9 ch 0-3 = drifts A/B/C/D; A held at DRIFT_A, B/C/D at DRIFT_BCD
             return {'0': DRIFT_A, '1': DRIFT_BCD, '2': DRIFT_BCD, '3': DRIFT_BCD}
 
-        def _resist():
-            # card 5 ch 1-4 = det A/B/C/D; D runs DET_D_OFFSET volts below A/B/C
-            return {'1': RESIST_ABC, '2': RESIST_ABC, '3': RESIST_ABC, '4': RESIST_ABC - DET_D_OFFSET}
+        def _resist(v):
+            # card 5 ch 1-4 = det A/B/C/D; A/B/C at ladder point v, det D at v - DET_D_OFFSET
+            return {'1': v, '2': v, '3': v, '4': v - DET_D_OFFSET}
 
+        # Cyclical scan: step DOWN RESIST_LADDER (560->520), then repeat from the
+        # top, one 10 min sub-run per point for N_SUBRUNS total. Names carry the
+        # resist point, the fixed drift, the pass index (cNN) and a global index
+        # kkk so resume re-takes only an interrupted point.
         self.sub_runs = []
-        for k in range(N_SUBRUNS):
+        for k, v in enumerate(RESIST_LADDER):
             self.sub_runs.append({
-                'sub_run_name': (f'gaschg_A{fmt_v(RESIST_ABC)}_D{fmt_v(RESIST_ABC - DET_D_OFFSET)}'
-                                 f'_dr{DRIFT_BCD}_dA{fmt_v(DRIFT_A)}_{k:02d}'),
+                'sub_run_name': f'frand_r{fmt_v(v)}_dr{DRIFT_BCD}dA{fmt_v(DRIFT_A)}_{k:02d}',
                 'run_time': SUBRUN_MIN, 'post_pause_s': POST_PAUSE_S,
-                'hvs': {'5': _resist(), '9': _drift()},
+                'hvs': {'5': _resist(v), '9': _drift()},
             })
 
 
@@ -673,7 +699,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {'x': -118.07, 'y': 0, 'z': 425.22},  # mm
                 'det_orientation': {'x': 0, 'y': 0, 'z': 0},  # deg (+Z normal, arm A)
                 'hv_channels': {'bias': (7, 0)},  # CAEN 07.000 PLASTIC_A_L
-                'hv_setpoint': 1303,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
+                'hv_setpoint': 1237,  # V (Y88 equalized 2026-07-19; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSA', 'detn': 1},
             },
             {
@@ -684,7 +710,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {'x': 85.37, 'y': 0, 'z': 425.22},  # mm
                 'det_orientation': {'x': 0, 'y': 0, 'z': 0},  # deg (+Z normal, arm A)
                 'hv_channels': {'bias': (7, 1)},  # CAEN 07.001 PLASTIC_A_R
-                'hv_setpoint': 1242,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
+                'hv_setpoint': 1177,  # V (Y88 equalized 2026-07-19; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSA', 'detn': 2},
             },
             {
@@ -695,7 +721,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {'x': -422.72, 'y': 0, 'z': -117.47},  # mm
                 'det_orientation': {'x': 0, 'y': -90, 'z': 0},  # deg (-X normal, arm B)
                 'hv_channels': {'bias': (7, 2)},  # CAEN 07.002 PLASTIC_B_L
-                'hv_setpoint': 1376,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
+                'hv_setpoint': 1440,  # V (Y88 equalized 2026-07-19; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSB', 'detn': 1},
             },
             {
@@ -706,7 +732,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {'x': -422.72, 'y': 0, 'z': 85.97},  # mm
                 'det_orientation': {'x': 0, 'y': -90, 'z': 0},  # deg (-X normal, arm B)
                 'hv_channels': {'bias': (7, 3)},  # CAEN 07.003 PLASTIC_B_R
-                'hv_setpoint': 1279,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
+                'hv_setpoint': 1248,  # V (Y88 equalized 2026-07-19; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSB', 'detn': 2},
             },
             {
@@ -717,7 +743,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {'x': 119.02, 'y': 0, 'z': -423.22},  # mm
                 'det_orientation': {'x': 0, 'y': 180, 'z': 0},  # deg (-Z normal, arm C)
                 'hv_channels': {'bias': (7, 4)},  # CAEN 07.004 PLASTIC_C_L
-                'hv_setpoint': 1180,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
+                'hv_setpoint': 1214,  # V (Y88 equalized 2026-07-19; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSC', 'detn': 1},
             },
             {
@@ -728,7 +754,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {'x': -84.42, 'y': 0, 'z': -423.22},  # mm
                 'det_orientation': {'x': 0, 'y': 180, 'z': 0},  # deg (-Z normal, arm C)
                 'hv_channels': {'bias': (7, 5)},  # CAEN 07.005 PLASTIC_C_R
-                'hv_setpoint': 1307,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
+                'hv_setpoint': 1312,  # V (Y88 equalized 2026-07-19; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSC', 'detn': 2},
             },
             {
@@ -739,7 +765,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {'x': 426.72, 'y': 0, 'z': 117.22},  # mm
                 'det_orientation': {'x': 0, 'y': 90, 'z': 0},  # deg (+X normal, arm D)
                 'hv_channels': {'bias': (7, 6)},  # CAEN 07.006 PLASTIC_D_L
-                'hv_setpoint': 1303,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
+                'hv_setpoint': 1331,  # V (Y88 equalized 2026-07-19; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSD', 'detn': 1},
             },
             {
@@ -750,7 +776,7 @@ class Config(RunConfigBase):
                 'det_center_coords': {'x': 426.72, 'y': 0, 'z': -86.22},  # mm
                 'det_orientation': {'x': 0, 'y': 90, 'z': 0},  # deg (+X normal, arm D)
                 'hv_channels': {'bias': (7, 7)},  # CAEN 07.007 PLASTIC_D_R
-                'hv_setpoint': 1417,  # V (set 2026-07-18 GUI; 250 uA limit, crate-managed)
+                'hv_setpoint': 1448,  # V (Y88 equalized 2026-07-19; 250 uA limit, crate-managed)
                 'ntof_daq': {'tree': 'PSSD', 'detn': 2},
             },
 
@@ -894,20 +920,23 @@ if __name__ == '__main__':
     n_pts = len(config.sub_runs)
     print(f'Gas: {config.gas}   Beam: {config.beam_type}   Target: {config.target_type}')
     print(f'Beam filter: {getattr(config, "beam_filter", "none")}')
-    print(f'Run: {config.run_name}  — GAS-CHANGE random-trigger monitoring, all 4 detectors, FIXED HV')
+    print(f'Run: {config.run_name}  — RANDOM pulser + gamma-flash trigger (flash_random) + SINGLE-PASS resist HV scan')
     print(f'Trigger: {config.trigger}')
-    print(f'DAQ: {ns} smp x {sp} ns = {ns*sp} ns window, latency {lat}; RESIST FIXED '
-          f'{RESIST_ABC} V A/B/C (det D {RESIST_ABC-DET_D_OFFSET} V), drift '
-          f'{DRIFT_BCD} V B/C/D + {DRIFT_A} V det A (spark-limited); held constant across '
-          f'{N_SUBRUNS} x {SUBRUN_MIN} min = {RUN_HOURS} h (manual stop).')
+    print(f'DAQ: {ns} smp x {sp} ns = {ns*sp} ns window, latency {lat}; RESIST SCAN '
+          f'A/B/C {RESIST_LADDER[0]}->{RESIST_LADDER[-1]} V (-2 V, {len(RESIST_LADDER)} pts), '
+          f'det D {DET_D_OFFSET} V lower ({RESIST_LADDER[0]-DET_D_OFFSET}->{RESIST_LADDER[-1]-DET_D_OFFSET}), '
+          f'single pass; drift FIXED {DRIFT_BCD} V B/C/D + {DRIFT_A} V det A; '
+          f'{N_SUBRUNS} x {SUBRUN_MIN} min = {N_SUBRUNS*SUBRUN_MIN/60:.1f} h runway, manual stop.')
     print('*** PRE-RUN: apply the STATIC flash_random trigger once — '
           '.venv/bin/python n1081b/trigger_mode.py flash_random (M4.C = or_veto(lemo4 = M6.D '
-          '~667 Hz Poisson pulser), 30 ms N93B veto gate; M4.D = OR(lemo0 = flash, lemo1 = '
-          'C-out)). Verify with n1081b/trigger_mode.py status before starting DAQ (expect '
-          '"flash_random"); confirm the M6.D pulser is at the 1.5 ms Poisson period (do NOT '
-          'set period 150 ms — it silently kills the output). Mesh grounded — nothing else to '
-          'set. n1081b_scan is "off": no inline trigger/mesh modulation. Do NOT run '
-          'n1081b_scan_watcher.py during the run. ***')
+          'pulser), 30 ms N93B veto gate; M4.D = OR(lemo0 = PS/flash, lemo1 = C-out)), then '
+          '.venv/bin/python n1081b/set_pulser.py (M6.D Poisson 1.5 ms / width 100) and '
+          '.venv/bin/python n1081b/set_ps_trigger_delay.py --delay 0 --disable (drop the run_56 '
+          'PS-leg delay). Verify with n1081b/trigger_mode.py status (expect "flash_random") and '
+          'set_pulser.py --show (period=1500000, freq_type=1) before starting DAQ. Front-end '
+          'thresholds/delays = the standing post-FIFO config already on the boards (canonical '
+          'dump_2026-07-18_postfifo_canonical.json). Mesh grounded. n1081b_scan is "off": no '
+          'inline trigger/mesh modulation. Do NOT run n1081b_scan_watcher.py during the run. ***')
     print(f'resume={getattr(config, "resume", False)}: sub-runs with a .subrun_complete '
           'marker are shown [done] and skipped.\n')
 

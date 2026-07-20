@@ -49,14 +49,14 @@ HV_CREDS_PATH = os.path.join(REPO_ROOT, 'hv_creds.txt')
 # 2026-07-16) is what the 07-17 night scans up to 02:21 ran on — do not restore
 # it without redoing the M2 threshold ladder.
 SCINT_CHANNELS = [
-    {'name': 'plastic_A_L', 'slot': 7, 'channel': 0, 'nominal_v': 1303},
-    {'name': 'plastic_A_R', 'slot': 7, 'channel': 1, 'nominal_v': 1242},
-    {'name': 'plastic_B_L', 'slot': 7, 'channel': 2, 'nominal_v': 1376},
-    {'name': 'plastic_B_R', 'slot': 7, 'channel': 3, 'nominal_v': 1279},
-    {'name': 'plastic_C_L', 'slot': 7, 'channel': 4, 'nominal_v': 1180},
-    {'name': 'plastic_C_R', 'slot': 7, 'channel': 5, 'nominal_v': 1307},
-    {'name': 'plastic_D_L', 'slot': 7, 'channel': 6, 'nominal_v': 1303},
-    {'name': 'plastic_D_R', 'slot': 7, 'channel': 7, 'nominal_v': 1417},
+    {'name': 'plastic_A_L', 'slot': 7, 'channel': 0, 'nominal_v': 1237},
+    {'name': 'plastic_A_R', 'slot': 7, 'channel': 1, 'nominal_v': 1177},
+    {'name': 'plastic_B_L', 'slot': 7, 'channel': 2, 'nominal_v': 1440},
+    {'name': 'plastic_B_R', 'slot': 7, 'channel': 3, 'nominal_v': 1248},
+    {'name': 'plastic_C_L', 'slot': 7, 'channel': 4, 'nominal_v': 1214},
+    {'name': 'plastic_C_R', 'slot': 7, 'channel': 5, 'nominal_v': 1312},
+    {'name': 'plastic_D_L', 'slot': 7, 'channel': 6, 'nominal_v': 1331},
+    {'name': 'plastic_D_R', 'slot': 7, 'channel': 7, 'nominal_v': 1448},
 ]
 
 # What to leave the channels at when the scan finishes or is Ctrl-C'd:

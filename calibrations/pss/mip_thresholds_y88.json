@@ -1,0 +1,66 @@
+{
+  "provenance": {
+    "run": "y88_fifo (predicted); equalized per hv_equalization_y88_fifo.json",
+    "exported": "2026-07-19",
+    "source": "nTof_x17/mx_july_beam_qa (scripts 23d/23h/23i)",
+    "method": "Plastic MIP PREDICTED from the Y-88 absolute scale (no clean triple-MIP exists - see y88_report discrepancy). After Y-88-edge equalization the 699 keVee edge = 31.2 mV on every PMT, so gain = 44.6 mV/MeVee and a 3.4 MeV MIP (Landau MPV, 2 cm PVT) sits at ~152 mV.",
+    "caveats": [
+      "MIP is PREDICTED, not measured - re-take a low-rate/prompt-beam MIP run to confirm and replace mip_peak_mV_fleet",
+      "nonlinearity: equalized at 0.699 MeV, so the MIP (3.4 MeV) is uniform only to ~+-12%; arm A/DL run ~15-20% low (per_pmt below). Use per_pmt.half_mip_mV for a uniform TRIGGER point.",
+      "thresholds are digitizer-equivalent mV; map to hardware discriminator units."
+    ]
+  },
+  "equalized_699kevee_mV": 31.2,
+  "equalized_gain_mV_per_MeVee": 44.6,
+  "mip_energy_MeV": 3.4,
+  "mip_peak_mV_fleet": 152,
+  "scaling": "threshold_mV = fraction * mip_peak_mV. HOW TO SCALE TOGETHER: mip_peak_mV moves with the global gain g set via pss/global_gain_slide_y88_fifo.csv, i.e. mip_peak_mV(g) = 152 * g. So pick a fraction of MIP and, whenever you change g, re-set threshold = fraction * 152 * g.",
+  "threshold_x_mip_fleet_mV": {
+    "0.3": 46,
+    "0.5": 76,
+    "0.7": 106,
+    "1.0": 152
+  },
+  "per_pmt": {
+    "PSSA1": {
+      "caen": "7:0",
+      "mip_peak_mV": 127,
+      "half_mip_mV": 63
+    },
+    "PSSA2": {
+      "caen": "7:1",
+      "mip_peak_mV": 135,
+      "half_mip_mV": 67
+    },
+    "PSSB1": {
+      "caen": "7:2",
+      "mip_peak_mV": 167,
+      "half_mip_mV": 84
+    },
+    "PSSB2": {
+      "caen": "7:3",
+      "mip_peak_mV": 142,
+      "half_mip_mV": 71
+    },
+    "PSSC1": {
+      "caen": "7:4",
+      "mip_peak_mV": 177,
+      "half_mip_mV": 88
+    },
+    "PSSC2": {
+      "caen": "7:5",
+      "mip_peak_mV": 171,
+      "half_mip_mV": 85
+    },
+    "PSSD1": {
+      "caen": "7:6",
+      "mip_peak_mV": 132,
+      "half_mip_mV": 66
+    },
+    "PSSD2": {
+      "caen": "7:7",
+      "mip_peak_mV": 166,
+      "half_mip_mV": 83
+    }
+  }
+}

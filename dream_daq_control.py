@@ -78,6 +78,12 @@ def main():
                         effective_latency = effective_info.get('latency', None)
                         effective_sample_period = effective_info.get('sample_period', None)
                         effective_daq_run_events = effective_info.get('daq_run_events', None)
+                        effective_inter_packet_delay = effective_info.get('inter_packet_delay', None)
+                        effective_multipack_thr = effective_info.get('multipack_thr', None)
+                        effective_multipack_enb = effective_info.get('multipack_enb', None)
+                        effective_sparse_rd = effective_info.get('sparse_rd', None)
+                        effective_rdclk_div = effective_info.get('rdclk_div', None)
+                        effective_trig_veto_len = effective_info.get('trig_veto_len', None)
                         effective_included_feus = effective_info.get('included_feus', None)
                         effective_feu_connectors = effective_info.get('feu_connectors', None)
                         effective_trigger_feu = effective_info.get('trigger_feu', None)
@@ -105,7 +111,13 @@ def main():
                             effective_included_feus, effective_feu_connectors, effective_trigger_feu,
                             do_pedestal_threshold_run=effective_do_pedestal_threshold_run,
                             do_data_run=effective_do_data_run, sample_period=effective_sample_period,
-                            daq_run_events=effective_daq_run_events)
+                            daq_run_events=effective_daq_run_events,
+                            inter_packet_delay=effective_inter_packet_delay,
+                            multipack_thr=effective_multipack_thr,
+                            multipack_enb=effective_multipack_enb,
+                            sparse_rd=effective_sparse_rd,
+                            rdclk_div=effective_rdclk_div,
+                            trig_veto_len=effective_trig_veto_len)
                         shutil.copy(cfg_run_path, sub_run_out_raw_inner_dir)
 
                         if effective_pedestals_dir is not None:
@@ -547,7 +559,9 @@ def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time
                               common_noise_subtraction=None, zs_type=None, zs_check_sample=None,
                               latency=None, included_feus=None, feu_connectors=None, trigger_feu=None,
                               do_pedestal_threshold_run=None, do_data_run=None, sample_period=None,
-                              daq_run_events=None):
+                              daq_run_events=None, inter_packet_delay=None,
+                              multipack_thr=None, multipack_enb=None, sparse_rd=None, rdclk_div=None,
+                              trig_veto_len=None):
     print('Making config file from template...')
     dest = run_dir
     cfg_file_name = os.path.basename(cfg_template_file_path)
@@ -592,6 +606,43 @@ def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time
         # Per-FEU event cap. RunCtrl stops the data run at whichever comes FIRST: this many
         # events/FEU or Sys DaqRun Time (RunCtrlMain.c TestFun_TakeData). 0 = infinite.
         updates["Sys DaqRun Events"] = int(daq_run_events)
+    if inter_packet_delay is not None:
+        # Per-FEU inter-packet delay (Feu_InterPacket_Delay), template default 100.
+        # Sets the gap between UDP data packets a FEU emits -> the dominant knob for the
+        # per-event deadtime / sustained-rate ceiling (dead ~= 1 us * IPD * NbOfSamples/32;
+        # see docs/live_zs_run_sources_2026-07-19.md, zs_ipd_safety FINDINGS_2026-07-18).
+        # SAFETY: low IPD is only safe with ZS (mostly-empty packets); Raw/full-readout
+        # needs IPD >= ~75 or the 1 GbE wire/host buffers overflow. Leave None to keep the
+        # template's 100. ZS beam runs use 2 (k8) on the SSD write path.
+        updates["Feu * Feu_InterPacket_Delay"] = int(inter_packet_delay)
+    if multipack_thr is not None:
+        # UdpChan_MultiPackThr: bytes accumulated before a packed UDP datagram ships
+        # (MultiPackEnb=1). Never splits a packet; raising it toward the FEU 8192 frame
+        # cap packs fuller / fewer datagrams. Above MTU-MaxDataPacketSize the last add can
+        # overrun the frame -> last packet dropped (comb study 2026-07-19). See
+        # Documents/dream project note dream-jumbo-network-tuning.
+        updates["Feu * UdpChan_MultiPackThr"] = int(multipack_thr)
+    if multipack_enb is not None:
+        updates["Feu * UdpChan_MultiPackEnb"] = _to_bit(multipack_enb)
+    if sparse_rd is not None:
+        # Main_Conf_SparseRd (0x100004 bits 19:17): 0 = read all samples, n=[1..7] skip n
+        # samples in the SCA readout. Shortens the analog readout deadtime (the flash comb)
+        # while keeping the window SPAN, at coarser time resolution. Comb study 2026-07-19.
+        updates["Feu * Main_Conf_SparseRd"] = int(sparse_rd)
+    if rdclk_div is not None:
+        # DrmClk RdClk_Div = TrigClock/RdClk read-clock divisor (valid [2..6], 0.5 steps).
+        # LOWER = faster SCA readout = shorter deadtime (the flash comb), but the DREAM RCk is
+        # specced to 20 MHz and phases (WrClk_Phase/AdcClk_Phase) are tuned for the nominal
+        # divisor — faster is the manual's "delicate" region: VERIFY decoded data sanity
+        # (baseline ~256, no DreamRdErr). Overrides the sample_period-derived RdClk_Div; WrClk
+        # (sampling period) is left untouched. Comb study 2026-07-19.
+        updates["Feu * DrmClk RdClk_Div"] = f'{float(rdclk_div)}'
+    if trig_veto_len is not None:
+        # Trig_Conf_TrigVetoLen (TrigGen CSR 0xE00000): per-trigger dead window in trigger-clock
+        # periods (10-bit, max 1023 ≈ 8-10 µs). Rejects a new trigger within this window of the
+        # previous one — kills close-spaced re-triggers ("ringing"), e.g. the ~5 µs-spaced γ-flash
+        # burst. Cost: also drops genuine physics triggers closer than the window. Comb study 2026-07-19.
+        updates["Feu * Trig_Conf_TrigVetoLen"] = int(trig_veto_len)
     if do_pedestal_threshold_run is not None:
         updates["Sys Action PedThrRun"] = _to_bit(do_pedestal_threshold_run)
     if do_data_run is not None:

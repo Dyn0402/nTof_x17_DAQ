@@ -1,0 +1,84 @@
+{
+  "provenance": {
+    "run": "y88_fifo (Y-88 source runs 224476-79; FIFO gain curves + per-PMT FIFO factor from HV scan 224489)",
+    "exported": "2026-07-19",
+    "source": "nTof_x17/mx_july_beam_qa (scripts 21/22/23d/23h)",
+    "method": "ABSOLUTE Y-88 699 keVee Compton-edge equalization for the CURRENT (FIFO) readout. Each PMT 699 keVee edge (measured BNC-T, x per-PMT FIFO factor 1.13-1.65) is slid along its own FIFO gain-vs-V power law to a common target that keeps the fleet-mean HV unchanged.",
+    "hv_state": "v_now = current fixed operating point (= the 224466 BNC-T median equalization, pss/hv_equalization_run224466.json v_suggested); FIFO readout, SiPM gating ON",
+    "caveats": [
+      "Equalizes gain at the 0.699 MeV edge. Response is NOT perfectly linear, so the MIP (3.4 MeV) and trigger point (~1.7 MeV) are only equalized to ~+-12% RMS (arm A/DL ~15-30% below B/C/D at MIP scale). MIP spread improves ~1.8x -> ~1.4x.",
+      "Trigger fires ~1.7 MeV, above the 0.699 MeV equalization energy; for a <5%-uniform trigger point equalize at MIP/median scale (run224466 observable) or keep per-PMT thresholds.",
+      "FIFO factor = linear energy-independent analog gain (224466 BNC-T vs 224489 FIFO coincident medians).",
+      "power laws valid 1200-1600 V; BL/DR at 1440/1448 near the top.",
+      "re-derive after any PMT/base/FIFO change or re-take a quick Y-88."
+    ]
+  },
+  "target_699kevee_mv_fifo": 31.2,
+  "target_rationale": "geometric-mean-preserving: fleet-mean HV kept at 1301 V (overall gain unchanged, only rebalanced); absolute anchor = Y-88 699 keVee line.",
+  "pmts": {
+    "PSSA1": {
+      "v_now": 1303,
+      "edge699_now_mv_fifo": 44.7,
+      "n": 6.94,
+      "v_suggested": 1237,
+      "dv": -66,
+      "caen": "7:0"
+    },
+    "PSSA2": {
+      "v_now": 1242,
+      "edge699_now_mv_fifo": 41.0,
+      "n": 5.08,
+      "v_suggested": 1177,
+      "dv": -65,
+      "caen": "7:1"
+    },
+    "PSSB1": {
+      "v_now": 1376,
+      "edge699_now_mv_fifo": 24.7,
+      "n": 5.19,
+      "v_suggested": 1440,
+      "dv": 64,
+      "caen": "7:2"
+    },
+    "PSSB2": {
+      "v_now": 1279,
+      "edge699_now_mv_fifo": 37.2,
+      "n": 7.1,
+      "v_suggested": 1248,
+      "dv": -31,
+      "caen": "7:3"
+    },
+    "PSSC1": {
+      "v_now": 1180,
+      "edge699_now_mv_fifo": 28.1,
+      "n": 3.8,
+      "v_suggested": 1214,
+      "dv": 34,
+      "caen": "7:4"
+    },
+    "PSSC2": {
+      "v_now": 1307,
+      "edge699_now_mv_fifo": 30.4,
+      "n": 6.64,
+      "v_suggested": 1312,
+      "dv": 5,
+      "caen": "7:5"
+    },
+    "PSSD1": {
+      "v_now": 1303,
+      "edge699_now_mv_fifo": 27.6,
+      "n": 5.77,
+      "v_suggested": 1331,
+      "dv": 28,
+      "caen": "7:6"
+    },
+    "PSSD2": {
+      "v_now": 1417,
+      "edge699_now_mv_fifo": 27.2,
+      "n": 6.39,
+      "v_suggested": 1448,
+      "dv": 31,
+      "caen": "7:7"
+    }
+  }
+}

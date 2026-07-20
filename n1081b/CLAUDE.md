@@ -53,12 +53,19 @@ Runtime state lives in `config/n1081b_access/` (gitignored):
 Quick check: `python -c "from n1081b.n1081b_session import quarantine_status; print(quarantine_status('192.168.10.244'))"`.
 
 ## Current board state (update when it changes)
-- **Standing front-end config since 2026-07-17 night (post-FIFO recalibration):**
-  M1 walls +15/+16/+15/+16 mV; M2 plastics −30/−30/−30/−38 mV (**M2 D1 broken —
-  wall D dead ≤ −24 mV, never shallower than ~−36**); M3 wall-leg (ch0) G&D
-  delay **+20 ns** all sectors (scint leg 0, gates 20 ns). Canonical restore
-  point: `snapshots/dump_2026-07-18_postfifo_canonical.json`. **Do NOT restore
+- **Standing front-end config (post-FIFO; walls + plastic HV updated 2026-07-19):**
+  M1 walls **+25/+35/+34/+36 mV** (Y88 half-MIP, `daq/calibrations/wal_trigger/
+  thresholds_halfMIP_run224503.json`, adopted 2026-07-19; **was +15/+16/+15/+16**);
+  M2 plastics **−65/−78/−86/−83 mV** (0.5-MIP Y88, `daq/calibrations/pss/
+  mip_thresholds_y88.json` per-arm avg of the two bars, D=D_R only; adopted
+  2026-07-19, **was −30/−30/−30/−38**) (**M2 D1 broken — wall D dead ≤ −24 mV, never
+  shallower than ~−36**); M3 wall-leg (ch0) G&D delay **+20 ns** all sectors
+  (scint leg 0, gates 20 ns). Plastic PMT HV = **Y88 equalized set** (see memory
+  `plastic-hv-y88-equalization`; NOT the run224466 set). **Do NOT restore
   any pre-07-18 dump onto M1/M2/M3** — stale ~2×-shallow thresholds + delay=0.
+  ⚠ The canonical dump `snapshots/dump_2026-07-18_postfifo_canonical.json`
+  predates the 07-19 change — it still records walls +15/+16/+15/+16 (and old
+  plastic HV); do NOT blindly restore it onto M1 or re-snapshot before updating.
   Details: `HANDOFF_2026-07-17_night_trigger_scans.md`, `RUN_MODES_2026-07.md` §top.
 - `.244` (M5): **fully HEALTHY** (2026-07-17 midday: power-cycled at closeout, standard
   cabling, all four sections `counter` + verified counting, login 0.06 s). The
