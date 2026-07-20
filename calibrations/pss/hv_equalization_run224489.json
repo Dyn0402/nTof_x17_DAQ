@@ -1,0 +1,76 @@
+{
+  "provenance": {
+    "run": "run224489",
+    "exported": "2026-07-18",
+    "source": "nTof_x17/mx_july_beam_qa (cache 12_hvscan; scripts 12/12b/12c); HV log ~/beam_july/scint_hv_scan/2026-07-16_13-32-34_plastic_scan_1/",
+    "method": "wall-tagged coincident plastic spectra (+-8 ns calibrated window, sideband-subtracted); observable = spectrum median. Scan: all 8 PMTs at common V, 9 proton-gated steps 1200-1600 V in two interleaved passes, + pre-scan (1500 V) and post-scan (nominal) windows.",
+    "hv_state": "operating point after the scan: AL 1325, AR 1275, BL 1325, others 1300 V; SiPM flash gating ON in pass 2 and after",
+    "caveats": [
+      "medians are a RELATIVE gain standard, not a MIP energy scale \u2014 the plastic sits behind the wall, so the wall tag does not select plastic MIPs; absolute calibration awaits the LIQ triple coincidence",
+      "power laws validated only inside the scanned 1200-1600 V range; settings outside are extrapolation",
+      "pass 1 = flash gating OFF, pass 2 = ON; the two passes give consistent gain fits, so curves are usable regardless of gating state",
+      "PSSC1 (C-L) has the lowest index (n~4.8) and visibly flattens above ~1500 V \u2014 avoid running it high",
+      "re-derive after PMT/base hardware changes: 12_plastic_hv_scan.py + this export"
+    ]
+  },
+  "target_adc": 2089.2,
+  "target_rationale": "geometric mean of the 8 responses at the current operating point \u2014 equalize around where we already run, minimal net HV movement; NOT rate-derived (no plateau exists) and not an absolute energy target",
+  "pmts": {
+    "PSSA1": {
+      "v_now": 1325,
+      "median_now_adc": 2787.0,
+      "n": 6.94,
+      "v_suggested": 1271,
+      "dv": -54
+    },
+    "PSSA2": {
+      "v_now": 1275,
+      "median_now_adc": 2717.3,
+      "n": 5.08,
+      "v_suggested": 1211,
+      "dv": -64
+    },
+    "PSSB1": {
+      "v_now": 1325,
+      "median_now_adc": 1517.2,
+      "n": 5.19,
+      "v_suggested": 1409,
+      "dv": 84
+    },
+    "PSSB2": {
+      "v_now": 1300,
+      "median_now_adc": 2583.0,
+      "n": 7.1,
+      "v_suggested": 1262,
+      "dv": -38
+    },
+    "PSSC1": {
+      "v_now": 1300,
+      "median_now_adc": 3244.6,
+      "n": 3.8,
+      "v_suggested": 1158,
+      "dv": -142
+    },
+    "PSSC2": {
+      "v_now": 1300,
+      "median_now_adc": 2163.2,
+      "n": 6.64,
+      "v_suggested": 1293,
+      "dv": -7
+    },
+    "PSSD1": {
+      "v_now": 1300,
+      "median_now_adc": 1556.2,
+      "n": 5.77,
+      "v_suggested": 1368,
+      "dv": 68
+    },
+    "PSSD2": {
+      "v_now": 1300,
+      "median_now_adc": 1119.5,
+      "n": 6.39,
+      "v_suggested": 1433,
+      "dv": 133
+    }
+  }
+}
