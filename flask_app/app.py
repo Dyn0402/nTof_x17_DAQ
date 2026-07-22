@@ -1309,6 +1309,12 @@ def monitor_bot_info():
 
 # Network interfaces and physical disks to report I/O rates for.
 # NICs are labelled by interface name; disks map to the SSD/HDD usage bars.
+#
+# ⚠ Since the 2026-07-22 NIC swap these two names mean the opposite of what they used to:
+# enp4s0 is now the 10 GbE AQC113 carrying DREAM/FEU readout (was CERN), and eno1 is now
+# the onboard I219-LM carrying CERN (was DREAM). The list itself needs no edit; the
+# interpretation of the plots does. See docs/network_upgrade_10g/05_as_built_2026-07-22.md §3
+# and KEEP IN SYNC with system_monitor/system_stats_controller.py.
 _NET_IFACES = ["enp4s0", "eno1"]
 _DISK_DEVS = {"ssd": "sdb", "hdd": "sda"}  # sdb2 -> /, sda4 -> /mnt/data
 

@@ -2544,7 +2544,10 @@ function sysTrim() {
 }
 
 // Prefill the buffer from the watcher's logged CSVs so the plots come up populated
-// instead of filling in live. Runs once at load, before live polling starts.
+// instead of filling in live. Runs at load, and again whenever the tab regains
+// visibility: browsers throttle the live setInterval to ~1/min in a backgrounded
+// tab, so the "while you were away" stretch comes back at 1-minute spacing. The CSV
+// holds that same span at 2 Hz, so re-seeding backfills the gap at full resolution.
 async function sysSeedHistory() {
     try {
         const res = await fetch('/system_stats/history?minutes=' + (SYS_WINDOW_MS / 60000));
@@ -2558,8 +2561,15 @@ async function sysSeedHistory() {
             netRx: d.net_rx[i], netTx: d.net_tx[i],
             diskR: d.disk_r[i], diskW: d.disk_w[i],
         }));
-        // Prepend logged history ahead of anything already collected live this session.
-        sysSamples.unshift(...seeded);
+        // Merge logged history with anything collected live this session, ordered by
+        // time and deduped into 500 ms buckets (the CSV sample period). Seeded points
+        // are written last so the dense on-disk samples win over sparse throttled ones.
+        const merged = new Map();   // bucket key -> sample
+        const bucket = s => Math.round(s.t.getTime() / 500);
+        for (const s of sysSamples) merged.set(bucket(s), s);
+        for (const s of seeded) merged.set(bucket(s), s);
+        sysSamples.length = 0;
+        sysSamples.push(...[...merged.values()].sort((a, b) => a.t - b.t));
         sysTrim();
         sysDrawPlots();
     } catch (e) { /* silent */ }
@@ -2718,6 +2728,12 @@ sysSeedHistory().finally(() => {
 // so the plots size correctly once the container has real dimensions.
 document.querySelector('a[href="#overview"]')
     .addEventListener('shown.bs.tab', sysDrawPlots);
+
+// Returning to a backgrounded tab: re-seed from the 2 Hz CSV to backfill the gap the
+// throttled (~1/min) live poll left behind.
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) sysSeedHistory();
+});
 
 
 // ---------------------------------------------------------------------------
