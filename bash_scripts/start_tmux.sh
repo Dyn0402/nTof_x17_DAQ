@@ -20,10 +20,16 @@ hist=${3:-5000}
 cols=$4
 rows=$5
 
-# Check if tmux session already exists
+# Check if tmux session already exists.
+# `exit`, NOT `return`: this script is EXECUTED (bash_scripts/start_tmux.sh ...), not
+# sourced, and bash refuses `return` outside a function — it printed an error, carried
+# on, and `send-keys` then typed the command into the ALREADY-RUNNING pane, i.e. straight
+# into the live program's stdin (RunCtrl, hv_control, ...) while reporting "✅ Started".
+# That made re-running start_servers.sh to fill a post-reboot gap actively dangerous.
+# Fixed 2026-07-22.
 if tmux has-session -t "$name" 2>/dev/null; then
-    echo "❌ Tmux session '$name' already exists!"
-    return 1
+    echo "❌ Tmux session '$name' already exists — leaving it alone."
+    exit 1
 fi
 
 # A pane captures history-limit at the moment it is created, so set the

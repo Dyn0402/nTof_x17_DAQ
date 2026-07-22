@@ -30,8 +30,10 @@ import requests
 from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_daq_control_status, get_processor_watcher_status,
                         get_qa_watcher_status, get_gas_watcher_status,
-                        get_beam_watcher_status, get_run_progress, status_field,
-                        GAS_STATE_FILE, BEAM_STATE_FILE)
+                        get_backup_watcher_status,
+                        get_beam_watcher_status, get_stream1_watcher_status,
+                        get_run_progress, status_field,
+                        GAS_STATE_FILE, BEAM_STATE_FILE, STREAM1_STATE_FILE)
 
 TELEGRAM_URL = "https://api.telegram.org/bot{token}/{method}"
 
@@ -143,6 +145,12 @@ class DaqMonitor:
         "rule_gas_watcher_dead": "gas_watcher is back up.",
         "rule_beam_watcher_dead": "beam_watcher is back up.",
         "rule_beam_off": "n_TOF beam is back.",
+        "rule_stream1_watcher_dead": "stream1_watcher is back up.",
+        "rule_backup_watcher_dead": "backup_watcher is back up — runs are reaching EOS again.",
+        "rule_processor_watcher_dead": "processor_watcher is back up.",
+        "rule_qa_watcher_dead": "qa_watcher is back up.",
+        "rule_stream1_files_reduced": "n_TOF stream1 file sizes are back to the full level.",
+        "rule_stream1_detector_gain": "n_TOF detector gains are back at nominal.",
         "rule_gas_flow_starved": "gas flow is back to normal.",
         "rule_ssd_disk_space": "SSD (/) disk space is back to normal.",
         "rule_hdd_disk_space": "HDD (/mnt/data) disk space is back to normal.",
@@ -604,6 +612,172 @@ class DaqMonitor:
         if severity:
             return severity, f"n_TOF beam has been OFF for {gap_min:.0f} min."
         return False, f"beam on (last pulse {gap:.0f}s ago)"
+
+    def rule_stream1_watcher_dead(self):
+        """Alert if the stream1 file-size watcher is not running or not producing fresh
+        EOS listings — in that state rule_stream1_files_reduced below is blind. 'No EOS'
+        is usually an expired Kerberos ticket, the same one the backup watcher needs."""
+        info = get_stream1_watcher_status()
+        status = info["status"]
+        if status == "STOPPED":
+            return True, "stream1_watcher is not running — SiPM-wall dropout monitoring is down."
+        if status == "No EOS":
+            return True, ("stream1_watcher is up but EOS listings are failing — "
+                          "likely an expired Kerberos ticket (kinit on the DAQ PC).")
+        if status == "Stale":
+            return True, "stream1_watcher is not publishing fresh state (state file is stale)."
+        return False, f"stream1_watcher: {status}"
+
+    def rule_backup_watcher_dead(self):
+        """Alert if the EOS backup watcher is not running, or is up but failing to
+        authenticate or transfer — in that state completed runs stop reaching EOS and
+        only the local copies exist.
+
+        Added 2026-07-22: this watcher is not part of the boot script's original set, so
+        every reboot left it down with nothing noticing. Of the GUI-started watchers it
+        is the one with real data-loss exposure, so it alerts by default."""
+        info = get_backup_watcher_status()
+        status = info["status"]
+        if status == "STOPPED":
+            return True, "backup_watcher is not running — completed runs are NOT reaching EOS."
+        if status == "Auth Error":
+            return True, ("backup_watcher cannot authenticate to EOS — expired/broken Kerberos "
+                          "ticket (kinit -kt ~/.keytab/mx17_cern.keytab dneff@CERN.CH).")
+        if status == "rsync Error":
+            return True, "backup_watcher's last transfer FAILED — runs may not be reaching EOS."
+        if status == "Waiting for Dir":
+            return True, "backup_watcher is up but its source directory does not exist."
+        return False, f"backup_watcher: {status}"
+
+    def rule_processor_watcher_dead(self):
+        """Alert if the decoding/processing watcher is not running — decoded output and
+        everything downstream of it (online QA) silently stops advancing.
+
+        Disabled by default: this watcher is legitimately stopped by hand during studies,
+        and its failure only delays work rather than losing data. Enable it in the GUI if
+        you want a reboot/crash backstop."""
+        info = get_processor_watcher_status()
+        status = info["status"]
+        if status == "STOPPED":
+            return True, "processor_watcher is not running — runs are not being decoded."
+        if status == "Waiting for Dir":
+            return True, "processor_watcher is up but its runs directory does not exist."
+        return False, f"processor_watcher: {status}"
+
+    def rule_qa_watcher_dead(self):
+        """Alert if the online-QA watcher is not running — QA plots stop being produced
+        for new subruns.
+
+        Disabled by default, for the same reason as rule_processor_watcher_dead: it is
+        routinely stopped on purpose and nothing is lost, only delayed."""
+        info = get_qa_watcher_status()
+        status = info["status"]
+        if status == "STOPPED":
+            return True, "qa_watcher is not running — online QA plots are not being produced."
+        if status == "Waiting for Dir":
+            return True, "qa_watcher is up but its QA directory does not exist."
+        return False, f"qa_watcher: {status}"
+
+    def rule_stream1_files_reduced(self):
+        """Alert when n_TOF stream1 raw files have been arriving well below their
+        recent size — the signature of a SiPM wall dropping out (the 07-21/22 episodes
+        roughly halved the stream volume for hours). Size is a proxy for total hit
+        multiplicity, so this says 'something stopped contributing hits', not which
+        wall; confirm per-channel before acting.
+
+        Tunable via rule_options.rule_stream1_files_reduced in monitor_config.json:
+          thresholds  — {severity: episode_length_in_files} gradient, e.g.
+                        {"warning": 5, "alert": 20}. Highest reached severity wins.
+                        Files arrive every ~70 s, so 5 files ≈ 6 min.
+
+        The episode length counted here is the watcher's: a trailing run of not-good
+        files containing at least one BAD one, so a marginal (questionable) file in
+        the middle of a dropout neither starts nor resets it.
+        """
+        opts = self.config.get("rule_options", {}).get("rule_stream1_files_reduced", {})
+        thresholds = opts.get("thresholds") or {"warning": 5, "alert": 20}
+        try:
+            with open(STREAM1_STATE_FILE) as f:
+                st = json.load(f)
+        except Exception:
+            return False, "stream1 state not available (watcher not running)"
+        if not st.get("connected"):
+            return False, "stream1 watcher disconnected (covered by rule_stream1_watcher_dead)"
+        # A beam gap empties the files exactly like a dead detector would (07-22:
+        # 0.1-0.4 GiB files through the 14:19-14:29 gap). The watcher grades those
+        # NO_BEAM and keeps them out of episodes, so this only needs to say so.
+        if st.get("state") == "no_beam":
+            return False, "no beam — file sizes not gradeable"
+        n = st.get("episode_files") or 0
+        if not n:
+            return False, (f"stream1 files nominal "
+                           f"({st.get('latest_size_gib')} GiB, {st.get('state')})")
+
+        severity = None
+        for sev, thr in sorted(thresholds.items(), key=lambda kv: kv[1]):
+            if n >= float(thr):
+                severity = sev
+        if severity:
+            return severity, (
+                f"n_TOF stream1 files reduced for {n} files "
+                f"({st.get('episode_min')} min): {st.get('latest_size_gib')} GiB vs "
+                f"{st.get('baseline_gib')} GiB baseline "
+                f"({100 * (st.get('latest_ratio') or 0):.0f}%). Possible SiPM-wall dropout.")
+        return False, f"{n} reduced file(s) — below the alert threshold"
+
+    def rule_stream1_detector_gain(self):
+        """Alert when a detector's gamma-flash amplitude collapses against its frozen
+        nominal — the direct, per-detector version of rule_stream1_files_reduced.
+
+        The flash is in every proton pulse, so this is an absolute gain reference: on
+        2026-07-22 the four SiPM walls fell to ~2 % of nominal while their baselines
+        and noise were untouched. Unlike the file-size rule this names the detectors,
+        and it fires even when the total stream volume still looks ordinary.
+
+        Tunable via rule_options.rule_stream1_detector_gain in monitor_config.json:
+          severity_bad          — severity when any detector is BAD (< 50 % of
+                                  nominal). Default "alert".
+          severity_questionable — severity when one is only questionable (< 85 %).
+                                  Default "warning".
+        """
+        opts = self.config.get("rule_options", {}).get("rule_stream1_detector_gain", {})
+        try:
+            with open(STREAM1_STATE_FILE) as f:
+                st = json.load(f)
+        except Exception:
+            return False, "stream1 state not available (watcher not running)"
+        if not st.get("connected"):
+            return False, "stream1 watcher disconnected (covered by rule_stream1_watcher_dead)"
+        wf = st.get("waveform")
+        if not wf:
+            return False, "no waveform sample yet"
+        if not wf.get("have_nominal"):
+            return False, "no waveform nominal adopted yet — nothing to compare against"
+        # Without protons there is no gamma flash, so EVERY detector reads ~0 and this
+        # rule would cry facility-wide failure. The watcher detects that from the event
+        # itself (PKUP/PSS/LIQ, the beam witnesses, all dead together) and from the
+        # beam log; a real dropout leaves those witnesses at ~100 %.
+        if wf.get("no_beam"):
+            return False, ("no beam in the sampled event (witnesses "
+                           + ", ".join(f"{d} {100 * r:.1f}%" for d, r in
+                                       list((wf.get("witness_ratios") or {}).items())[:3])
+                           + ") — gains not gradeable")
+
+        def ratios(names):
+            d = wf.get("detectors", {})
+            return ", ".join(f"{n} {100 * (d[n].get('flash_ratio') or 0):.1f}%"
+                             for n in names if n in d)
+
+        bad, quest = wf.get("bad_detectors") or [], wf.get("questionable_detectors") or []
+        where = f"(run {wf.get('run')}_{wf.get('seq')})"
+        if bad:
+            return opts.get("severity_bad", "alert"), (
+                f"n_TOF detector gain COLLAPSED {where}: {ratios(bad)} of nominal. "
+                f"Baseline/noise unchanged means a gain loss, not a dead digitiser.")
+        if quest:
+            return opts.get("severity_questionable", "warning"), (
+                f"n_TOF detector gain low {where}: {ratios(quest)} of nominal.")
+        return False, f"all detectors at nominal gain {where}"
 
     def rule_gas_flow_starved(self):
         """Alert if a gas channel's measured flow stays far below its setpoint while
