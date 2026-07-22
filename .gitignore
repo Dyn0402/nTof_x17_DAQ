@@ -17,6 +17,11 @@ config/pedestal_qa_state.json
 config/processor_config.json
 config/qa_config.json
 config/qa_state.json
+# stream1 watcher: published state, plus the two frozen references it adopts at
+# runtime (operator-refreezable from the GUI, so they are local state, not source).
+config/stream1_filesize_state.json
+config/stream1_size_nominal.json
+config/stream1_waveform_nominal.json
 config/json_run_configs/
 run_config_beam.py.beam_backup
 runctrl_test/

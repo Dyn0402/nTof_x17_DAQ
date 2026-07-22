@@ -217,6 +217,7 @@
               <button id="gas-watcher-toggle" class="btn btn-info btn-sm">Start Gas Watcher</button>
               <button id="he3-pressure-watcher-toggle" class="btn btn-info btn-sm">Start 3He Pressure Watcher</button>
               <button id="beam-watcher-toggle" class="btn btn-info btn-sm">Start Beam Watcher</button>
+              <button id="stream1-watcher-toggle" class="btn btn-info btn-sm">Start Stream1 Watcher</button>
               <button id="n1081b-timetag-watcher-toggle" class="btn btn-info btn-sm">Start M5 Time-Tag Watcher</button>
               <button id="rerun-qa" class="btn btn-outline-warning btn-sm ms-auto">Rerun QA</button>
             </div>
@@ -710,6 +711,198 @@
         </div>
         <div class="panel-body">
           <div id="beam-plot" style="width:100%;height:380px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- File Sizes tab: n_TOF stream1 raw-file sizes as a SiPM-wall liveness proxy -->
+<div class="tab-pane fade" id="stream1-size">
+  <div class="row g-3">
+    <!-- Current state -->
+    <div class="col-12 col-xl-4">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">n_TOF Stream QA</span>
+          <span id="s1-conn" class="ms-auto panel-header-note">…</span>
+        </div>
+        <div class="panel-body">
+          <div class="run-stats mb-0">
+            <div class="stat">
+              <div class="stat-label">Status</div>
+              <div class="stat-value" id="s1-state-big" style="font-size:1.6rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Newest file</div>
+              <div class="stat-value" id="s1-latest" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <!-- Waveform verdict: what the decoded event says, and about which detectors. -->
+          <div class="run-stats mb-0 mt-2">
+            <div class="stat">
+              <div class="stat-label">Waveform check</div>
+              <div class="stat-value" id="s1-wf-verdict" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Detectors down</div>
+              <div class="stat-value" id="s1-wf-down" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <!-- Beam context: without protons neither layer means anything, so it is
+               stated up front rather than left for the reader to infer. -->
+          <div class="run-stats mb-0 mt-2">
+            <div class="stat">
+              <div class="stat-label">Beam (newest file)</div>
+              <div class="stat-value" id="s1-beam" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <div class="run-stats mb-0 mt-2">
+            <div class="stat">
+              <div class="stat-label">Benchmark (frozen)</div>
+              <div class="stat-value" id="s1-baseline" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Episode</div>
+              <div class="stat-value" id="s1-episode" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <!-- The benchmark is fixed, not a moving average; the suggestion shows what
+               the recent data would give, which is how you spot a run-config change. -->
+          <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+            <span class="text-muted small" id="s1-size-nominal-note">—</span>
+            <input id="s1-size-nominal-value" type="number" step="1" min="1"
+                   class="form-control form-control-sm" style="max-width:6.5rem;"
+                   placeholder="MiB/pulse">
+            <button id="s1-set-size-nominal" class="btn btn-outline-secondary btn-sm">
+              Set benchmark</button>
+          </div>
+          <!-- Last-20-files grade breakdown: the three-way verdict at a glance. -->
+          <div class="mt-3">
+            <div class="stat-label mb-1">Last <span id="s1-recent-n">20</span> files</div>
+            <div class="d-flex gap-2 flex-wrap" id="s1-grade-chips">
+              <span class="badge" id="s1-chip-good"
+                    style="background:rgba(77,171,232,0.16);color:#4dabe8;">good —</span>
+              <span class="badge" id="s1-chip-questionable"
+                    style="background:rgba(224,163,62,0.16);color:#e0a33e;">questionable —</span>
+              <span class="badge" id="s1-chip-bad"
+                    style="background:rgba(224,92,75,0.16);color:#e05c4b;">bad —</span>
+            </div>
+            <div class="progress mt-2" style="height:8px;">
+              <div class="progress-bar" id="s1-bar-good" style="width:0;background:#4dabe8;"></div>
+              <div class="progress-bar" id="s1-bar-questionable" style="width:0;background:#e0a33e;"></div>
+              <div class="progress-bar" id="s1-bar-bad" style="width:0;background:#e05c4b;"></div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="stat-label mb-1">Newest runs</div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0" style="font-size:0.85rem;">
+                <thead><tr><th>run</th><th>files</th><th>median</th><th>good / quest / bad</th></tr></thead>
+                <tbody id="s1-runs"><tr><td colspan="4" class="text-muted">—</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          <p class="text-muted small mb-0 mt-3">
+            Size of each ~70&nbsp;s n_TOF <span class="font-monospace">stream1</span> raw file on
+            read). A SiPM wall dropping out removes its hits and roughly halves the file, so
+            each file is graded <em>per proton pulse</em> (a file holds one event per
+            pulse, so this is what removes the beam) against the typical full level
+            over a trailing window: <span style="color:#4dabe8;">good</span> at or
+            above <span id="s1-q-note">90%</span> of it,
+            <span style="color:#e0a33e;">questionable</span> below that, and
+            <span style="color:#e05c4b;">bad</span> below <span id="s1-ratio-note">75%</span>.
+            Files that saw <span style="color:#6f7c8a;">no beam</span> are not graded at
+            all. Absolute size is not comparable across run configs, hence the moving
+            reference.
+            Times are EOS mtimes (file close), converted from UTC to local. Logged to
+            <span class="font-monospace" id="s1-csv-path">—</span>.
+          </p>
+          <p class="text-muted small mb-0 mt-2">
+            <span id="s1-updated"></span>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-detector waveform verdict -->
+    <div class="col-12 col-xl-8">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Detector Gain vs Nominal</span>
+          <span class="panel-header-note ms-auto d-flex align-items-center gap-2">
+            <span id="s1-wf-source">—</span>
+            <button id="s1-set-nominal" class="btn btn-outline-secondary btn-sm">Set nominal</button>
+          </span>
+        </div>
+        <div class="panel-body">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0" style="font-size:0.85rem;">
+              <thead><tr>
+                <th>detector</th><th>ch</th><th class="text-end">flash</th>
+                <th class="text-end">nominal</th><th style="width:34%;">vs nominal</th>
+                <th class="text-end">ZS blocks</th><th>notes</th>
+              </tr></thead>
+              <tbody id="s1-wf-rows">
+                <tr><td colspan="7" class="text-muted">no waveform sample yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Which detectors are deliberately excluded from grading/alerting. Filled
+               by s1RenderWaveform; hidden only if nothing is excluded. -->
+          <div id="s1-wf-ignored" class="small mt-2" style="color:#8b96a5;display:none;"></div>
+          <p class="text-muted small mb-0 mt-3">
+            Gamma-flash amplitude per detector from the first event of a sampled file,
+            against a frozen healthy reference. The flash is in every proton pulse, so
+            it is an absolute gain reference — a detector that keeps its baseline and
+            noise but loses the flash has lost gain, not statistics. Graded
+            <span style="color:#e05c4b;">bad</span> below 50% of nominal,
+            <span style="color:#e0a33e;">questionable</span> below 85%. Baseline / noise
+            deviations appear in <em>notes</em>: those point at the digitiser or DC
+            path instead. Nominal is never auto-updated, and re-freezing it is refused
+            while the walls are down.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-0">
+    <!-- Waveform trend -->
+    <div class="col-12">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Flash Amplitude vs Nominal — Trend</span>
+          <span class="panel-header-note ms-auto">one point per detector per sampled file</span>
+        </div>
+        <div class="panel-body">
+          <div id="s1-wf-plot" style="width:100%;height:320px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- File-size trend -->
+    <div class="col-12">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Raw File Size vs Time</span>
+          <span class="panel-header-note ms-auto d-flex align-items-center gap-2">
+            <span class="d-none d-md-inline">
+              <span style="color:#4dabe8;">●</span> good
+              <span style="color:#e0a33e;">●</span> questionable
+              <span style="color:#e05c4b;">●</span> bad
+            </span>
+            <select id="s1-hours" class="form-select form-select-sm d-inline-block"
+                    style="width:auto;">
+              <option value="6">last 6 h</option>
+              <option value="24" selected>last 24 h</option>
+              <option value="72">last 3 d</option>
+            </select>
+          </span>
+        </div>
+        <div class="panel-body">
+          <div id="s1-plot" style="width:100%;height:360px;"></div>
         </div>
       </div>
     </div>
@@ -1733,6 +1926,9 @@ const WATCHER_TOGGLES = [
     { name: "beam_watcher", btn: "beam-watcher-toggle", label: "Beam Watcher",
       start: "/start_beam_watcher", stop: "/stop_beam_watcher",
       confirm: "Stop the beam watcher? (n_TOF intensity logging pauses)" },
+    { name: "stream1_watcher", btn: "stream1-watcher-toggle", label: "Stream1 Watcher",
+      start: "/start_stream1_watcher", stop: "/stop_stream1_watcher",
+      confirm: "Stop the stream1 file-size watcher? (SiPM-wall dropout monitoring pauses; it backfills on restart)" },
     { name: "n1081b_timetag_watcher", btn: "n1081b-timetag-watcher-toggle", label: "M5 Time-Tag Watcher",
       start: "/start_n1081b_timetag_watcher", stop: "/stop_n1081b_timetag_watcher",
       confirm: "Stop the M5 time-tag watcher? (.244 wall-timestamp logging pauses; .244 is restored to counter mode)" },
@@ -3111,6 +3307,428 @@ setInterval(() => {
 beamUpdateStatus();
 setInterval(beamUpdateStatus, 5000);
 beamRenderPlot();   // initial draw (Overview is the default-active tab at load)
+
+// ---------------- Stream1 raw-file sizes (SiPM-wall dropout proxy) ----------------
+// Read-only view of what the stream1_watcher process publishes: it owns the EOS
+// polling, the classification, and the CSV; this only renders them.
+
+// One palette for the whole tab: the card chips, the progress bar and the plot
+// markers all use these, so a colour means the same thing everywhere. Matches the
+// offline figures in ~/beam_july/analysis/sipm_wall_filesize/figures/.
+const S1_COLORS = { good: "#4dabe8", questionable: "#e0a33e", bad: "#e05c4b",
+                    no_beam: "#6f7c8a" };
+
+const S1_STATE_TEXT = {
+  // `overall` (worse of size + waveform) uses the grade names; `state` (size layer
+  // alone) uses full/reduced. Both are looked up here.
+  good:         { text: "GOOD",         color: S1_COLORS.good },
+  bad:          { text: "BAD",          color: S1_COLORS.bad },
+  full:         { text: "GOOD",         color: S1_COLORS.good },
+  questionable: { text: "QUESTIONABLE", color: S1_COLORS.questionable },
+  reduced:      { text: "BAD",          color: S1_COLORS.bad },
+  no_beam:      { text: "NO BEAM",      color: S1_COLORS.no_beam },
+  stale:        { text: "NO NEW FILES", color: "#e0a33e" },
+  run_ended:    { text: "RUN ENDED",    color: "var(--muted)" },
+  unknown:      { text: "BASELINING",   color: "var(--muted)" },
+  no_data:      { text: "NO DATA",      color: "var(--muted)" },
+  error:        { text: "NO EOS",       color: S1_COLORS.bad },
+};
+
+async function s1UpdateStatus() {
+  let d;
+  try { d = await (await fetch("/stream1/status")).json(); } catch (e) { return; }
+
+  const conn = document.getElementById("s1-conn");
+  const big = document.getElementById("s1-state-big");
+  const ids = ["s1-latest", "s1-baseline", "s1-episode"];
+
+  if (!d.connected) {
+    conn.textContent = "disconnected" + (d.last_error ? ` — ${String(d.last_error).split("\n")[0]}` : "");
+    conn.style.color = "var(--bad)";
+    const s = S1_STATE_TEXT[d.state] || S1_STATE_TEXT.no_data;
+    big.textContent = s.text;
+    big.style.color = s.color;
+    ids.forEach(id => document.getElementById(id).textContent = "—");
+    document.getElementById("s1-updated").textContent = "";
+    return;
+  }
+  conn.textContent = "connected";
+  conn.style.color = "var(--ok)";
+
+  // Headline is the WORSE of the two layers (d.overall): a detector can be dead in
+  // the waveforms while the file size still looks ordinary.
+  const s = S1_STATE_TEXT[d.overall] || S1_STATE_TEXT[d.state] || S1_STATE_TEXT.unknown;
+  big.textContent = s.text;
+  big.style.color = s.color;
+  s1RenderWaveform(d);
+
+  // Newest file, coloured by its own grade — the single most-asked question.
+  const latest = document.getElementById("s1-latest");
+  latest.textContent =
+    d.latest_size_gib != null
+      ? `${d.latest_size_gib.toFixed(2)} GiB · ${d.latest_ratio != null ? (100 * d.latest_ratio).toFixed(0) + "%" : "—"}`
+        + ` · ${d.minutes_since_file != null ? d.minutes_since_file.toFixed(0) + " min ago" : ""}`
+      : "—";
+  latest.style.color = S1_COLORS[d.latest_grade] || "";
+  // Benchmark is per proton pulse; shown scaled to the current beam so it can be read
+  // straight against the newest file's size.
+  document.getElementById("s1-baseline").textContent =
+    d.baseline_gib != null
+      ? `${d.baseline_gib.toFixed(2)} GiB (cuts ${d.questionable_gib.toFixed(2)} / ${d.threshold_gib.toFixed(2)})`
+        + (d.baseline_per_pulse_gib
+             ? ` · ${(1024 * d.baseline_per_pulse_gib).toFixed(0)} MiB/pulse` : "")
+      : "—";
+
+  // Frozen-vs-suggested benchmark. Drift is the thing to watch: a run-config change
+  // legitimately moves the suggestion, and that is when to re-freeze.
+  const sn = d.size_nominal || {};
+  const noteEl = document.getElementById("s1-size-nominal-note");
+  const sugg = sn.suggestion_per_pulse_gib ? (1024 * sn.suggestion_per_pulse_gib) : null;
+  document.getElementById("s1-size-nominal-value").placeholder =
+    sugg ? `${sugg.toFixed(0)}` : "MiB/pulse";
+  if (sn.unit_mismatch) {
+    noteEl.innerHTML = `<span style="color:${S1_COLORS.questionable};">benchmark was frozen `
+      + `in different units (beam data appeared/disappeared) — re-freeze it</span>`;
+  } else if (!sn.frozen) {
+    noteEl.innerHTML = `<span style="color:${S1_COLORS.questionable};">no fixed benchmark `
+      + `yet — using a trailing average` + (sugg ? `, suggestion ${sugg.toFixed(0)} MiB/pulse` : "")
+      + `</span>`;
+  } else {
+    const drift = sn.drift_pct;
+    const driftCol = drift == null ? "" : (Math.abs(drift) > 15 ? S1_COLORS.questionable : "");
+    noteEl.innerHTML = `frozen ${sn.adopted ? sn.adopted.replace("T", " ") : "—"}`
+      + (sn.run ? ` (run ${sn.run})` : "")
+      + (sugg != null
+           ? ` · now would suggest <span style="color:${driftCol};">${sugg.toFixed(0)} MiB/pulse`
+             + (drift != null ? ` (${drift > 0 ? "+" : ""}${drift}%)` : "") + `</span>`
+           : "");
+  }
+  if (sn.message) noteEl.innerHTML += ` · <em>${sn.message}</em>`;
+  const ep = document.getElementById("s1-episode");
+  ep.textContent = d.episode_files ? `${d.episode_files} files · ${d.episode_min ?? "?"} min` : "none";
+  ep.style.color = d.episode_files ? S1_COLORS.bad : "";
+
+  // Beam context. Sizes are graded PER PROTON PULSE, and files that saw no beam are
+  // not graded at all, so say which of those applies right now.
+  const beam = d.beam || {};
+  const beamEl = document.getElementById("s1-beam");
+  if (!beam.available) {
+    beamEl.textContent = "no beam data — sizes graded raw";
+    beamEl.style.color = S1_COLORS.questionable;
+  } else if (beam.latest_file_pulses == null) {
+    beamEl.textContent = "—";
+    beamEl.style.color = "";
+  } else {
+    const off = beam.latest_file_pulses < (beam.min_pulses_to_grade ?? 3);
+    beamEl.textContent = `${beam.latest_file_pulses} pulses`
+      + (off ? " — NOT graded" : "")
+      + (beam.no_beam_recent ? ` · ${beam.no_beam_recent}/20 beamless` : "");
+    beamEl.style.color = off ? S1_COLORS.no_beam : S1_COLORS.good;
+  }
+
+  // Grade breakdown of the recent window: chips + a stacked bar.
+  const c = d.recent_counts || { good: 0, questionable: 0, bad: 0 };
+  const nRecent = d.n_recent || 0;
+  document.getElementById("s1-recent-n").textContent = nRecent;
+  ["good", "questionable", "bad"].forEach(g => {
+    document.getElementById(`s1-chip-${g}`).textContent = `${g} ${c[g] ?? 0}`;
+    document.getElementById(`s1-bar-${g}`).style.width =
+      nRecent ? `${100 * (c[g] || 0) / nRecent}%` : "0";
+  });
+
+  const tbody = document.getElementById("s1-runs");
+  const cell = (v, g) => `<span style="color:${v ? S1_COLORS[g] : "var(--muted)"};">${v}</span>`;
+  tbody.innerHTML = (d.runs && d.runs.length)
+    ? d.runs.slice().reverse().map(r => {
+        const rc = r.counts || {};
+  if (d.csv_path) document.getElementById("s1-csv-path").textContent = d.csv_path;
+  if (d.reduced_ratio != null)
+    document.getElementById("s1-ratio-note").textContent = `${(100 * d.reduced_ratio).toFixed(0)}%`;
+  if (d.questionable_ratio != null)
+    document.getElementById("s1-q-note").textContent = `${(100 * d.questionable_ratio).toFixed(0)}%`;
+  document.getElementById("s1-updated").textContent =
+    d.timestamp ? `updated ${d.timestamp.split("T")[1] || ""} · polls every ${d.poll_s ?? "?"} s`
+                : "";
+}
+
+// Banner naming the detectors the watcher measures but never grades, so they cannot
+// raise an alert. Grouped by reason: "RAMP channel — ..." collapses RMPA/RMPC/... to
+// one line, which is the thing that was actually asked for.
+function s1RenderIgnored(d, wf) {
+  const box = document.getElementById("s1-wf-ignored");
+  if (!box) return;
+  const byName = (wf && wf.ungraded_detectors) || {};
+  const src = Object.keys(byName).length ? byName : (d.ungraded_prefixes || {});
+  const byReason = {};
+  for (const [name, reason] of Object.entries(src)) (byReason[reason] ||= []).push(name);
+  const parts = Object.entries(byReason).map(([reason, names]) =>
+// Per-detector waveform verdict: the "which detector, by how much" table.
+function s1RenderWaveform(d) {
+  const verdict = document.getElementById("s1-wf-verdict");
+  const down = document.getElementById("s1-wf-down");
+  const src = document.getElementById("s1-wf-source");
+  const tbody = document.getElementById("s1-wf-rows");
+  const wf = d.waveform;
+
+  // Exclusion banner first, so it shows on every path (including "no sample yet" and
+  // "no beam") — an operator must never have to guess whether a detector is being
+  // watched. Names come from the last sample when there is one, prefixes otherwise.
+  s1RenderIgnored(d, wf);
+
+  if (!wf) {
+    verdict.textContent = d.waveform_enabled === false ? "disabled"
+                        : (d.waveform_error ? "error" : "pending…");
+    verdict.style.color = d.waveform_error ? S1_COLORS.bad : "";
+    down.textContent = "—";
+    src.textContent = d.waveform_error || "no sample yet";
+    tbody.innerHTML = `<tr><td colspan="7" class="text-muted">${
+      d.waveform_error || "no waveform sample yet — decoded within a few minutes of new files"}</td></tr>`;
+    return;
+  }
+
+  const g = wf.grade;
+  verdict.textContent = wf.have_nominal
+    ? `${(S1_STATE_TEXT[g] || {}).text || "—"} · ${d.waveform_age_min ?? "?"} min ago`
+    : "no nominal yet";
+  verdict.style.color = S1_COLORS[g] || "";
+
+  // With no proton pulse there is no gamma flash, so every detector reads ~0. Say that
+  // outright — the numbers below are still shown, but they are not a verdict.
+  if (wf.no_beam) {
+    const w = wf.witness_ratios || {};
+    const wtxt = Object.keys(w).slice(0, 3)
+      .map(k => `${k} ${(100 * w[k]).toFixed(1)}%`).join(", ");
+    down.innerHTML = `<span style="color:${S1_COLORS.no_beam};">n/a — no beam</span>`;
+    src.textContent = `run ${wf.run}_${wf.seq} · no proton pulse (${wtxt})`;
+    tbody.innerHTML = `<tr><td colspan="7" style="color:${S1_COLORS.no_beam};">`
+      + `No beam in this event — the flash reference is absent, so gains are not `
+      + `graded. Beam witnesses: ${wtxt}`
+      + (wf.beam_pulses != null ? ` · beam log: ${wf.beam_pulses} pulses` : "")
+      + `</td></tr>`;
+    return;
+  }
+  const bad = wf.bad_detectors || [], quest = wf.questionable_detectors || [];
+  down.innerHTML = bad.length
+    ? `<span style="color:${S1_COLORS.bad};">${bad.join(" ")}</span>`
+    : (quest.length ? `<span style="color:${S1_COLORS.questionable};">${quest.join(" ")}</span>`
+                    : `<span style="color:${S1_COLORS.good};">none</span>`);
+  src.textContent = `run ${wf.run}_${wf.seq} ev ${wf.event}`
+    + (wf.nominal_adopted ? ` · nominal from run ${wf.nominal_run} (${wf.nominal_adopted.replace("T", " ")})` : "");
+
+  // Ratio bar per detector: full width = nominal, so a collapse is unmissable even
+  // at a glance across 16 rows.
+  const dets = wf.detectors || {};
+  tbody.innerHTML = Object.keys(dets).sort().map(name => {
+    const v = dets[name];
+    const r = v.flash_ratio;
+    const col = S1_COLORS[v.grade] || "#6f7c8a";
+    const pct = r == null ? 0 : Math.max(0, Math.min(100, 100 * r));
+    // Deliberately-ungraded detectors (RAMP, pickup) still show their numbers, but are
+    // dimmed and badged so nobody reads a blank grade as "fine" or as a broken nominal.
+    const badge = v.ungraded
+      ? ` <span class="badge bg-secondary" style="font-size:0.6rem;vertical-align:middle;"
+             title="${v.ungraded}">ignored</span>` : "";
+    return `<tr${v.ungraded ? ' style="opacity:0.55;"' : ""}>
+      <td class="text-end font-monospace text-muted">${v.flash_nominal != null ? Math.round(v.flash_nominal).toLocaleString() : "—"}</td>
+      <td>
+        <div class="d-flex align-items-center gap-2">
+          <div class="progress flex-grow-1" style="height:7px;">
+            <div class="progress-bar" style="width:${pct}%;background:${col};"></div>
+          </div>
+// Trend of every detector's flash amplitude as a fraction of nominal.
+async function s1RenderWaveformPlot() {
+  if (typeof Plotly === "undefined") return;
+  const hours = document.getElementById("s1-hours").value || 24;
+  let h;
+  try { h = await (await fetch(`/stream1/waveform_history?hours=${hours}`)).json(); }
+  catch (e) { return; }
+  if (!h || !h.success) return;
+
+  const axis = { gridcolor: '#242e39', zerolinecolor: '#38434f', linecolor: '#38434f' };
+  const names = Object.keys(h.detectors).sort();
+  // Walls first and in strong colour — they are what drops out; the rest are the
+  // reference detectors that prove it is not beam or DAQ, so they sit muted behind.
+  const wallColors = ["#4dabe8", "#5cc98a", "#c98500", "#b07de0"];
+  let wi = 0;
+  const traces = names.map(name => {
+    const isWall = name.startsWith("WAL");
+    const s = h.detectors[name];
+    return {
+      x: s.time, y: s.flash_ratio, name, mode: "lines+markers",
+      line: { color: isWall ? wallColors[wi++ % 4] : "#46525f", width: isWall ? 2 : 1 },
+      marker: { size: isWall ? 5 : 3 },
+      visible: isWall ? true : "legendonly",   // click a legend entry to bring one in
+      hovertemplate: `${name}: %{y:.3f}× nominal<br>%{x}<extra></extra>`,
+    };
+  });
+
+  Plotly.react("s1-wf-plot", traces, {
+    hovermode: "closest",
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: "#8b96a5" }, hoverlabel: { bgcolor: "#1b222b", bordercolor: "#38434f" },
+    legend: { orientation: "h", y: -0.22, yanchor: "top" },
+    margin: { t: 16, r: 24, b: 40, l: 60 }, xaxis: { ...axis },
+    yaxis: { title: { text: "flash / nominal", font: { size: 13, color: "#8b96a5" } },
+             ...axis, rangemode: "tozero" },
+    // The two grading cuts, so the trend is read against the same thresholds as the table.
+    shapes: [
+      { type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: 0.85, y1: 0.85,
+        line: { color: "#8a6a2e", width: 1.2, dash: "dash" } },
+      { type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: 0.5, y1: 0.5,
+        line: { color: "#8f3b32", width: 1.2, dash: "dash" } },
+    ],
+    uirevision: "s1-wf-plot",
+  }, { responsive: true, displaylogo: false });
+}
+
+document.getElementById("s1-set-size-nominal").addEventListener("click", async () => {
+  const raw = document.getElementById("s1-size-nominal-value").value;
+  const body = raw ? { per_pulse_gib: parseFloat(raw) / 1024 } : {};
+  const what = raw ? `${raw} MiB/pulse` : "the level the recent data suggests";
+  if (!confirm(`Freeze the file-size benchmark at ${what}?\n\n`
+             + "Every later file is graded against it until you change it again — so "
+             + "only do this when the stream is known healthy. Re-freeze after a run-"
+             + "configuration change that legitimately alters file size. (The watcher "
+             + "refuses if the waveform layer says a detector is down.)")) return;
+  const r = await fetch("/stream1/set_size_nominal",
+                        { method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(body) });
+  const d = await r.json();
+  showPopup(d.message, d.success ? "#17a2b8" : "#dc3545");
+});
+
+document.getElementById("s1-set-nominal").addEventListener("click", async () => {
+  if (!confirm("Re-freeze the waveform nominal from the newest file?\n\n"
+             + "Only do this when the detectors are known healthy — it becomes the "
+             + "reference every later file is graded against. (The watcher refuses if "
+             + "the walls are down in that file.)")) return;
+  const r = await fetch("/stream1/set_nominal", { method: "POST" });
+  const d = await r.json();
+  showPopup(d.message, d.success ? "#17a2b8" : "#dc3545");
+});
+
+async function s1RenderPlot() {
+  if (typeof Plotly === "undefined") return;
+  const hours = document.getElementById("s1-hours").value || 24;
+  let h;
+  try { h = await (await fetch(`/stream1/history?hours=${hours}&max_points=4000`)).json(); }
+  catch (e) { return; }
+  if (!h || !h.success) return;
+
+  const axis = { gridcolor: '#242e39', zerolinecolor: '#38434f', linecolor: '#38434f' };
+  const n = h.time.length;
+
+  // Faint connecting line, broken across writing gaps > 5 min so a stopped DAQ or an
+  // EOS transfer pause is not drawn as a trend (same treatment as the offline figure).
+  const linkX = [], linkY = [];
+  for (let i = 0; i < n; i++) {
+    if (i && (new Date(h.time[i]) - new Date(h.time[i - 1])) > 5 * 60000) {
+      linkX.push(null); linkY.push(null);
+    }
+    linkX.push(h.time[i]); linkY.push(h.size_gib[i]);
+  }
+
+  // One marker series per grade so the legend doubles as the colour key. Markers,
+  // not lines: files are discrete arrivals.
+  const series = g => {
+    const x = [], y = [], t = [];
+    for (let i = 0; i < n; i++) {
+      if (h.grade[i] === g) {
+        x.push(h.time[i]); y.push(h.size_gib[i]);
+        t.push(`run ${h.run[i]}_${h.seq[i]}` +
+               (h.baseline_gib[i] ? ` · ${(100 * h.size_gib[i] / h.baseline_gib[i]).toFixed(0)}% of baseline` : ""));
+      }
+    }
+    return { x, y, text: t };
+  };
+  const GRADE_LABEL = { good: "good", questionable: "questionable",
+                        bad: "bad (wall dropout level)", no_beam: "no beam (not graded)" };
+  const traces = [
+    { x: linkX, y: linkY, mode: "lines", name: "", showlegend: false, hoverinfo: "skip",
+      line: { color: "#4a5666", width: 1 } },
+    ...["good", "questionable", "bad", "no_beam"].map(g => ({
+      ...series(g), name: GRADE_LABEL[g], type: "scatter", mode: "markers",
+      marker: { color: S1_COLORS[g], size: g === "good" ? 5 : (g === "no_beam" ? 5 : 6.5),
+                symbol: g === "no_beam" ? "circle-open" : "circle",
+                line: { color: g === "no_beam" ? S1_COLORS.no_beam : "#0f141a", width: 0.5 } },
+      hovertemplate: "%{text}<br>%{y:.2f} GiB<br>%{x}<extra></extra>",
+    })),
+  ];
+
+  // The two moving cuts the watcher actually classified each file against (recorded
+  // per file), so the colouring is auditable rather than asserted. The questionable
+  // cut is a robust low-outlier cut, not a fixed fraction, so it must be read from
+  // the data rather than recomputed here. Nulled where no baseline existed yet.
+  const cutLine = (vals, color, label) => ({
+    x: h.time, y: vals.map(v => (v > 0 ? v : null)),
+    name: label, mode: "lines", hoverinfo: "skip",
+    line: { color, width: 1.4, dash: "dash" },
+  });
+  if (h.baseline_gib.some(v => v > 0)) {
+    traces.push(cutLine(h.quest_cut_gib || [], "#8a6a2e", "questionable cut"));
+    traces.push(cutLine(h.bad_cut_gib || [], "#8f3b32",
+                        `bad cut (${(100 * (h.reduced_ratio || 0.75)).toFixed(0)}% of baseline)`));
+  }
+
+  // Shade contiguous bad episodes (>= 3 files, as in the offline analysis) and mark
+  // run boundaries, so hours-long dropouts read as blocks rather than as dot soup.
+  const shapes = [], annotations = [];
+  let i = 0;
+  while (i < n) {
+    if (h.grade[i] === "bad") {
+      let j = i;
+      while (j < n && h.grade[j] !== "good") j++;   // questionable extends, good ends
+      if (j - i >= 3) {
+        shapes.push({ type: "rect", xref: "x", yref: "paper", x0: h.time[i], x1: h.time[j - 1],
+                      y0: 0, y1: 1, fillcolor: "rgba(224,92,75,0.10)", line: { width: 0 },
+                      layer: "below" });
+        const mins = (new Date(h.time[j - 1]) - new Date(h.time[i])) / 60000;
+        if (mins >= 15) {
+          annotations.push({ x: h.time[i + Math.floor((j - i) / 2)], y: 1, yref: "paper",
+                             text: mins >= 90 ? `${(mins / 60).toFixed(1)} h` : `${mins.toFixed(0)} min`,
+                             showarrow: false, font: { size: 10, color: S1_COLORS.bad },
+                             yanchor: "bottom" });
+        }
+      }
+      i = j;
+    } else { i++; }
+  }
+  for (let k = 1; k < n; k++) {
+    if (h.run[k] !== h.run[k - 1]) {
+      shapes.push({ type: "line", xref: "x", yref: "paper", x0: h.time[k], x1: h.time[k],
+                    y0: 0, y1: 1, line: { color: "#5b6875", width: 1, dash: "dot" } });
+      annotations.push({ x: h.time[k], y: 1.02, yref: "paper", text: String(h.run[k]),
+                         showarrow: false, textangle: -90, font: { size: 9, color: "#6f7c8a" },
+                         xanchor: "center", yanchor: "bottom" });
+    }
+  }
+
+  Plotly.react("s1-plot", traces, {
+    hovermode: "closest",
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: "#8b96a5" }, hoverlabel: { bgcolor: "#1b222b", bordercolor: "#38434f" },
+    legend: { orientation: "h", y: -0.18, yanchor: "top" },
+    margin: { t: 34, r: 24, b: 48, l: 60 }, xaxis: { ...axis },
+    yaxis: { title: { text: "stream1 raw file size (GiB)", font: { size: 14, color: "#8b96a5" } },
+             ...axis, rangemode: "tozero" },
+    shapes, annotations,
+    uirevision: "s1-plot",
+  }, { responsive: true, displaylogo: false });
+}
+
+function s1RenderPlots() { s1RenderPlot(); s1RenderWaveformPlot(); }
+
+document.getElementById("s1-hours").addEventListener("change", s1RenderPlots);
+// Plotly can't size a plot in a hidden tab (display:none -> 0 width), so draw on show.
+document.querySelector('a[href="#stream1-size"]')
+  .addEventListener("shown.bs.tab", s1RenderPlots);
+setInterval(() => {
+  if (document.getElementById("stream1-size").classList.contains("active")) s1RenderPlots();
+}, 60000);
+
+s1UpdateStatus();
+setInterval(s1UpdateStatus, 10000);
+s1RenderPlots();  // initial draw; the shown.bs.tab handler re-draws at full width
 
 // ---------------- Module 5 walls (N1081B time-tag watcher) ----------------
 async function n1081bTTUpdateStatus() {

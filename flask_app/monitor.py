@@ -37,6 +37,29 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
 
 TELEGRAM_URL = "https://api.telegram.org/bot{token}/{method}"
 
+_REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def describe_zeroed(zeroed):
+    """Format zeroed channels for an alert, borrowing the watcher's own formatter so
+    the Telegram message and the watcher pane read identically.
+
+    Resolved lazily (as _run_dir does in daq_status) because this module is imported
+    before app.py puts the repo root on sys.path. Falls back to a plain rendering
+    rather than raising: an unavailable import must never be the reason the most
+    severe rule in this file fails to describe its fault.
+    """
+    try:
+        import sys
+        if _REPO_DIR not in sys.path:
+            sys.path.append(_REPO_DIR)
+        from stream1_monitor.stream1_size_controller import (
+            describe_zeroed as _fmt)
+        return _fmt(zeroed)
+    except Exception:
+        return "; ".join(
+            f"{z.get('det')} ch {z.get('chan')} {z.get('kind')}" for z in zeroed)
+
 # Sentinel distinguishing "no per-rule resend override in config" from an
 # override explicitly set to null (which means "never repeat").
 _UNSET = object()
@@ -151,6 +174,8 @@ class DaqMonitor:
         "rule_qa_watcher_dead": "qa_watcher is back up.",
         "rule_stream1_files_reduced": "n_TOF stream1 file sizes are back to the full level.",
         "rule_stream1_detector_gain": "n_TOF detector gains are back at nominal.",
+        "rule_stream1_zeroed_channels": (
+            "n_TOF wall/liquid/plastic channels are producing waveforms again."),
         "rule_gas_flow_starved": "gas flow is back to normal.",
         "rule_ssd_disk_space": "SSD (/) disk space is back to normal.",
         "rule_hdd_disk_space": "HDD (/mnt/data) disk space is back to normal.",
@@ -778,6 +803,67 @@ class DaqMonitor:
             return opts.get("severity_questionable", "warning"), (
                 f"n_TOF detector gain low {where}: {ratios(quest)} of nominal.")
         return False, f"all detectors at nominal gain {where}"
+
+    def rule_stream1_zeroed_channels(self):
+        """EMERGENCY: a wall / liquid / plastic channel is producing no waveform at
+        all — flat samples (RMS ~ 0), or no data bank in the event whatsoever.
+
+        The most severe of the three waveform faults, and the reason it outranks
+        rule_stream1_detector_gain rather than duplicating it:
+
+          gain collapse (that rule)  the channel still works, it lost gain. Data is
+                                     degraded but real, and the run is often still
+                                     worth taking while someone looks at the HV.
+          ZEROED (this rule)         the channel is not there. No noise, no baseline
+                                     wander, nothing — a dead digitiser, a pulled
+                                     cable, an unpowered front-end. Nothing recorded
+                                     on that channel from now until it is fixed is
+                                     recoverable in analysis, so every minute of
+                                     beam spent in this state is lost outright.
+
+        Deliberately NOT suppressed when the beam is off, unlike the gain rule. An
+        absent gamma flash is not evidence of a fault, but a FLAT channel is one
+        whatever the beam is doing — and a beam gap is exactly when a quietly dead
+        front-end would otherwise sit undiscovered until beam returned. The watcher
+        makes the same distinction on noise RMS, which is beam-independent: through
+        the 2026-07-22 gaps every detector's flash fell to ~80 counts while RMS held
+        at 17.9-21.3, and the quietest live channel measured all day was 17.55.
+
+        Tunable via rule_options.rule_stream1_zeroed_channels in monitor_config.json:
+          severity — default "emergency", the top of the SEVERITY_META ladder.
+        """
+        opts = self.config.get("rule_options", {}).get("rule_stream1_zeroed_channels", {})
+        try:
+            with open(STREAM1_STATE_FILE) as f:
+                st = json.load(f)
+        except Exception:
+            return False, "stream1 state not available (watcher not running)"
+        # NB: no `connected` gate here, unlike the sibling stream1 rules. Those read
+        # live EOS listings; this reads the last decoded event, which stays valid
+        # across an EOS blip. A listing failure must not silently disarm the most
+        # severe rule in the file.
+        wf = st.get("waveform")
+        if not wf:
+            return False, "no waveform sample yet"
+        zeroed = wf.get("zeroed_channels")
+        if zeroed is None:
+            return False, "watcher predates zeroed-channel detection — restart it"
+        if not zeroed:
+            return False, "all wall/liquid/plastic channels producing waveforms"
+
+        n_flat = sum(1 for z in zeroed if z.get("kind") == "flatlined")
+        n_gone = sum(z.get("n_missing", 0) for z in zeroed if z.get("kind") == "missing")
+        dets = sorted({z["det"] for z in zeroed})
+        age = st.get("waveform_age_min")
+        return opts.get("severity", "emergency"), (
+            f"n_TOF ZEROED CHANNELS on {', '.join(dets)} "
+            f"(run {wf.get('run')}_{wf.get('seq')}"
+            + (f", sampled {age} min ago" if age is not None else "") + "): "
+            + describe_zeroed(zeroed) + ". "
+            + f"{n_flat} channel(s) flatlined"
+            + (f", {n_gone} absent from the event" if n_gone else "")
+            + ". This is not a gain loss — these channels are recording NOTHING "
+              "and the data is unrecoverable. Check front-end power and cabling.")
 
     def rule_gas_flow_starved(self):
         """Alert if a gas channel's measured flow stays far below its setpoint while
