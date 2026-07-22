@@ -32,6 +32,7 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_qa_watcher_status, get_gas_watcher_status,
                         get_backup_watcher_status,
                         get_beam_watcher_status, get_stream1_watcher_status,
+                        get_space_watcher_status,
                         get_run_progress, status_field,
                         GAS_STATE_FILE, BEAM_STATE_FILE, STREAM1_STATE_FILE)
 
@@ -172,6 +173,8 @@ class DaqMonitor:
         "rule_backup_watcher_dead": "backup_watcher is back up — runs are reaching EOS again.",
         "rule_processor_watcher_dead": "processor_watcher is back up.",
         "rule_qa_watcher_dead": "qa_watcher is back up.",
+        "rule_space_watcher_dead": "space_watcher is back up — the SSD is being pruned again.",
+        "rule_space_watcher_stuck": "SSD space recovered — runs are reaching EOS and can be pruned again.",
         "rule_stream1_files_reduced": "n_TOF stream1 file sizes are back to the full level.",
         "rule_stream1_detector_gain": "n_TOF detector gains are back at nominal.",
         "rule_stream1_zeroed_channels": (
@@ -702,6 +705,42 @@ class DaqMonitor:
         if status == "Waiting for Dir":
             return True, "qa_watcher is up but its QA directory does not exist."
         return False, f"qa_watcher: {status}"
+
+    def rule_space_watcher_dead(self):
+        """Alert if the SSD space watcher is not running. Without it nothing prunes the
+        raw staging disk, which fills at the acquisition rate (~22 GB/hr measured) and
+        stops the DAQ outright when it hits zero. Alerts by default: unlike the
+        processor/QA watchers there is no routine reason to stop it, and its absence is
+        silent until acquisition dies."""
+        info = get_space_watcher_status()
+        status = info["status"]
+        if status == "STOPPED":
+            return True, ("space_watcher is not running — the SSD raw staging disk is not "
+                          "being pruned and will fill at the acquisition rate.")
+        if status == "Stale":
+            return True, "space_watcher is up but not publishing fresh state (wedged?)."
+        return False, f"space_watcher: {status}"
+
+    def rule_space_watcher_stuck(self):
+        """Alert when the SSD is below its free-space floor and NOTHING is safe to delete.
+
+        This is the failure that actually needs a human: the watcher only deletes runs
+        verified SSD -> HDD -> EOS, so "cannot free" means runs are not reaching EOS —
+        usually a dead backup_watcher or an expired Kerberos ticket. Left alone it ends
+        with a full disk stopping acquisition, and the disk-space rules alone would not
+        say why."""
+        info = get_space_watcher_status()
+        status = info["status"]
+        if status == "STUCK":
+            return "critical", ("SSD is below its free-space floor and NO run is safe to delete — "
+                                "runs are not reaching EOS. Check backup_watcher and the Kerberos "
+                                "ticket; acquisition stops when the disk fills.")
+        if status == "Low":
+            return True, ("space_watcher freed what it could but the SSD is still below its "
+                          "free-space floor.")
+        if status == "STOPPED":
+            return False, "space_watcher not running (covered by rule_space_watcher_dead)"
+        return False, f"space_watcher: {status}"
 
     def rule_stream1_files_reduced(self):
         """Alert when n_TOF stream1 raw files have been arriving well below their

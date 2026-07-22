@@ -2613,6 +2613,143 @@ def space_delete():
     return jsonify(out)
 
 
+# --- Automatic SSD clearing (space_watcher) --------------------------------
+# On/Off + the free-space buffer for the background watcher that prunes the SSD
+# raw staging disk. The watcher re-reads its config file every poll, so a buffer
+# change here takes effect without a restart.
+#
+# The safety model is unchanged and is NOT weakened by anything here: the watcher
+# deletes only via space_manager.delete_run, which re-verifies SSD -> HDD -> EOS
+# itself and refuses the active run. These endpoints can change WHEN it acts and
+# HOW MUCH it frees, never WHAT counts as safe.
+
+SPACE_TMUX = "space_watcher"
+SPACE_CONFIG_PATH = f"{BASE_DIR}/config/space_config.json"
+
+# Bounds on the operator-settable buffer. The floor must leave room for the OS and
+# still be big enough to be worth acting on; the ceiling stops a typo (e.g. 4000)
+# from making the watcher try to delete every run on the disk.
+SPACE_MIN_GB = 20
+SPACE_MAX_GB = 400
+
+
+def _space_config():
+    with open(SPACE_CONFIG_PATH) as f:
+        return json.load(f)
+
+
+@app.route("/space/auto")
+def space_auto_status():
+    """Current on/off state + settings of the automatic clearer (read-only)."""
+    running = subprocess.run(["tmux", "has-session", "-t", SPACE_TMUX],
+                             capture_output=True).returncode == 0
+    out = {"running": running, "min_gb": SPACE_MIN_GB, "max_gb": SPACE_MAX_GB}
+    try:
+        cfg = _space_config()
+        out["config"] = {k: cfg.get(k) for k in
+                         ("low_water_gb", "target_free_gb", "keep_recent_runs",
+                          "min_age_hours", "dry_run")}
+    except Exception as e:
+        out["config"] = None
+        out["message"] = f"could not read space config: {e}"
+    # Live state published by the watcher (what it last did, and why).
+    try:
+        with open(f"{BASE_DIR}/config/space_watcher_state.json") as f:
+            out["state"] = json.load(f)
+    except Exception:
+        out["state"] = None
+    out["usage"] = space_manager.disk_usage().get("ssd", {})
+    return jsonify(out)
+
+
+@app.route("/space/auto/config", methods=["POST"])
+def space_auto_config():
+    """Set the free-space buffer. Validated here, not in the browser: the numbers
+    decide when data gets deleted, so a hand-crafted POST must not be able to set
+    a nonsensical floor."""
+    data = request.get_json(silent=True) or {}
+    try:
+        cfg = _space_config()
+    except Exception as e:
+        return jsonify({"success": False, "message": f"could not read space config: {e}"}), 500
+
+    try:
+        low = float(data.get("low_water_gb", cfg.get("low_water_gb")))
+        target = float(data.get("target_free_gb", cfg.get("target_free_gb")))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "buffer values must be numbers"}), 400
+
+    if not (SPACE_MIN_GB <= low <= SPACE_MAX_GB):
+        return jsonify({"success": False,
+                        "message": f"keep-free must be between {SPACE_MIN_GB} and {SPACE_MAX_GB} GB"}), 400
+    if not (SPACE_MIN_GB <= target <= SPACE_MAX_GB):
+        return jsonify({"success": False,
+                        "message": f"free-up-to must be between {SPACE_MIN_GB} and {SPACE_MAX_GB} GB"}), 400
+    if target < low:
+        return jsonify({"success": False,
+                        "message": "free-up-to must be at least the keep-free floor"}), 400
+
+    # Guard against a buffer that cannot physically be satisfied — the watcher
+    # would otherwise delete every eligible run and still report "cannot free".
+    try:
+        total_gb = space_manager.disk_usage()["ssd"]["total"] / (1024 ** 3)
+        if target > 0.9 * total_gb:
+            return jsonify({"success": False,
+                            "message": (f"free-up-to ({target:.0f} GB) is more than 90% of the "
+                                        f"{total_gb:.0f} GB disk — unreachable")}), 400
+    except Exception:
+        pass
+
+    if "dry_run" in data:
+        cfg["dry_run"] = bool(data["dry_run"])
+    cfg["low_water_gb"] = low
+    cfg["target_free_gb"] = target
+    try:
+        tmp = SPACE_CONFIG_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(cfg, f, indent=4)
+        os.replace(tmp, SPACE_CONFIG_PATH)   # atomic: the watcher may read mid-write
+    except Exception as e:
+        return jsonify({"success": False, "message": f"could not write config: {e}"}), 500
+
+    log_event("SPACE_AUTO_CONFIG", "disk_space", low_water_gb=low,
+              target_free_gb=target, dry_run=cfg.get("dry_run"))
+    return jsonify({"success": True, "config": cfg,
+                    "message": f"Buffer set: keep {low:g} GB free, free up to {target:g} GB"})
+
+
+@app.route("/space/auto/start", methods=["POST"])
+def space_auto_start():
+    if not os.path.exists(SPACE_CONFIG_PATH):
+        result = subprocess.run([sys.executable, f"{BASE_DIR}/space_config.py"],
+                                capture_output=True, text=True)
+        if result.returncode != 0:
+            return jsonify({"success": False,
+                            "message": f"Config generation failed: {result.stderr}"}), 500
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", SPACE_TMUX], capture_output=True)
+        # sys.executable (flask's venv python), not bare "python": the tmux login
+        # shell resets PATH and drops the venv.
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", SPACE_TMUX,
+            sys.executable, f"{BASE_DIR}/space_watcher.py", SPACE_CONFIG_PATH
+        ])
+        log_event("SPACE_AUTO_START", "disk_space")
+        return jsonify({"success": True, "message": "Automatic SSD clearing ON"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/space/auto/stop", methods=["POST"])
+def space_auto_stop():
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", SPACE_TMUX], capture_output=True)
+        log_event("SPACE_AUTO_STOP", "disk_space")
+        return jsonify({"success": True, "message": "Automatic SSD clearing OFF"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/space/restore_scan")
 def space_restore_scan():
     """List runs on EOS and how each compares to the local HDD (read-only)."""

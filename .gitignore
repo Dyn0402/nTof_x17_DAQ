@@ -22,6 +22,10 @@ config/qa_state.json
 config/stream1_filesize_state.json
 config/stream1_size_nominal.json
 config/stream1_waveform_nominal.json
+# SSD space watcher: published state, and its config (the free-space buffer is
+# operator-settable from the Disk Space tab, which writes this file directly).
+config/space_config.json
+config/space_watcher_state.json
 config/json_run_configs/
 run_config_beam.py.beam_backup
 runctrl_test/

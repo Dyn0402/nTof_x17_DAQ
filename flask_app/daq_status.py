@@ -26,6 +26,8 @@ BEAM_STATE_FILE = os.path.join(_REPO_DIR, "config", "beam_state.json")
 # n_TOF stream1 raw-file-size watcher publishes its state here (see
 # stream1_monitor/stream1_size_controller.py).
 STREAM1_STATE_FILE = os.path.join(_REPO_DIR, "config", "stream1_filesize_state.json")
+# SSD space watcher publishes its state here (see space_watcher.py).
+SPACE_STATE_FILE = os.path.join(_REPO_DIR, "config", "space_watcher_state.json")
 # N1081B time-tag watcher publishes its state here (see
 # n1081b/timetag_watcher_controller.py).
 N1081B_TIMETAG_STATE_FILE = os.path.join(_REPO_DIR, "config", "n1081b_timetag_state.json")
@@ -672,6 +674,29 @@ def get_stream1_watcher_status():
         return small("Baselining", "info")
     return small("Nominal", "success")
 
+
+def get_space_watcher_status():
+    """Compact card for the SSD space watcher (prunes EOS-verified raw runs off the
+    acquisition staging disk). Derived from tmux session existence + the published
+    state file.
+
+    The status that matters operationally is "Stuck": the SSD is below its floor and
+    NOTHING is safe to delete, which means runs are not reaching EOS. That is a
+    backup problem showing up as a disk problem, and it ends in a full disk stopping
+    acquisition if left alone."""
+    def small(status, color):
+        return {"status": status, "color": color, "small": True, "fields": []}
+
+    alive = subprocess.run(["tmux", "has-session", "-t", "space_watcher"],
+                           capture_output=True).returncode == 0
+    if not alive:
+        return small("STOPPED", "secondary")
+
+    try:
+        with open(SPACE_STATE_FILE) as f:
+            st = json.load(f)
+    except Exception:
+        return small("Starting", "info")   # session up, no state published yet
 
     # Allow 3 polls before calling it wedged, matching the stream1 watcher's rule.
     try:

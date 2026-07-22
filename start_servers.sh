@@ -97,6 +97,28 @@ bash_scripts/start_tmux.sh stream1_watcher "python stream1_watcher.py" 5000
 start_watcher_with_config backup_watcher    backup_watcher.py    backup_config.py    config/backup_config.json
 start_watcher_with_config processor_watcher processor_watcher.py processor_config.py config/processor_config.json
 start_watcher_with_config qa_watcher        qa_watcher.py        qa_config.py        config/qa_config.json
+# SSD space watcher: keeps the raw staging disk (/home/mx17/july_dream/dream_run) above a
+# free-space floor by deleting the OLDEST runs that are verified SSD -> HDD -> EOS, newest
+# runs first to survive. Added 2026-07-22: nothing had ever pruned that disk and at the
+# measured ~22 GB/hr raw rate it was ~5 h from full, which stops acquisition outright.
+# Deletion goes through space_manager.delete_run, which re-verifies against EOS itself and
+# refuses the active run. Retune the floor in space_config.py. Depends on backup_watcher
+# above actually reaching EOS — if backups stall, this correctly frees NOTHING and the
+# rule_space_watcher_stuck alert fires.
+#
+# NB: this one deliberately does NOT use start_watcher_with_config. That helper
+# regenerates the JSON from the .py generator on every boot, which is right for the
+# watchers whose config only ever changes in git — but the space buffer is
+# operator-settable from the GUI (Disk Space tab), which writes this JSON directly.
+# Regenerating it here would silently reset the operator's buffer at every reboot.
+# So: seed the defaults only if the file is absent, then start.
+if [ ! -f "$PWD/config/space_config.json" ]; then
+    "$VENV_PY" "$PWD/space_config.py" >/dev/null \
+        || echo "[start_servers] WARNING: space_config.py failed — space_watcher NOT started"
+fi
+if [ -f "$PWD/config/space_config.json" ]; then
+    bash_scripts/start_tmux.sh space_watcher "$VENV_PY $PWD/space_watcher.py $PWD/config/space_config.json" 5000
+fi
 # NOT auto-started: pedestal_watcher (config/pedestal_qa_config.json). It is a
 # per-pedestal-run tool driven from the GUI, not a standing service, and an empty
 # 0-byte pedestal FDF deadlocks it — add a start_watcher_with_config line here if you
