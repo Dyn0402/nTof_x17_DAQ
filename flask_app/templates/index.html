@@ -718,6 +718,123 @@
 </div>
 
 
+<!-- =====================================================================
+     TEMPORARY TEST TAB (2026-07-23) — SPS slow-extraction spill.
+     Companion to the n_TOF Beam tab. Delete this whole pane, the #sps entry
+     in base.html, the /sps/* routes in app.py and the sps_monitor package.
+     ===================================================================== -->
+<div class="tab-pane fade" id="sps">
+  <div class="row g-3">
+    <!-- Current state -->
+    <div class="col-12 col-xl-4">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">SPS Spill <span class="badge bg-warning text-dark ms-2">TEST</span></span>
+          <span id="sps-conn" class="ms-auto panel-header-note">…</span>
+        </div>
+        <div class="panel-body">
+          <div class="run-stats mb-0">
+            <div class="stat">
+              <div class="stat-label">Spill status</div>
+              <div class="stat-value" id="sps-state-big" style="font-size:1.6rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Last spill</div>
+              <div class="stat-value" id="sps-last-spill" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <div class="run-stats mb-0 mt-2">
+            <div class="stat">
+              <div class="stat-label">Spill length</div>
+              <div class="stat-value" id="sps-spill-len" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Supercycle</div>
+              <div class="stat-value" id="sps-period" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Duty factor</div>
+              <div class="stat-value" id="sps-duty" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <div class="run-stats mb-0 mt-2">
+            <div class="stat">
+              <div class="stat-label">Spills / 10 min</div>
+              <div class="stat-value" id="sps-spills-10m" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Protons / 10 min</div>
+              <div class="stat-value" id="sps-protons-10m" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Mean spill rate</div>
+              <div class="stat-value" id="sps-mean-rate" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <p class="text-muted small mb-0 mt-3">
+            SPS <b>slow extraction</b> — unlike n_TOF there is no single pulse: beam
+            is bled out of the ring over seconds. The trace is the ring intensity's
+            negative derivative from
+            <span class="font-monospace">SPS.BCTDC24.51454</span>, i.e. the
+            instantaneous extraction rate, gated to the machine's own
+            <span class="font-monospace">EXTRACTION_TIME…BEAM_OUT_TIME</span> window
+            so the end-of-cycle internal dump is not counted as delivered flux.
+            Only <span class="font-monospace" id="sps-dest">FTARGET</span> cycles
+            extract; other cycles in the supercycle are pauses.
+          </p>
+          <p class="text-muted small mb-0 mt-2">
+            Polled inside the <b>beam watcher</b> process (it borrows that NXCALS
+            session — no second Spark JVM), so this tab is blank whenever the beam
+            watcher is stopped. Logged to
+            <span class="font-monospace" id="sps-csv-path">sps_spill/</span>.
+          </p>
+          <p class="text-muted small mb-0 mt-2"><span id="sps-updated"></span></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- The money plot: stitched extraction rate on absolute time -->
+    <div class="col-12 col-xl-8">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Extraction Rate vs Time</span>
+          <span class="panel-header-note">pause / spill / pause — last ~5 min</span>
+        </div>
+        <div class="panel-body">
+          <div id="sps-timeline-plot" style="width:100%;height:300px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Single-cycle detail -->
+    <div class="col-12 col-xl-6">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Latest Spill — single cycle</span>
+          <span class="panel-header-note" id="sps-profile-note">ring intensity + extraction rate</span>
+        </div>
+        <div class="panel-body">
+          <div id="sps-profile-plot" style="width:100%;height:320px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-cycle trend -->
+    <div class="col-12 col-xl-6">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">Per-cycle Trend</span>
+          <span class="panel-header-note">extracted intensity &amp; spill length — last 6 h</span>
+        </div>
+        <div class="panel-body">
+          <div id="sps-trend-plot" style="width:100%;height:320px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <!-- File Sizes tab: n_TOF stream1 raw-file sizes as a SiPM-wall liveness proxy -->
 <div class="tab-pane fade" id="stream1-size">
   <div class="row g-3">
@@ -3368,6 +3485,164 @@ setInterval(() => {
 beamUpdateStatus();
 setInterval(beamUpdateStatus, 5000);
 beamRenderPlot();   // initial draw (Overview is the default-active tab at load)
+
+// =====================================================================
+// TEMPORARY TEST TAB (2026-07-23) — SPS slow-extraction spill.
+// Reads /sps/status (state file published by the beam watcher, which also
+// carries the stitched timeline + newest cycle profile) and /sps/history
+// (per-cycle CSV). Delete this block when the tab goes.
+// =====================================================================
+const SPS_AXIS = { gridcolor: '#242e39', zerolinecolor: '#38434f', linecolor: '#38434f' };
+const SPS_BASE_LAYOUT = {
+  paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+  font: { color: "#8b96a5" }, hoverlabel: { bgcolor: "#1b222b", bordercolor: "#38434f" },
+  legend: { orientation: "h", y: -0.22, yanchor: "top" },
+  margin: { t: 20, r: 64, b: 48, l: 64 },
+};
+const SPS_CFG = { responsive: true, displaylogo: false };
+
+// 1e10 protons -> "1.3e13 p"
+function spsFmtP(e10) {
+  return e10 == null ? "—" : (e10 * 1e10).toExponential(1).replace("+", "") + " p";
+}
+
+let spsState = null;
+
+async function spsUpdateStatus() {
+  let d;
+  try { d = await (await fetch("/sps/status")).json(); } catch (e) { return; }
+  spsState = d;
+
+  const conn = document.getElementById("sps-conn");
+  const big = document.getElementById("sps-state-big");
+  const ids = ["sps-last-spill", "sps-spill-len", "sps-period", "sps-duty",
+               "sps-spills-10m", "sps-protons-10m", "sps-mean-rate"];
+
+  if (!d.connected) {
+    conn.textContent = "no data" + (d.last_error ? ` — ${String(d.last_error).split("\n")[0]}` : "");
+    conn.style.color = "var(--bad)";
+    big.textContent = "NO DATA";
+    big.style.color = "var(--muted)";
+    ids.forEach(id => document.getElementById(id).textContent = "—");
+    document.getElementById("sps-updated").textContent = "";
+    return;
+  }
+  conn.textContent = "connected";
+  conn.style.color = "var(--ok)";
+
+  big.textContent = d.spill_on ? "SPILLING" : "NO SPILL";
+  big.style.color = d.spill_on ? "var(--ok)" : "var(--bad)";
+
+  const since = d.seconds_since_spill;
+  document.getElementById("sps-last-spill").textContent =
+    d.last_extracted_e10 != null
+      ? `${spsFmtP(d.last_extracted_e10)} · ${since == null ? "" : Math.round(since) + " s ago"}`
+      : "—";
+  document.getElementById("sps-spill-len").textContent =
+    d.last_spill_len_ms != null ? `${(d.last_spill_len_ms / 1000).toFixed(2)} s` : "—";
+  document.getElementById("sps-period").textContent =
+    d.supercycle_period_s != null ? `${d.supercycle_period_s.toFixed(1)} s` : "—";
+  document.getElementById("sps-duty").textContent =
+    d.last_duty_factor != null ? d.last_duty_factor.toFixed(3) : "—";
+  document.getElementById("sps-spills-10m").textContent = d.spills_10min ?? "—";
+  document.getElementById("sps-protons-10m").textContent = spsFmtP(d.protons_10min_e10);
+  document.getElementById("sps-mean-rate").textContent =
+    d.profile && d.profile.mean_rate_e10_per_s != null
+      ? spsFmtP(d.profile.mean_rate_e10_per_s) + "/s" : "—";
+  if (d.csv_path) document.getElementById("sps-csv-path").textContent = d.csv_path;
+  document.getElementById("sps-updated").textContent =
+    d.timestamp ? `updated ${d.timestamp.split("T")[1] || ""}` : "";
+}
+
+// The pause / spill / pause trace: every cycle's extraction rate stitched onto
+// absolute wall-clock time. Filled area, because the thing being shown is
+// "beam is flowing / beam is not flowing", not a trend line.
+function spsRenderTimeline() {
+  if (typeof Plotly === "undefined") return;
+  const d = spsState;
+  const el = document.getElementById("sps-timeline-plot");
+  if (!el || !d || !d.timeline || !d.timeline.t_unix || !d.timeline.t_unix.length) return;
+  // unix seconds -> local Date strings Plotly can place on a time axis
+  const x = d.timeline.t_unix.map(t => new Date(t * 1000));
+  Plotly.react("sps-timeline-plot", [{
+    x, y: d.timeline.rate_e10_per_s, name: "Extraction rate",
+    type: "scatter", mode: "lines", fill: "tozeroy",
+    line: { color: "#5cc98a", width: 1 }, fillcolor: "rgba(92,201,138,0.25)",
+    hovertemplate: "%{x|%H:%M:%S}<br>%{y:.0f}e10 p/s<extra></extra>",
+  }], {
+    ...SPS_BASE_LAYOUT, uirevision: "sps-timeline", showlegend: false,
+    xaxis: { ...SPS_AXIS, type: "date" },
+    yaxis: { title: { text: "Extraction rate (10¹⁰ p/s)", font: { size: 13, color: "#5cc98a" } },
+             ...SPS_AXIS, rangemode: "tozero" },
+  }, SPS_CFG);
+}
+
+// One cycle in detail: ring intensity draining (left) against the rate it
+// drains at (right). The flat top then the linear ramp IS the spill.
+function spsRenderProfile() {
+  if (typeof Plotly === "undefined") return;
+  const d = spsState;
+  const el = document.getElementById("sps-profile-plot");
+  if (!el || !d || !d.profile) return;
+  const p = d.profile;
+  const xs = p.t_ms.map(v => v / 1000);
+  document.getElementById("sps-profile-note").textContent =
+    `cycle at ${(p.cycle_start || "").split("T")[1] || ""} · ${p.destination}`;
+  Plotly.react("sps-profile-plot", [
+    { x: xs, y: p.intensity_e10, name: "Ring intensity", mode: "lines",
+      line: { color: "#4dabe8", width: 2 },
+      hovertemplate: "%{x:.2f} s<br>%{y:.0f}e10 p<extra></extra>" },
+    { x: xs, y: p.rate_e10_per_s, name: "Extraction rate", mode: "lines", yaxis: "y2",
+      fill: "tozeroy", line: { color: "#5cc98a", width: 1 },
+      fillcolor: "rgba(92,201,138,0.22)",
+      hovertemplate: "%{x:.2f} s<br>%{y:.0f}e10 p/s<extra></extra>" },
+  ], {
+    ...SPS_BASE_LAYOUT, uirevision: "sps-profile",
+    xaxis: { title: { text: "Time in cycle (s)", font: { size: 13 } }, ...SPS_AXIS },
+    yaxis: { title: { text: "Ring intensity (10¹⁰ p)", font: { size: 13, color: "#4dabe8" } },
+             ...SPS_AXIS, rangemode: "tozero" },
+    yaxis2: { title: { text: "Rate (10¹⁰ p/s)", font: { size: 13, color: "#5cc98a" } },
+              ...SPS_AXIS, overlaying: "y", side: "right", rangemode: "tozero", showgrid: false },
+  }, SPS_CFG);
+}
+
+async function spsRenderTrend() {
+  if (typeof Plotly === "undefined") return;
+  let h;
+  try { h = await (await fetch("/sps/history?hours=6&max_points=3000")).json(); } catch (e) { return; }
+  if (!h || !h.success || !document.getElementById("sps-trend-plot")) return;
+  const traces = [
+    { x: h.time, y: h.extracted, name: "Extracted / cycle", type: "scatter",
+      mode: "markers", marker: { color: "#4dabe8", size: 4 } },
+  ];
+  if (h.spill_time && h.spill_time.length) {
+    traces.push({ x: h.spill_time, y: h.spill_len_ms.map(v => v == null ? null : v / 1000),
+                  name: "Spill length (s)", mode: "lines", yaxis: "y2",
+                  line: { color: "#c98500", width: 2 } });
+  }
+  Plotly.react("sps-trend-plot", traces, {
+    ...SPS_BASE_LAYOUT, uirevision: "sps-trend",
+    xaxis: { ...SPS_AXIS },
+    yaxis: { title: { text: "Extracted (10¹⁰ p)", font: { size: 13, color: "#4dabe8" } },
+             ...SPS_AXIS, rangemode: "tozero" },
+    yaxis2: { title: { text: "Spill length (s)", font: { size: 13, color: "#c98500" } },
+              ...SPS_AXIS, overlaying: "y", side: "right", rangemode: "tozero", showgrid: false },
+  }, SPS_CFG);
+}
+
+function spsRenderAll() { spsRenderTimeline(); spsRenderProfile(); spsRenderTrend(); }
+
+// Plotly can't size a plot in a hidden tab (display:none -> 0 width), so draw on show.
+(() => {
+  const tab = document.querySelector('a[href="#sps"]');
+  if (tab) tab.addEventListener("shown.bs.tab", () => spsUpdateStatus().then(spsRenderAll));
+})();
+
+// Only poll while the tab is visible — the state file carries a ~130 kB timeline.
+setInterval(() => {
+  if (!document.getElementById("sps").classList.contains("active")) return;
+  spsUpdateStatus().then(spsRenderAll);
+}, 15000);
 
 // ---------------- Stream1 raw-file sizes (SiPM-wall dropout proxy) ----------------
 // Read-only view of what the stream1_watcher process publishes: it owns the EOS

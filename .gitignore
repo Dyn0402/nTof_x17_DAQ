@@ -265,6 +265,8 @@ config/n1081b_access/
 # Live runtime state, republished continuously by the watchers/daq_control
 # (a committed copy is stale the moment it lands). Same rationale as backup_state.json.
 config/beam_state.json
+# SPS spill test monitor: published state (rides along with the beam watcher).
+config/sps_state.json
 config/n1081b_scan_active.json
 config/n1081b_timetag_state.json
 

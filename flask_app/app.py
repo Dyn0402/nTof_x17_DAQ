@@ -51,6 +51,9 @@ from he3_pressure_reader.he3_pressure_controller import (HE3_PRESSURE_LOG_DIR,
 from beam_monitor.beam_intensity_controller import (BEAM_LOG_DIR, BEAM_STATE_PATH,
                                                     NXCALS_PYTHON, BEAM_UNIT,
                                                     PULSE_THRESHOLD_E10)
+# TEMPORARY (2026-07-23) — SPS spill test tab. Remove with the sps_monitor package.
+from sps_monitor.sps_spill_controller import (SPS_LOG_DIR, SPS_STATE_PATH, SPS_UNIT,
+                                              EXTRACTED_DEST)
 from n1081b.timetag_watcher_controller import (N1081B_TT_LOG_DIR, N1081B_TT_STATE_PATH,
                                                N1081B_TT_CONFIG_PATH)
 from stream1_monitor.stream1_size_controller import (STREAM1_LOG_DIR, STREAM1_STATE_PATH,
@@ -1834,6 +1837,74 @@ def beam_history():
             "delivery_intensity": delivery["intensity_e10"].round(1).tolist(),
             "delivery_window_min": avg_window_min,
             "unit": BEAM_UNIT,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# SPS slow-extraction spill — TEMPORARY TEST TAB (added 2026-07-23)
+# ---------------------------------------------------------------------------
+# Companion to the n_TOF beam monitor, answering "is the SPS pause/spill/pause
+# structure visible the way the n_TOF pulse train is?". The NXCALS polling is
+# done inside the SAME beam_watcher process (it borrows that Spark session);
+# Flask only reads the published state file and the per-cycle CSVs.
+#
+# TO REMOVE: delete this section, the two routes, the sps_monitor import, the
+# #sps tab in base.html + index.html, and the _sps hooks in
+# beam_monitor/beam_intensity_controller.py.
+
+def _sps_read_state():
+    """The SPS monitor's latest published state, or a disconnected stub."""
+    try:
+        with open(SPS_STATE_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {"connected": False, "last_error": "beam watcher not running "
+                                                  "(the SPS monitor rides along with it)",
+                "unit": SPS_UNIT, "spill_on": None}
+
+
+@app.route("/sps/status")
+def sps_status():
+    """Latest SPS spill summary, including the stitched extraction-rate timeline
+    and the newest single-cycle spill profile."""
+    return jsonify(_sps_read_state())
+
+
+@app.route("/sps/history")
+def sps_history():
+    """Per-cycle spill history from the CSVs: extracted intensity, effective
+    spill length and duty factor, one row per SPS cycle."""
+    import glob
+    hours = request.args.get("hours", default=6.0, type=float)
+    max_points = request.args.get("max_points", default=3000, type=int)
+    try:
+        files = sorted(glob.glob(os.path.join(SPS_LOG_DIR, "sps_spill_*.csv")))
+        if not files:
+            return jsonify({"success": True, "time": [], "extracted": [],
+                            "spill_len_ms": [], "duty": [], "unit": SPS_UNIT})
+        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        df = df.sort_values("timestamp").drop_duplicates(subset=["timestamp"])
+        if hours and hours > 0:
+            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
+        # Only extracting cycles carry a spill; dump/other cycles are plotted as
+        # zero-intensity markers so the supercycle gaps stay visible.
+        if len(df) > max_points:
+            df = df.iloc[:: (len(df) // max_points) + 1]
+        ext = df[df["destination"] == EXTRACTED_DEST]
+        return jsonify({
+            "success": True,
+            "time": df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "extracted": df["extracted_e10"].fillna(0).round(1).tolist(),
+            "spill_time": ext["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "spill_len_ms": ext["spill_len_ms"].round(0).where(
+                ext["spill_len_ms"].notna(), None).tolist(),
+            "duty": ext["duty_factor"].round(4).where(
+                ext["duty_factor"].notna(), None).tolist(),
+            "unit": SPS_UNIT,
         })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500

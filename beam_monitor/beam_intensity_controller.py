@@ -95,6 +95,18 @@ class BeamIntensityMonitor:
         self._last_point = None      # (unix_ts, value) newest point of any size
         self._last_pulse = None      # (unix_ts, value) newest point >= threshold
         self._last_krb_renew = 0.0
+        # TEMPORARY (2026-07-23): SPS slow-extraction spill monitor. It has no
+        # Spark session of its own — pytimber is a ~1.3 GB JVM and one is
+        # already running right here, so it borrows self.db. Every call into it
+        # is wrapped: an SPS failure must never disturb n_TOF beam logging.
+        # To remove: delete this attribute, the _poll_sps() call in
+        # run_blocking(), and the sps_monitor package.
+        self._sps = None
+        try:
+            from sps_monitor.sps_spill_controller import SpsSpillMonitor
+            self._sps = SpsSpillMonitor(logger=self.log)
+        except Exception as e:
+            self.log(f"SPS spill monitor unavailable (n_TOF unaffected): {e}")
 
     # ---------------- NXCALS session ----------------
 
@@ -294,6 +306,23 @@ class BeamIntensityMonitor:
             "last_error": self.last_error,
         })
 
+    # ---------------- SPS spill monitor (TEMPORARY, borrows self.db) ----------
+
+    def _poll_sps(self):
+        """Run one SPS spill poll on our Spark session. Swallows everything: this
+        is a bolted-on test monitor and must not be able to break n_TOF logging
+        or the reconnect logic. Delete along with self._sps to remove."""
+        if self._sps is None:
+            return
+        try:
+            self._sps.poll(self.db)
+        except Exception as e:
+            self.log(f"SPS poll failed (n_TOF unaffected): {e}")
+            try:
+                self._sps.write_error(e)
+            except Exception:
+                pass
+
     # ---------------- poll loop ----------------
 
     def run_blocking(self):
@@ -312,6 +341,9 @@ class BeamIntensityMonitor:
                 self._renew_kerberos()
                 state = self._poll_once()
                 self._write_state(state)
+                # n_TOF state is published FIRST, so the SPS add-on can only ever
+                # delay the next poll, never withhold a beam update.
+                self._poll_sps()
             except Exception as e:
                 # Query died (kerberos expiry, network blip, Spark session loss).
                 # Renew the ticket now and rebuild the session on the next pass.
