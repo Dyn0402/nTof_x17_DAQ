@@ -1,0 +1,502 @@
+{
+  "provenance": {
+    "run": "run_67 (2026-07-22/23)",
+    "exported": "2026-07-23",
+    "source": "nTof_x17/ntof_july_analysis/run67_scan/resist_zoom.py",
+    "purpose": "Inform a FOLLOW-UP per-detector fine resist-HV scan. These are recommended SCAN RANGES, not final operating points.",
+    "method": "P(3D x/y pair) per recorded trigger (noise-robust track efficiency) and blind fraction (post-flash aliveness = read out but 0 hits) vs resist, pooled over drift {600,700} V and the two COMPLETE plastic thresholds (0.90 + 1.13 MIP; HV response is threshold-independent). Early-window optimum = highest resist still ALIVE (blind < 0.20): gain rises with resist but so does post-flash saturation, and they cross at the knee.",
+    "caveats": [
+      "RELATIVE efficiency (single-arm events dominate; no absolute normalization). Det A is the clean-M1 reference; B/C/D M1 are noisy so single-plane track yield is inflated \u2014 the 3D-pair metric used here is the noise-robust one.",
+      "1.41 MIP threshold block still processing at export time and NOT included; it tightens errors but does not move the ranges (the optimum is a gain/saturation property, not a threshold one). Regenerate to fold it in.",
+      "Per-cell statistics are thin in a 6 ms window (~5 pairs/cell), hence the drift+threshold pooling; the resist SHAPE is robust, individual points are ~15-25% error.",
+      "Late windows (>=20 ms) prefer HIGHER resist (still rising at the 550 V ladder top), so these EARLY-window ranges are deliberately lower than a late-optimised setting would be."
+    ]
+  },
+  "drift_hv_V": {
+    "scan_range": [
+      600,
+      700
+    ],
+    "chosen_by": "operator 2026-07-23",
+    "note": "Fine scan fixes drift to this band; scan resist within it. Results here are pooled over both drift points."
+  },
+  "metric": "P(3D x/y pair) per recorded trigger; blind_frac = fraction read out with 0 hits.",
+  "alive_threshold_blind_frac": 0.2,
+  "detectors": {
+    "A": {
+      "role": "early",
+      "target_window_ms": [
+        2.0,
+        8.0
+      ],
+      "resist_optimum_V": 525,
+      "resist_1sigma_plateau_V": [
+        525,
+        535
+      ],
+      "saturation_edge_V": 545,
+      "fine_scan_resist_V": {
+        "range": [
+          515,
+          535
+        ],
+        "suggested_step_V": 2
+      },
+      "note": "clean M1 \u2014 reference, high confidence.",
+      "measured_profile": {
+        "2-8 ms": {
+          "resist_V": [
+            520,
+            525,
+            530,
+            535,
+            540,
+            545,
+            550
+          ],
+          "p_pair_x1000": [
+            9.4,
+            11.3,
+            9.6,
+            10.5,
+            8.8,
+            4.6,
+            2.2
+          ],
+          "p_err_x1000": [
+            1.1,
+            1.2,
+            1.1,
+            1.2,
+            1.1,
+            0.8,
+            0.5
+          ],
+          "blind_frac": [
+            0.086,
+            0.089,
+            0.087,
+            0.096,
+            0.182,
+            0.368,
+            0.589
+          ],
+          "n_trig": [
+            7686,
+            7854,
+            7800,
+            7876,
+            7846,
+            7797,
+            7819
+          ]
+        },
+        "20-30 ms": {
+          "resist_V": [
+            520,
+            525,
+            530,
+            535,
+            540,
+            545,
+            550
+          ],
+          "p_pair_x1000": [
+            6.0,
+            6.3,
+            8.2,
+            8.3,
+            11.3,
+            13.4,
+            18.4
+          ],
+          "p_err_x1000": [
+            0.8,
+            0.9,
+            1.0,
+            1.0,
+            1.2,
+            1.3,
+            1.5
+          ],
+          "blind_frac": [
+            0.115,
+            0.108,
+            0.101,
+            0.1,
+            0.096,
+            0.103,
+            0.099
+          ],
+          "n_trig": [
+            8559,
+            8455,
+            8371,
+            8474,
+            8459,
+            8447,
+            8580
+          ]
+        }
+      }
+    },
+    "B": {
+      "role": "early",
+      "target_window_ms": [
+        2.0,
+        8.0
+      ],
+      "resist_optimum_V": 535,
+      "resist_1sigma_plateau_V": [
+        535,
+        540
+      ],
+      "saturation_edge_V": null,
+      "fine_scan_resist_V": {
+        "range": [
+          525,
+          545
+        ],
+        "suggested_step_V": 2
+      },
+      "note": "noise-dominated M1 \u2014 low P everywhere and does NOT saturate; optimum is weak, driven by gain not aliveness.",
+      "measured_profile": {
+        "2-8 ms": {
+          "resist_V": [
+            520,
+            525,
+            530,
+            535,
+            540,
+            545,
+            550
+          ],
+          "p_pair_x1000": [
+            4.2,
+            5.1,
+            5.3,
+            6.6,
+            6.2,
+            5.4,
+            2.7
+          ],
+          "p_err_x1000": [
+            0.7,
+            0.8,
+            0.8,
+            0.9,
+            0.9,
+            0.8,
+            0.6
+          ],
+          "blind_frac": [
+            0.038,
+            0.05,
+            0.052,
+            0.047,
+            0.047,
+            0.051,
+            0.067
+          ],
+          "n_trig": [
+            7686,
+            7854,
+            7800,
+            7876,
+            7846,
+            7797,
+            7819
+          ]
+        },
+        "20-30 ms": {
+          "resist_V": [
+            520,
+            525,
+            530,
+            535,
+            540,
+            545,
+            550
+          ],
+          "p_pair_x1000": [
+            1.8,
+            1.1,
+            2.2,
+            2.6,
+            3.8,
+            4.0,
+            4.7
+          ],
+          "p_err_x1000": [
+            0.5,
+            0.4,
+            0.5,
+            0.6,
+            0.7,
+            0.7,
+            0.7
+          ],
+          "blind_frac": [
+            0.055,
+            0.064,
+            0.071,
+            0.053,
+            0.054,
+            0.048,
+            0.054
+          ],
+          "n_trig": [
+            8559,
+            8455,
+            8371,
+            8474,
+            8459,
+            8447,
+            8580
+          ]
+        }
+      }
+    },
+    "C": {
+      "role": "early",
+      "target_window_ms": [
+        2.0,
+        8.0
+      ],
+      "resist_optimum_V": 525,
+      "resist_1sigma_plateau_V": [
+        525,
+        525
+      ],
+      "saturation_edge_V": 540,
+      "fine_scan_resist_V": {
+        "range": [
+          515,
+          535
+        ],
+        "suggested_step_V": 2
+      },
+      "note": "best early tracker but saturates sharply above the edge.",
+      "measured_profile": {
+        "2-8 ms": {
+          "resist_V": [
+            520,
+            525,
+            530,
+            535,
+            540,
+            545,
+            550
+          ],
+          "p_pair_x1000": [
+            11.7,
+            15.9,
+            13.5,
+            10.2,
+            5.2,
+            3.1,
+            0.9
+          ],
+          "p_err_x1000": [
+            1.2,
+            1.4,
+            1.3,
+            1.1,
+            0.8,
+            0.6,
+            0.3
+          ],
+          "blind_frac": [
+            0.028,
+            0.046,
+            0.082,
+            0.167,
+            0.376,
+            0.493,
+            0.685
+          ],
+          "n_trig": [
+            7686,
+            7854,
+            7800,
+            7876,
+            7846,
+            7797,
+            7819
+          ]
+        },
+        "20-30 ms": {
+          "resist_V": [
+            520,
+            525,
+            530,
+            535,
+            540,
+            545,
+            550
+          ],
+          "p_pair_x1000": [
+            7.7,
+            12.8,
+            15.4,
+            20.2,
+            23.2,
+            31.4,
+            35.3
+          ],
+          "p_err_x1000": [
+            0.9,
+            1.2,
+            1.3,
+            1.5,
+            1.6,
+            1.9,
+            2.0
+          ],
+          "blind_frac": [
+            0.031,
+            0.044,
+            0.049,
+            0.038,
+            0.13,
+            0.036,
+            0.034
+          ],
+          "n_trig": [
+            8559,
+            8455,
+            8371,
+            8474,
+            8459,
+            8447,
+            8580
+          ]
+        }
+      }
+    },
+    "D": {
+      "role": "late",
+      "target_window_ms": [
+        20.0,
+        30.0
+      ],
+      "resist_optimum_V": 525,
+      "resist_1sigma_plateau_V": [
+        525,
+        525
+      ],
+      "saturation_edge_V": null,
+      "fine_scan_resist_V": {
+        "range": [
+          515,
+          535
+        ],
+        "suggested_step_V": 2,
+        "alt_for_early_aliveness": {
+          "range": [
+            500,
+            520
+          ],
+          "why": "D is blind at 2-8 ms for every resist 520-550 (blind 0.47 at 520 rising to 0.95 at 550); to chase earlier aliveness scan BELOW 520, trading gain for faster post-flash recovery. Otherwise treat D as a >=20 ms detector."
+        }
+      },
+      "note": "DEAD in the 2-8 ms window at all resist 520-550 \u2014 treat as a late (>=20 ms) detector. Optimum below is for the 20-30 ms window; it keeps improving toward 540-545 V in 30-50 ms, so raise the range to 535-555 V if the later tail matters.",
+      "measured_profile": {
+        "2-8 ms": {
+          "resist_V": [
+            520,
+            525,
+            530,
+            535,
+            540,
+            545,
+            550
+          ],
+          "p_pair_x1000": [
+            0.3,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.0,
+            0.0
+          ],
+          "p_err_x1000": [
+            0.2,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.0,
+            0.0
+          ],
+          "blind_frac": [
+            0.466,
+            0.577,
+            0.673,
+            0.756,
+            0.853,
+            0.915,
+            0.948
+          ],
+          "n_trig": [
+            7686,
+            7854,
+            7800,
+            7876,
+            7846,
+            7797,
+            7819
+          ]
+        },
+        "20-30 ms": {
+          "resist_V": [
+            520,
+            525,
+            530,
+            535,
+            540,
+            545,
+            550
+          ],
+          "p_pair_x1000": [
+            15.9,
+            17.6,
+            11.9,
+            13.7,
+            14.3,
+            14.0,
+            14.0
+          ],
+          "p_err_x1000": [
+            1.4,
+            1.4,
+            1.2,
+            1.3,
+            1.3,
+            1.3,
+            1.3
+          ],
+          "blind_frac": [
+            0.07,
+            0.07,
+            0.069,
+            0.068,
+            0.053,
+            0.056,
+            0.046
+          ],
+          "n_trig": [
+            8559,
+            8455,
+            8371,
+            8474,
+            8459,
+            8447,
+            8580
+          ]
+        }
+      }
+    }
+  }
+}
