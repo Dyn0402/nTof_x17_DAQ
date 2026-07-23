@@ -23,9 +23,9 @@ Fixed **drift 600–700 V** (operator choice, 2026-07-23). Read
 | Det | role | fine-scan resist | optimum | why |
 |---|---|---|---|---|
 | **A** | early | **515–535 V** | 525 V | clean M1 reference; alive to 535, saturates above 540 |
-| **B** | early | **525–545 V** | 535 V | noisy M1, never saturates; weak gain-driven peak |
+| **B** | early | **535–555 V** | 545 V | noisy M1, never saturates; weak gain-driven peak |
 | **C** | early | **515–535 V** | 525 V | best early tracker; saturates *sharply* above 535 |
-| **D** | **late** | **515–535 V** | 525 V (20–30 ms) | dead at 2–8 ms — see below |
+| **D** | **late** | **510–530 V** | 520 V (20–30 ms) | dead at 2–8 ms — see below |
 
 Suggested step ~2 V (≈10 points per range).
 
@@ -57,10 +57,9 @@ cd ~/PycharmProjects/nTof_x17
 .venv/bin/python ntof_july_analysis/run67_scan/resist_zoom.py
 ```
 
-Pooled over drift {600,700} V and the two complete plastic thresholds
-(0.90 + 1.13 MIP; HV response is threshold-independent). The 1.41 MIP block was
-still processing at export and is excluded — it tightens errors but does not move
-the ranges. Efficiency is RELATIVE (single-arm events dominate; no absolute
-normalization). Full method + caveats in the JSON `provenance` block.
+Pooled over drift {600,700} V and all three plastic thresholds
+(0.90 + 1.13 + 1.41 MIP; HV response is threshold-independent). Efficiency is
+RELATIVE (single-arm events dominate; no absolute normalization). Full method +
+caveats in the JSON `provenance` block.
 
 Anticipated later: MM gain-vs-HV curves and per-strip threshold maps.
