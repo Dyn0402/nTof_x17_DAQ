@@ -722,19 +722,37 @@ class DaqMonitor:
         return False, f"space_watcher: {status}"
 
     def rule_space_watcher_stuck(self):
-        """Alert when the SSD is below its free-space floor and NOTHING is safe to delete.
+        """Alert when the SSD space watcher cannot keep the staging disk above its floor.
 
-        This is the failure that actually needs a human: the watcher only deletes runs
-        verified SSD -> HDD -> EOS, so "cannot free" means runs are not reaching EOS —
-        usually a dead backup_watcher or an expired Kerberos ticket. Left alone it ends
-        with a full disk stopping acquisition, and the disk-space rules alone would not
-        say why."""
+        Three distinct conditions, deliberately graded apart because they need different
+        responses:
+
+          STUCK      nothing is safe to delete, i.e. runs are not reaching EOS — usually
+                     a dead backup_watcher or an expired Kerberos ticket. This is the one
+                     that actually needs a human, and the disk-space rules alone would
+                     not say why.
+          EMERGENCY  free space fell below the emergency level, so the newest-runs
+                     reserve and minimum-age hold have been dropped and recent runs are
+                     being deleted. Nothing is lost (they are on EOS), but you no longer
+                     have them locally, and it says the disk is genuinely close.
+          Held       below the floor with only guard-protected runs left. Backups are
+                     FINE — this releases itself at the emergency level. A heads-up.
+        """
         info = get_space_watcher_status()
         status = info["status"]
         if status == "STUCK":
             return "critical", ("SSD is below its free-space floor and NO run is safe to delete — "
                                 "runs are not reaching EOS. Check backup_watcher and the Kerberos "
                                 "ticket; acquisition stops when the disk fills.")
+        if status == "EMERGENCY":
+            return "critical", ("SSD is below its EMERGENCY level — the newest-runs reserve and "
+                                "minimum-age hold are off and any EOS-verified run, however "
+                                "recent, is being deleted from the staging disk. Data is safe on "
+                                "EOS, but local copies of recent runs are going.")
+        if status == "Held":
+            return True, ("SSD is below its free-space floor and every deletable run is held by "
+                          "the newest-runs/min-age guards. Backups are fine — the guards release "
+                          "automatically at the emergency level, or lower the reserve by hand.")
         if status == "Low":
             return True, ("space_watcher freed what it could but the SSD is still below its "
                           "free-space floor.")

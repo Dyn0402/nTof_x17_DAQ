@@ -2725,7 +2725,7 @@ def space_auto_status():
         cfg = _space_config()
         out["config"] = {k: cfg.get(k) for k in
                          ("low_water_gb", "target_free_gb", "keep_recent_runs",
-                          "min_age_hours", "dry_run")}
+                          "min_age_hours", "emergency_gb", "dry_run")}
     except Exception as e:
         out["config"] = None
         out["message"] = f"could not read space config: {e}"
@@ -2753,6 +2753,7 @@ def space_auto_config():
     try:
         low = float(data.get("low_water_gb", cfg.get("low_water_gb")))
         target = float(data.get("target_free_gb", cfg.get("target_free_gb")))
+        emerg = float(data.get("emergency_gb", cfg.get("emergency_gb", low / 2)))
     except (TypeError, ValueError):
         return jsonify({"success": False, "message": "buffer values must be numbers"}), 400
 
@@ -2765,6 +2766,14 @@ def space_auto_config():
     if target < low:
         return jsonify({"success": False,
                         "message": "free-up-to must be at least the keep-free floor"}), 400
+    # The emergency level drops the newest-run/min-age guards, so it must sit BELOW
+    # the floor: at or above it, the guards would effectively never apply.
+    if not (SPACE_MIN_GB <= emerg <= SPACE_MAX_GB):
+        return jsonify({"success": False,
+                        "message": f"emergency level must be between {SPACE_MIN_GB} and {SPACE_MAX_GB} GB"}), 400
+    if emerg > low:
+        return jsonify({"success": False,
+                        "message": "emergency level must be at or below the keep-free floor"}), 400
 
     # Guard against a buffer that cannot physically be satisfied — the watcher
     # would otherwise delete every eligible run and still report "cannot free".
@@ -2781,6 +2790,7 @@ def space_auto_config():
         cfg["dry_run"] = bool(data["dry_run"])
     cfg["low_water_gb"] = low
     cfg["target_free_gb"] = target
+    cfg["emergency_gb"] = emerg
     try:
         tmp = SPACE_CONFIG_PATH + ".tmp"
         with open(tmp, "w") as f:
@@ -2790,9 +2800,10 @@ def space_auto_config():
         return jsonify({"success": False, "message": f"could not write config: {e}"}), 500
 
     log_event("SPACE_AUTO_CONFIG", "disk_space", low_water_gb=low,
-              target_free_gb=target, dry_run=cfg.get("dry_run"))
+              target_free_gb=target, emergency_gb=emerg, dry_run=cfg.get("dry_run"))
     return jsonify({"success": True, "config": cfg,
-                    "message": f"Buffer set: keep {low:g} GB free, free up to {target:g} GB"})
+                    "message": (f"Buffer set: keep {low:g} GB free, free up to {target:g} GB, "
+                                f"guards off below {emerg:g} GB")})
 
 
 @app.route("/space/auto/start", methods=["POST"])

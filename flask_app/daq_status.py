@@ -709,6 +709,11 @@ def get_space_watcher_status():
     state = st.get("state")
     if state == "cannot_free":
         return small("STUCK", "danger")      # below floor, nothing safe to delete
+    if st.get("emergency"):
+        # Guards dropped: the disk is low enough that the newest runs are going too.
+        return small("EMERGENCY", "danger")
+    if state == "held":
+        return small("Held", "warning")      # below floor, only soft-guarded runs left
     if state == "partial":
         return small("Low", "warning")       # freed something, still under the floor
     if state == "dry_run":

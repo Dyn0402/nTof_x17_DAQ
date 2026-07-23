@@ -1212,12 +1212,22 @@
           </div>
         </div>
         <div class="btn-group-block mb-0">
+          <label class="form-label" for="ds-auto-emerg">Emergency below</label>
+          <div class="input-group input-group-sm" style="width:9rem;">
+            <input id="ds-auto-emerg" type="number" class="form-control form-control-sm"
+                   min="20" max="400" step="5">
+            <span class="input-group-text">GB</span>
+          </div>
+        </div>
+        <div class="btn-group-block mb-0">
           <button id="ds-auto-save" class="btn btn-info btn-sm">Save buffer</button>
         </div>
         <div class="btn-group-block mb-0" style="max-width:460px;">
           <span class="text-muted" style="font-size:0.8rem;">
             Deleting starts when free space falls below <b>keep free</b>, and stops as soon as
-            <b>free up to</b> is reached — oldest runs first, newest kept. Only runs verified
+            <b>free up to</b> is reached — oldest runs first, newest kept. Below
+            <b>emergency</b> the newest-runs reserve and minimum-age hold are dropped and any
+            verified run may go. Only runs verified
             SSD&nbsp;&rarr;&nbsp;HDD&nbsp;&rarr;&nbsp;EOS are ever removed, and the run being
             acquired is never touched.</span>
         </div>
@@ -5006,6 +5016,8 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     ok:          ["var(--ok)",   "Above the buffer — nothing to do."],
     freed:       ["var(--ok)",   "Last pass freed space."],
     partial:     ["var(--warn)", "Freed what it could, still below the buffer."],
+    held:        ["var(--warn)", "Below the buffer, but only newest/recent runs are left — " +
+                                 "backups are fine; these are released at the emergency level."],
     cannot_free: ["var(--bad)",  "BELOW BUFFER AND NOTHING SAFE TO DELETE — runs are not " +
                                  "reaching EOS. Check the backup watcher."],
     dry_run:     ["var(--warn)", "Dry run — reporting only, deleting nothing."],
@@ -5021,13 +5033,14 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     btn.disabled = false;
 
     // Don't clobber a value the operator is mid-edit.
-    const low = $("ds-auto-low"), target = $("ds-auto-target");
+    const low = $("ds-auto-low"), target = $("ds-auto-target"), emerg = $("ds-auto-emerg");
     if (d.config) {
       if (document.activeElement !== low)    low.value = d.config.low_water_gb;
       if (document.activeElement !== target) target.value = d.config.target_free_gb;
+      if (document.activeElement !== emerg)  emerg.value = d.config.emergency_gb;
     }
-    if (d.min_gb != null) { low.min = target.min = d.min_gb; }
-    if (d.max_gb != null) { low.max = target.max = d.max_gb; }
+    if (d.min_gb != null) { low.min = target.min = emerg.min = d.min_gb; }
+    if (d.max_gb != null) { low.max = target.max = emerg.max = d.max_gb; }
 
     const box = $("ds-auto-state");
     if (!autoRunning) {
@@ -5038,7 +5051,8 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     if (!st) { box.textContent = "Starting up…"; return; }
     const [color, text] = AUTO_STATE_TEXT[st.state] || ["var(--muted)", st.state || ""];
     const when = st.timestamp ? st.timestamp.replace("T", " ") : "";
-    box.innerHTML = `<span style="color:${color};">${text}</span>` +
+    box.innerHTML = (st.emergency ? `<span style="color:var(--bad);">EMERGENCY — guards off. </span>` : "") +
+      `<span style="color:${color};">${text}</span>` +
       ` &nbsp;<span>${st.free_h || ""} free</span>` +
       (st.detail ? ` — ${st.detail}` : "") +
       (when ? ` <span style="opacity:0.6;">(${when})</span>` : "");
@@ -5066,11 +5080,13 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     const btn = $("ds-auto-toggle");
     // Turning it ON arms an automatic deleter, so make the operator say so once.
     if (!autoRunning) {
-      const low = $("ds-auto-low").value, target = $("ds-auto-target").value;
+      const low = $("ds-auto-low").value, target = $("ds-auto-target").value,
+            emerg = $("ds-auto-emerg").value;
       if (!confirm(`Turn ON automatic SSD clearing?\n\nWhenever free space falls below ` +
                    `${low} GB, the oldest runs verified on EOS will be deleted from the SSD ` +
-                   `until ${target} GB is free. The newest runs and the run being acquired ` +
-                   `are never deleted.`)) return;
+                   `until ${target} GB is free. The newest runs are kept back — except below ` +
+                   `${emerg} GB free, where that reserve is dropped and any run verified on ` +
+                   `EOS may be deleted. The run being acquired is never deleted.`)) return;
     }
     btn.disabled = true;
     const d = await autoPost(autoRunning ? "/space/auto/stop" : "/space/auto/start");
@@ -5083,6 +5099,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     const d = await autoPost("/space/auto/config", {
       low_water_gb: parseFloat($("ds-auto-low").value),
       target_free_gb: parseFloat($("ds-auto-target").value),
+      emergency_gb: parseFloat($("ds-auto-emerg").value),
     });
     if (!d) return;
     if (!d.success) { alert(d.message || "failed"); loadAuto(); return; }

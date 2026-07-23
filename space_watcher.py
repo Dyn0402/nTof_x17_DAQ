@@ -29,6 +29,13 @@ rather than about correctness:
 
 Deletion order is strictly oldest-run-first, so the newest data survives longest.
 
+Those two guards are a convenience, and convenience loses to a dead DAQ. Below
+`emergency_gb` free the watcher drops BOTH of them and will delete any verified
+run, newest included. What it never drops is the safety proper: the active run
+and the SSD -> HDD -> EOS verification are enforced by space_manager.delete_run,
+which this file cannot talk its way past. So emergency mode can cost you the
+convenience of a local copy of a recent run; it cannot cost you data.
+
 What it deliberately does NOT do:
   * touch the HDD. That is a 34-hour problem, not a 5-hour one, and the HDD copy
     is what processing and QA read from. Prune it from the GUI's Disk Space tab.
@@ -47,6 +54,8 @@ Config keys (see space_config.py to generate the JSON):
   target_free_gb    : free space to reach once freeing (hysteresis above the floor)
   keep_recent_runs  : number of newest runs never eligible for deletion
   min_age_hours     : minimum quiet time before a run is eligible
+  emergency_gb      : free space below which keep_recent_runs and min_age_hours are
+                      both ignored (EOS verification and the active run are not)
   poll_interval     : seconds between free-space checks
   retry_interval    : seconds before retrying a pass that freed nothing
   dry_run           : report what would be deleted, delete nothing
@@ -92,6 +101,13 @@ def newest_mtime(root: Path) -> float:
     return newest
 
 
+def emergency_bytes(cfg: dict) -> int:
+    """The free-space level below which the soft guards are dropped. Clamped to the
+    floor: an emergency level above low_water_gb would mean the guards are never in
+    force at all, which is a config typo, not a policy."""
+    return min(int(float(cfg['emergency_gb']) * GB), int(cfg['low_water_gb'] * GB))
+
+
 def publish(state: str, detail: str, free: int, cfg: dict, extra=None):
     """Write the state file Flask + the Telegram monitor read.
 
@@ -99,6 +115,9 @@ def publish(state: str, detail: str, free: int, cfg: dict, extra=None):
       ok            free space is above the floor, nothing to do
       freed         a pass just ran and got back over the target
       partial       a pass freed something but is still under the floor
+      held          under the floor, but everything deletable is held by the soft
+                    guards only — this releases itself at the emergency level, so
+                    it is a heads-up, not the backup failure `cannot_free` is
       cannot_free   under the floor with nothing safe to delete  <-- needs a human
       dry_run       under the floor, would have deleted, but is not armed
     """
@@ -111,6 +130,7 @@ def publish(state: str, detail: str, free: int, cfg: dict, extra=None):
         'free_h':         human(free),
         'low_water_bytes':   int(cfg['low_water_gb'] * GB),
         'target_free_bytes': int(cfg['target_free_gb'] * GB),
+        'emergency_bytes':   emergency_bytes(cfg),
         'dry_run':        bool(cfg['dry_run']),
     }
     if extra:
@@ -124,9 +144,20 @@ def publish(state: str, detail: str, free: int, cfg: dict, extra=None):
         log(f"WARNING: could not publish state: {e}")
 
 
-def candidates(cfg: dict):
+def candidates(cfg: dict, emergency: bool = False):
     """Runs eligible for deletion, oldest first, plus a human-readable account of
     why every other run was held back.
+
+    In emergency mode the two soft guards (keep_recent_runs, min_age_hours) are
+    skipped entirely, so the only runs held back are the active one and any run
+    not verified through to EOS. Note the ordering: the safety check runs BEFORE
+    the soft guards, so an unverified run reports as unverified in both modes
+    rather than hiding behind "newest-N reserve".
+
+    Each held entry is (run, reason, kind) with kind in:
+      active      currently acquiring — never deletable
+      unverified  not (yet) verified SSD -> HDD -> EOS — never deletable
+      policy      held by a soft guard — deletable in emergency mode
 
     The EOS verification here is the expensive part (one xrdfs -R listing per
     run), which is why the caller only reaches this once free space is genuinely
@@ -134,26 +165,27 @@ def candidates(cfg: dict):
     """
     scan = space_manager.scan('ssd')
     runs = scan['runs']                      # already sorted oldest -> newest
-    protect_n = max(0, int(cfg['keep_recent_runs']))
+    protect_n = 0 if emergency else max(0, int(cfg['keep_recent_runs']))
     protected = {r['run'] for r in runs[-protect_n:]} if protect_n else set()
-    min_age_s = float(cfg['min_age_hours']) * 3600
+    min_age_s = 0.0 if emergency else float(cfg['min_age_hours']) * 3600
     now = time.time()
 
     eligible, held = [], []
     for r in runs:
         run = r['run']
         if r.get('active'):
-            held.append((run, 'active run'))
-            continue
-        if run in protected:
-            held.append((run, f'newest-{protect_n} reserve'))
+            held.append((run, 'active run', 'active'))
             continue
         if not r['safe']:
-            held.append((run, r['reason']))
+            held.append((run, r['reason'], 'unverified'))
+            continue
+        if run in protected:
+            held.append((run, f'newest-{protect_n} reserve', 'policy'))
             continue
         age = now - newest_mtime(space_manager.SSD_DREAM_DIR / run)
         if age < min_age_s:
-            held.append((run, f'written {age / 3600:.1f} h ago (< {cfg["min_age_hours"]} h)'))
+            held.append((run, f'written {age / 3600:.1f} h ago (< {cfg["min_age_hours"]} h)',
+                         'policy'))
             continue
         eligible.append(r)
     return eligible, held, scan
@@ -165,20 +197,37 @@ def freeing_pass(cfg: dict) -> dict:
     requires."""
     target = int(cfg['target_free_gb'] * GB)
     low    = int(cfg['low_water_gb'] * GB)
+    emerg  = emergency_bytes(cfg)
     free   = ssd_free()
+    emergency = free < emerg
 
-    log(f"SSD at {human(free)} free (< floor {human(low)}) — looking for safe runs to delete")
-    eligible, held, scan = candidates(cfg)
+    if emergency:
+        log(f"SSD at {human(free)} free — BELOW THE {human(emerg)} EMERGENCY LEVEL: "
+            f"newest-run reserve and minimum age are OFF, any EOS-verified run may go")
+    else:
+        log(f"SSD at {human(free)} free (< floor {human(low)}) — looking for safe runs to delete")
+    eligible, held, scan = candidates(cfg, emergency=emergency)
 
-    for run, why in held:
+    held_pub = [{'run': r, 'reason': w, 'kind': k} for r, w, k in held]
+    for run, why, _kind in held:
         log(f"  hold  {run:12} {why}")
     if not eligible:
+        # Two very different failures share "nothing to delete", and they need
+        # different humans: soft guards holding everything back releases itself at
+        # the emergency level, whereas nothing being on EOS is a backup outage.
+        if any(k == 'policy' for _r, _w, k in held):
+            detail = (f'SSD below the {cfg["low_water_gb"]} GB floor, but every deletable run is '
+                      f'held by the newest-{cfg["keep_recent_runs"]}/min-age guards. Backups are '
+                      f'fine — these are released automatically below the '
+                      f'{cfg["emergency_gb"]} GB emergency level.')
+            log(f"HELD BY POLICY: {detail}")
+            publish('held', detail, free, cfg, {'held': held_pub, 'deleted': []})
+            return {'freed': 0, 'deleted': [], 'state': 'held'}
         detail = (f'SSD below the {cfg["low_water_gb"]} GB floor with NO run safe to delete '
                   f'({scan["n_runs"]} runs on disk). Raw staging cannot be pruned until runs '
                   f'reach EOS — check backup_watcher and the Kerberos ticket.')
         log(f"CANNOT FREE: {detail}")
-        publish('cannot_free', detail, free, cfg,
-                {'held': [{'run': r, 'reason': w} for r, w in held], 'deleted': []})
+        publish('cannot_free', detail, free, cfg, {'held': held_pub, 'deleted': []})
         return {'freed': 0, 'deleted': [], 'state': 'cannot_free'}
 
     plan = []
@@ -193,13 +242,13 @@ def freeing_pass(cfg: dict) -> dict:
         f"-> ~{human(projected)} free")
 
     if cfg['dry_run']:
-        detail = (f'DRY RUN — would delete {len(plan)} run(s) '
+        detail = (f'DRY RUN{" [EMERGENCY]" if emergency else ""} — would delete {len(plan)} run(s) '
                   f'({", ".join(r["run"] for r in plan)}) to reach {human(projected)} free.')
         log(detail)
         publish('dry_run', detail, free, cfg,
                 {'would_delete': [{'run': r['run'], 'size_h': r['size_h']} for r in plan],
-                 'held': [{'run': r, 'reason': w} for r, w in held], 'deleted': []})
-        return {'freed': 0, 'deleted': [], 'state': 'dry_run'}
+                 'held': held_pub, 'deleted': [], 'emergency': emergency})
+        return {'freed': 0, 'deleted': [], 'state': 'dry_run', 'emergency': emergency}
 
     deleted, freed = [], 0
     for r in plan:
@@ -217,18 +266,19 @@ def freeing_pass(cfg: dict) -> dict:
             break
 
     free = ssd_free()
+    tag = 'EMERGENCY: ' if emergency else ''
     if freed == 0:
         state, detail = 'cannot_free', 'freeing pass deleted nothing (all candidates refused on re-verify)'
     elif free < low:
-        state, detail = 'partial', (f'freed {human(freed)} but SSD is still below the '
+        state, detail = 'partial', (f'{tag}freed {human(freed)} but SSD is still below the '
                                     f'{cfg["low_water_gb"]} GB floor at {human(free)}')
     else:
-        state, detail = 'freed', f'freed {human(freed)}; SSD now at {human(free)} free'
+        state, detail = 'freed', f'{tag}freed {human(freed)}; SSD now at {human(free)} free'
     log(f"pass complete: {detail}")
     publish(state, detail, free, cfg,
             {'deleted': deleted, 'freed_bytes': freed, 'freed_h': human(freed),
-             'held': [{'run': r, 'reason': w} for r, w in held]})
-    return {'freed': freed, 'deleted': deleted, 'state': state}
+             'held': held_pub, 'emergency': emergency})
+    return {'freed': freed, 'deleted': deleted, 'state': state, 'emergency': emergency}
 
 
 def main():
@@ -249,16 +299,21 @@ def main():
         c.setdefault('poll_interval', 300)
         c.setdefault('retry_interval', 1800)
         c.setdefault('dry_run', False)
+        # An old config file predating the emergency level would otherwise keep the
+        # soft guards in force down to a full disk. Default it to half the floor.
+        c.setdefault('emergency_gb', round(float(c['low_water_gb']) / 2, 1))
         if args.dry_run:
             c['dry_run'] = True
         return c
 
     cfg = load_cfg()
     log(f"space_watcher up — floor {cfg['low_water_gb']} GB, free to {cfg['target_free_gb']} GB, "
-        f"keep newest {cfg['keep_recent_runs']} runs, min age {cfg['min_age_hours']} h"
+        f"keep newest {cfg['keep_recent_runs']} runs, min age {cfg['min_age_hours']} h, "
+        f"guards off below {cfg['emergency_gb']} GB"
         f"{'  [DRY RUN]' if cfg['dry_run'] else ''}")
 
     last_futile = 0.0
+    futile_emergency = False   # were the guards already off when that futile pass ran?
     while True:
         try:
             try:
@@ -274,9 +329,15 @@ def main():
                 log(f"WARNING: could not reload config ({e}) — keeping previous settings")
             low = int(cfg['low_water_gb'] * GB)
             free = ssd_free()
+            emergency = free < emergency_bytes(cfg)
+            # A futile pass under the soft guards says nothing about a pass without
+            # them, so crossing into emergency cancels the backoff rather than
+            # sitting out up to retry_interval on a nearly full disk.
+            backed_off = (time.time() - last_futile < cfg['retry_interval']
+                          and not (emergency and not futile_emergency))
             if free >= low:
                 publish('ok', f'{human(free)} free, above the {cfg["low_water_gb"]} GB floor', free, cfg)
-            elif time.time() - last_futile < cfg['retry_interval']:
+            elif backed_off:
                 # Under the floor but the last pass could free nothing. Re-listing
                 # every run on EOS every poll would hammer EOS for no benefit.
                 log(f"SSD at {human(free)} free — holding off, last pass freed nothing "
@@ -285,8 +346,10 @@ def main():
                 res = freeing_pass(cfg)
                 if res['freed'] == 0:
                     last_futile = time.time()
+                    futile_emergency = bool(res.get('emergency'))
                 else:
                     last_futile = 0.0
+                    futile_emergency = False
         except Exception as e:
             log(f"ERROR in poll: {e}")
         if args.once:

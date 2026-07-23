@@ -35,6 +35,16 @@ CONFIG = {
     # space_manager.delete_run itself.
     'keep_recent_runs': 3,
 
+    # Free space below which the two guards above (keep_recent_runs, min_age_hours)
+    # are BOTH ignored and any EOS-verified run may be deleted, newest included.
+    # They are conveniences; a disk that hits zero stops acquisition outright, and
+    # by then the run you were protecting has nowhere to be written anyway. What
+    # this does NOT relax is safety: the active run and the SSD -> HDD -> EOS
+    # verification are enforced inside space_manager.delete_run regardless.
+    # 50 GB is a bit over two hours of beam at the measured ~22 GB/hr raw rate —
+    # enough warning to notice, not so much that the guards never apply.
+    'emergency_gb': 50,
+
     # Skip any run whose newest file was written less than this many hours ago.
     # Backup and processing both work off the HDD copy, so this is not strictly
     # required — it is a belt-and-braces margin against deleting a run that some
