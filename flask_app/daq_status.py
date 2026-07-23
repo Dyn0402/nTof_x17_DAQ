@@ -80,11 +80,21 @@ def _run_dir():
 # to this list order.
 DREAM_MARKERS = [
     (r"_TakePedThr", "Taking Pedestals", "warning"),
-    # Pedestal read-back: FeuDataFileReader chews through the
-    # Mx17_pedestals_pedthr_*.fdf files (then the suppressed xmgrace *_dat.ace
-    # plot call) for minutes, printing nothing else recognisable -- that stretch
-    # used to show up as UNKNOWN STATE.
-    (r"pedthr[^\s]*\.(?:fdf|ace)", "Processing Pedestals", "warning"),
+    # Pedestal read-back: FeuDataFileReader chews through the freshly-taken
+    # Mx17_*pedthr*.fdf files (then the suppressed xmgrace *_dat.ace noise plot)
+    # for minutes, printing nothing else recognisable -- that stretch used to
+    # show up as UNKNOWN STATE.
+    #
+    # These two markers are anchored on the "Processing FEU binary file" /
+    # "xmgrace" prefixes ON PURPOSE. Every subrun start prints a big block of
+    #   Checking pedestal file: Mx17_pedestals_pedthr_...fdf
+    #   Copying pedestal fdf file Mx17_pedestals_pedthr_...fdf...
+    # (loading the EXISTING pedestals into the FEUs -- normal prep, not a pedestal
+    # run). A bare "pedthr.*\.(fdf|ace)" match fired on those and flipped the card
+    # to a pedestal status between regular subruns. The prefixes below appear only
+    # during a genuine pedestal pass, never in that prep block.
+    (r"Processing FEU binary file \S*pedthr\S*\.fdf", "Processing Pedestals", "warning"),
+    (r"xmgrace\b[^\n]*pedthr\S*_dat\.ace", "Processing Pedestals", "warning"),
     (r"Scan trigger thresholds in process", "Scanning Trigger Thresholds", "warning"),
     (r"_TakeData:", "RUNNING", "success"),
     (r"Listening on ", "WAITING", "secondary"),
