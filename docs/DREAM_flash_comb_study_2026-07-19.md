@@ -1,5 +1,22 @@
 # DREAM post-flash "comb" — mechanism, data loss, and levers (2026-07-19)
 
+> ## ⚠ CORRECTION 2026-07-22 — three rows of the lever table are INVALID
+> See **`docs/FEU_WATERMARKS_2026-07-22.md`** for the full account. In short:
+> - **`TrigVetoLen 0/250/500/1000`** and **`SparseRd 0/1/3`** — the knobs **never reached the
+>   cfg**. `dream_daq_control.py` is a long-lived server and was running code predating that
+>   plumbing, so every sub-run used the template default (archived cfgs show `TrigVetoLen 0`
+>   and `SparseRd 0` at *every* point). Both nulls are artifacts; neither knob was tested.
+> - **`water marks OvrWrnHwm 20→48`** — invalid twice over. Same server problem, *and* RunCtrl
+>   clamps the cfg watermark down to a cap it derives itself (11 at lat35/n32), so 20 and 48
+>   would both have been forced to the same value anyway.
+> - The line *"FIFO never reaches the HWM (occ 11)"* is **backwards**: `maxFIFOocc = 11` **is**
+>   the watermark. Measured 2026-07-22, `maxFIFOocc == Hwm` exactly at Hwm = 11, 3 and 1.
+>   Lowering the HWM works and is free down to Hwm 3.
+> - **`UdpChan_MultiPackThr` has not been re-checked** — treat that null as unverified.
+>
+> **Everything else in this document stands**, including the `NbOfSamples` scaling (it travels
+> via `Sys NbOfSamples`, which really did vary), the TCM mechanism, and the 0-FEU-drops result.
+
 ## TL;DR
 Anchoring every DREAM event to the preceding γ-flash, the events **comb**: a big cluster at
 t≈0, then teeth at ~10 ms intervals with dead gaps between. It is real **data loss** — at the
@@ -103,8 +120,26 @@ the 11-event flash burst** (~9.6 ms). Shorter samples ⇒ shorter flash readout 
 fewer lost.
 
 ## Options
-1. **Fewer samples** — the only DAQ-side lever, trades drift-window depth (n8 recovers 3× but
-   0.48 µs window). n16 ≈ doubles the yield for half the drift. Linear, so tune it finely.
+
+> ### ⚠ CORRECTION 2026-07-23 — option 1 (`n16 ≈ doubles the yield`) is RETIRED. Keep n32.
+> Two independent results kill it, and both post-date this document:
+> - **On 10 GbE the sustained ceiling is no longer binding at all.** This advice was written when
+>   the 1 GbE readout ceiling was the constraint; the switch upgrade moved the corruption threshold
+>   from IPD 75 to below 1 and the DAQ now records essentially every trigger the beam offers
+>   (`docs/network_upgrade_10g/results_2026-07-22_switch_swap.md`). At beam we are **trigger-limited**,
+>   so buying readout rate by throwing away drift depth buys nothing.
+> - **NbOfSamples is INVARIANT for the quantity that actually matters** (when the live window opens):
+>   `N_buf = (512-lat)/n` while `cycle_SCA ∝ n`, so the buffer-dump term cancels — n32/n16/n8 all give
+>   the same ~1.02 ms front edge (`docs/IPC_YIELD_OPTIMIZATION_2026-07-23.md`). And run_67
+>   flash-anchored data shows coverage is already ~100 % from 1 ms, so **no DAQ knob buys IPC yield.**
+>
+> **Keep n32 and the full 1.92 µs drift window.** The readout-rate lever that IS free is the read
+> clock (RdClk 6.0→4.0 = 1.5×, now the default) — it costs no window at all. See
+> `docs/CLOCK_RATE_SCAN_2026-07-23.md`.
+
+1. ~~**Fewer samples**~~ — *superseded, see the correction above.* (Original text: the only DAQ-side
+   lever, trades drift-window depth (n8 recovers 3× but 0.48 µs window). n16 ≈ doubles the yield for
+   half the drift. Linear, so tune it finely.)
 2. **Tame the flash burst upstream** — the flash's 11 triggers cause the long veto. The FEU's own
    TrigVetoLen can't reject them (inert under external trig). A **scint-side discriminator holdoff
    (N1081B) or a TCM-side veto/deadtime** that collapses the flash to ~1 trigger would cut the
@@ -164,3 +199,215 @@ latency,vetolen,singles,latch}.py`. Analysis = decode FEU FDF → `nt` tree → 
 per-spill busy-gap / yield / tooth structure. FEU counter latch-read script pattern in this doc.
 Mechanism memory: `dream-flash-comb-mechanism`. Diagram artifact:
 `claude.ai/code/artifact/d6555d79` (needs a revision to show the fixed BUSY→TCM-veto cycle).
+
+---
+
+# TODAY'S PLAN (2026-07-20) — crack the 11/3 tooth structure, exhaust the TCM/queue/network levers, then optimize
+
+## The objective, stated as a DAQ requirement
+Maximize the number of events that **can contain a real track**. A trackable event must
+(a) arrive **late enough that the DREAM front-end is no longer saturated** by the flash
+(≳3 ms post-flash), and (b) ideally be **~uniformly distributed across the ~30 ms tail**
+after that. The current comb delivers the opposite: ~11 events piled at t≈0 (saturated,
+**useless for tracks**) followed by sparse ~3-event teeth with multi-ms dead gaps. So the
+real target is: **stop spending the readout budget on the flash burst, and spread the
+surviving budget evenly over the tail.** Every lever below is judged by that yardstick,
+*not* by raw event count (18 combed events ≠ 18 trackable events; most of tooth-1 is dead
+flash).
+
+This plan is deliberately **investigate-then-optimize**: we first spend the day proving
+(or killing) the three things that could still be levers — a TCM trigger queue, a raw-mode
+limit, and a 10 GbE benefit — and thoroughly explaining the odd 11/3 structure. If those
+come back negative (as the manuals predict), we accept the BUSY-veto floor and optimize the
+trigger timing and `NbOfSamples` under it.
+
+## Safety / coordination (unchanged, read first)
+- **N1081B hygiene** (`n1081b/CLAUDE.md`): every board touch via `board_session()`, one
+  process per board, **never SIGKILL** a board session, respect quarantine. Check
+  `config/n1081b_access/` before launching any board-touching step.
+- **TCM (192.168.10.32, ASCII UDP)** is owned by RunCtrl *during a run*. All TCM probes are
+  **read-only and between runs** (or a single careful read-only query) so RunCtrl's control
+  channel does not desync. Curated read-only command list: `scratchpad/tcm_probe.py`.
+- **FEU peek/poke** = plain ASCII UDP on port 1300+FEU-ID; peeks are cheap, pokes only
+  between runs. Register defs `~/Feu/Firmware5/.../CBus/CBus_Common.h` and the FEU manual.
+
+## Investigation A — the 11/3 tooth structure = DREAM multi-event SCA buffer (the real unknown)
+**Working hypothesis.** The teeth are **DREAM analog-memory (SCA) multi-event buffering**,
+which the TCM manual does *not* model (it assumes one accepted trigger per SCA_STOP/START
+handshake). The DREAM ASIC has a **512-cell circular SCA**; each event consumes
+`NbOfSamples` cells, so it can buffer `N_buf ≈ (512 − latency) / NbOfSamples` events
+(= **~15 at n32/lat35** per the deadtime-study derandomiser formula, `DEADTIME_REPORT.md:33`)
+*before* it must stop and read the whole block out through the ADC (~0.87 ms/event). The
+flash dumps **11** triggers in 57 µs — fast enough to (nearly) fill the buffer before BUSY
+closes the TCM gate — then the FEU reads out all 11 (~9.6 ms), vetoing everything.
+
+**The genuine anomaly to explain (do not hand-wave it):** under a *continuous* 4 kHz feed
+the tail teeth are only **~3 events** and spaced **~9–10 ms**, not the ~11-events-every-~12-ms
+we'd expect if the buffer simply refilled and re-read at the same 11-deep block. Either the
+buffer does **not** refill in the tail, or tail readout is effectively single-event-paced,
+or the "tooth" is a histogram-binning artifact of the readout. **This is the crux the
+operator flagged as odd, and it decides whether even-distribution is achievable.**
+
+**Read first (the one doc not yet read):** `~/Documents/dream/DREAM_User Manual_prod_v3.pdf`
+— DREAM ASIC SCA depth, circular-buffer / multi-event / derandomiser behaviour, and the
+read sequence. This is where the 11/3 mechanism actually lives (the FEU + TCM manuals are
+silent on multi-event SCA buffering). Confirm SCA = 512 cells and the buffer-depth formula.
+
+**FINDING (2026-07-20, DREAM ASIC manual read).** Confirmed and *sharpened*:
+- **512-cell circular SCA per channel**, explicitly a **multi-event / derandomising L1
+  buffer** (p.5, p.6 Table 1, p.13 Fig.8). Each trigger freezes `Nc = NbOfSamples` cells
+  (Event-Number-tagged), the write pointer **skips frozen columns**, readout is FIFO
+  oldest-first (p.14). Buffer depth ≈ **`(512 − TRIGLAT)/Nc`** ⇒ ~15 events at n32/lat35;
+  the ≤**512-WCk delayed cell release** after each read (p.15) tightens the *usable* depth
+  during a fast burst toward the observed **~11**. This is the origin of the tooth size.
+- **Crucial subtlety:** the ASIC is **designed dead-time-free** — "the sampling and
+  triggering operations are **not interrupted during the readout**" (p.14); "'deadtime free'
+  operation for trigger rates up to more than 20 kHz" (p.5). Readout drives an external
+  12-bit ADC at ≤20 MHz (p.16, p.43) ⇒ ~48–50 ns/sample, ~3.4 µs/event for all 64 ch.
+  **So the ~9.6 ms comb dead time is NOT an ASIC limitation** — it is the **FEU firmware
+  choosing a single-block stop-readout-BUSY handshake** (TCM `SCA_STOP`→BUSY→`SCA_START`)
+  layered on top of a chip that could in principle keep sampling. That reframes the real
+  lever: the headroom is in **how the FEU/TCM schedules readout & BUSY around the flash
+  burst**, not in the chip. Full digest: this repo's analysis notes; the two governing
+  numbers are **TRIGLAT (reg 12)** and **Nc = NbOfSamples**.
+
+**Offline companion study (started 2026-07-20):** a systematic *event-time-since-flash*
+analysis across recorded runs (singles/doubles/pulser, beam on/off, cfg scans) is running
+in `~/beam_july/analysis/flash_comb/` (`flash_comb_analysis.py` + `PLAN.md`). It anchors
+every event to its preceding flash (flash tag = distinct-channel count ≥ 300) and measures
+the dead-cycle (autocorrelation), events-per-tooth, and flash-to-flash consistency. First
+result reproduces the reference **9.5 ms** comb on beam k5/IPD100; the controlled
+`zs_comb_study` (NbOfSamples) + `zs_latency` scans decoded today will confirm the scaling.
+
+**Measurements (read-only diagnostics + pulser; no wedging):**
+1. **TCM `hbusy get`** (dead-time histogram, `busy_resol 0` = 1 µs/bin, range [0,1.022 ms];
+   step to `busy_resol 1` = 10 µs for the full ~10 ms block). Answers: is a tail "tooth"
+   **one ~9.6 ms block** or **N × single-event ~0.87 ms** reads? Decodes the per-event
+   readout time directly (manual §6.7 / §8.3). Pair with **`hevper get`** (inter-event-time
+   histogram) to see the true trigger-arrival spacing vs the readout spacing.
+2. **`event rx` / `event tx`** across the flash cycle → drops localise to the readout block
+   (already 84.4 % aggregate; now resolve it in time).
+3. **FEU `TrigFifoMaxOcc` + `AcqFSM=ReadDream`** timing (0x10001C / 0x10000C) — is the FEU
+   trigger FIFO (64-deep, separate from the SCA) ever the limiter? (Expected no: occ 11.)
+4. **Latency scan 3 / 34 / 60** at fixed n32: predicted `N_buf` = 15.9 / 14.9 / 14.1 —
+   nearly flat. **If tooth-1 tracks latency strongly, it is NOT buffer-depth-limited**
+   (points to the BUSY-close race instead). Study cfg `run_config_zs_latency.py`.
+5. **NbOfSamples scan 8 / 16 / 32** → tooth size (`N_buf ∝ 1/N`) and spacing (readout ∝ N).
+   The one lever known to move the comb; quantify both axes cleanly. `run_config_zs_comb_study.py`.
+6. **Pulser burst-shape test (decisive for the buffer-fill race).** Drive M6.D
+   (`n1081b/set_pulser.py`) as a **single tight burst of K pulses in ≲57 µs then silence**,
+   K = 1, 2, 5, 11, 20, 30. Map *captured-per-cycle* vs K → directly reads out the buffer
+   depth and the BUSY-close race (does it saturate at ~11? ~15?). Then a **paced** pulser at
+   ~1 ms spacing (≥ single-event readout): if that yields **single-event readout, evenly
+   spread, no teeth**, we have proven the optimization path (see §E). New burst/pace modes
+   may need a small `set_pulser.py` addition — build it, don't hack the board.
+7. **Flash-off continuous pulser** at 100 Hz–2 kHz: do teeth appear at all with **no flash
+   seed**? If the tail teeth vanish without a flash burst, the comb is flash-seeded, not an
+   intrinsic steady-state cycle — a strong result for the veto-the-flash strategy.
+
+## Investigation B — is there a TCM trigger queue? + every remaining TCM knob
+**Prior from the manual (to confirm, not assume):** the TCM has **no trigger queue/FIFO and
+no prescale/hold-off/rate-limit** for *external* triggers — it drops every trigger while any
+FEU asserts BUSY (Reg #19 FEM_BUSY p13, Reg #27 EVENT_TX_CNT p18, §8.3 p33). The only
+"queue" in the system is the **DREAM SCA multi-event buffer on the FEU** (Investigation A).
+`TRIG_RATE`/`EVENT_CNT_LIMIT` act **only on the TCM internal generator**, not external NIM/
+LVDS/TTL. Confirm empirically: `event rx − tx` = the drops **and** `state = WAITING_TRIG`
+with **no** latched `START_ACK_MISS`/`TRIG_ACK_MISS`/`NO_BUSY_MISS` (Reg #20) → genuine
+per-event veto, not a stuck-TCM artifact (already seen once 07-19; re-confirm during flash).
+
+**Knobs actually worth trying (read-only survey → careful between-run pokes):**
+- **`MULT_TRIG_ENA` / `MULT_TRIG_DST`** (Config Reg #22) — *multi-trigger* mode, **not yet
+  explored**. Read the manual detail; it may change how bursts are accepted/routed. Only
+  real unknown left in Reg #22. Test only if the manual says it affects external-trigger
+  handling.
+- **`DO_END_OF_BUSY` + `TTL_OUT<0>`** (Reg #22 / `do_end_of_busy` cmd, p16/p23/p33) — **the
+  actual TCM BUSY/veto output**, on the `J_TTLIO` TTL header (pin `TTL_OUT<0>`), **not a
+  LEMO** (the four LEMOs JX1–4 are NIM *inputs*). This resolves the old "no veto seen on the
+  scope" puzzle (we were watching inputs). This output is the hook for the flash-burst
+  collapse in §E — verify it toggles (level when 0; ~170 ns end-of-busy pulse when 1).
+- **`max_readout_time`** (EVENT_MAX_TIME watchdog, p16/p23) — confirm it is **not** clipping
+  the ~9.6 ms block (it's a fault watchdog, not a throttle; just rule it out).
+- **`trig_delay <type>`** (Reg #24/25 latency, p17/p25) — per-type *delay*, not a throttle;
+  confirm no interaction. **Verdict expected: no TCM lever recovers the tail** — but we prove
+  it rather than assert it.
+
+## Investigation C — prove Raw mode is not a limit for us
+Our **tail** physics rate is tiny, but the **flash burst is 11 full-size events/FEU in 57 µs**
+→ in Raw *every* event is full-size (~38.5 kB/FEU), so ~11 × 38.5 kB × 8 FEU ≈ **3.4 MB in
+the ~9.6 ms readout ≈ 350 MB/s**, well above the 1 GbE 125 MB/s wire. The question is whether
+that causes **loss** (host `Udp RcvbufErrors` / FEU `TrigDropCntr`/`FifoDropCntr` / tracer-511
+truncation) *beyond* the BUSY comb, or whether FEU output buffering + IPD simply spread the
+transfer over the dead time with zero loss.
+- **Test:** a Raw run (`run_config_zs_readout.py` / a Raw variant), IPD swept **75 → 100 →
+  150** (deadtime study: **IPD ≥ 75 required** for clean 8-FEU Raw; ≤50 corrupts), on the
+  **SSD path**. Measure per-window in-window loss, host RcvbufErrors, and FEU drop counters
+  during the flash era specifically.
+- **Caveat to surface honestly:** IPD 75 caps sustained rate at **~392 Hz** (deadtime law).
+  If the optimized tail wants ~1 kHz single-event pacing (§E), **Raw at IPD ≥ 75 could clip
+  it** — this is the one place Raw might actually limit us, and the test must check the *tail*
+  rate, not just "does it corrupt." If it clips, that is the sole argument for ZS (smaller
+  events → lower IPD → higher tail ceiling), independent of the comb.
+
+## Investigation D — prove 10 GbE won't help (layer separation)
+The dead cycle is the **SCA readout BUSY** (internal ADC, network-independent) → a faster
+wire cannot shorten it. But Raw flash-era volume (≈350 MB/s, §C) *could* cause a **host/wire**
+loss layer that 10 GbE **would** fix — a different loss from the comb. Decisive method
+(already the `zs_ipd_safety` layer-separation technique): during a Raw flash-era run, read
+**FEU `TrigDropCntr`/`FifoDropCntr` (= 0 ⇒ FEU fine)**, **host `RcvbufErrors`**, and
+**tracer-511 truncation**:
+- If drops/RcvbufErrors are **~0** and the only loss is the BUSY comb → **10 GbE cannot help**
+  (confirms the doc's claim; the comb is untouched by wire speed).
+- If RcvbufErrors **grow** in the Raw flash era → that layer is wire/host-limited and **10 GbE
+  (or higher IPD / SSD / ZS) fixes *that layer only*, never the comb.** Either way the comb
+  floor stands; the report states exactly which layers 10 GbE touches.
+
+## Optimization under the constraints (the payoff — if A–D confirm the floor)
+Two levers survive the manuals; combine them:
+1. **Collapse / veto the flash burst (biggest win).** The 11 useless flash triggers *cause*
+   the ~9.6 ms readout that vetoes the trackable tail. If we **blank triggers during the
+   flash + first ~1 ms** (N1081B side: a discriminator/G&D **hold-off** on the PS/flash and
+   scint trigger lines — same M-board machinery as the +20 ns M3 delay and the `m4c-veto-gate`;
+   **or** drive it from the TCM `TTL_OUT<0>` END_OF_BUSY), the SCA never fills with dead flash
+   events, so there is **no 9.6 ms post-flash veto** → the trackable tail becomes immediately
+   live. This directly realises requirement (a) *without* shrinking `NbOfSamples`.
+2. **Pace the trigger to force single-event, evenly-spread readout (requirement (b)).** If
+   Investigation A #6 confirms that triggers spaced ≥ single-event readout (~0.87 ms) read out
+   one-at-a-time (no block, no teeth), then a **per-trigger hold-off ≈ readout time** on the
+   scint trigger spreads captured events **uniformly at ~1 kHz** across the tail — replacing
+   the comb with a flat ~30-events-in-30-ms distribution. Set/verify the exact hold-off from
+   the measured `hbusy` single-event time, not a guess.
+3. **`NbOfSamples` trade (fallback / multiplier).** Independently, fewer samples shorten every
+   readout (n16 ≈ 2× tail yield for ½ drift depth; linear ~0.32 ms/sample). Cross-check the
+   drift-window study (`DRIFT_WINDOW_ANALYSIS.md`: full-gap drift ≈ 11–15 samples) — **n16
+   (0.96 µs) may be too shallow to contain the track**; keep n32 unless the drift study says a
+   shorter window still contains the drift. This lever is compatible with (1)+(2) and just
+   scales the ceiling.
+
+**Expected end state:** veto the flash → tail live from ~1 ms; pace triggers → ~uniform tail;
+keep n32 for drift depth (or trim to n29/n30 for a small linear gain). That is the maximum
+achievable given a BUSY-veto DAQ with no TCM queue and a network that isn't the bottleneck.
+
+## Execution order for today
+1. Read the DREAM ASIC manual (SCA/multi-event) — grounds Investigation A. *(no hardware)*
+2. **Read-only TCM survey between runs**: `hbusy`, `hevper`, `event rx/tx`, `state`, and the
+   Reg #22 bit list incl. `MULT_TRIG_*` / `DO_END_OF_BUSY` (`scratchpad/tcm_probe.py`).
+3. **Pulser burst-shape + paced tests** (Investigation A #6/#7) — the decisive buffer/pacing
+   experiment; needs only M6.D + FEU peeks, no scint boards.
+4. **Latency + NbOfSamples scans** (A #4/#5) to pin the buffer-depth vs readout-time axes.
+5. **Raw + IPD sweep on SSD** (Investigation C) with full layer counters (Investigation D
+   piggybacks on the same run).
+6. Synthesise: does any TCM knob or 10 GbE recover the tail? (Expected: no.) Then prototype
+   the **flash veto + trigger pacing** (Optimization 1+2) on the N1081B and measure the tail
+   distribution.
+
+## Success criteria
+- The 11/3 structure is **explained** (buffer depth + fill/BUSY-close race + tail refill
+  behaviour), backed by `hbusy`/`hevper` + the burst-shape scan, and cross-checked to the
+  DREAM ASIC manual.
+- **TCM queue: proven absent** (or, if a `MULT_TRIG` behaviour exists, characterised); every
+  TCM knob has a documented verdict.
+- **Raw + 10 GbE: each has a data-backed verdict** ("does not limit us" / "would only touch
+  loss-layer X, never the comb"), with the FEU/host counters that prove which layer is which.
+- A concrete, measured **flash-veto + trigger-pacing** recipe (N1081B timing values from the
+  measured single-event readout) that turns the comb into a ~uniform ≳3–33 ms tail, plus the
+  `NbOfSamples` setting reconciled with the drift-window requirement.

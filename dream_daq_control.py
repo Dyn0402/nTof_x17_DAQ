@@ -83,7 +83,13 @@ def main():
                         effective_multipack_enb = effective_info.get('multipack_enb', None)
                         effective_sparse_rd = effective_info.get('sparse_rd', None)
                         effective_rdclk_div = effective_info.get('rdclk_div', None)
+                        effective_wrclk_div = effective_info.get('wrclk_div', None)
+                        effective_rd_del = effective_info.get('rd_del', None)
+                        effective_adc_dat_rdy_del = effective_info.get('adc_dat_rdy_del', None)
                         effective_trig_veto_len = effective_info.get('trig_veto_len', None)
+                        effective_ovr_wrn_hwm = effective_info.get('ovr_wrn_hwm', None)
+                        effective_ovr_wrn_lwm = effective_info.get('ovr_wrn_lwm', None)
+                        effective_loc_throt = effective_info.get('loc_throt', None)
                         effective_included_feus = effective_info.get('included_feus', None)
                         effective_feu_connectors = effective_info.get('feu_connectors', None)
                         effective_trigger_feu = effective_info.get('trigger_feu', None)
@@ -117,7 +123,13 @@ def main():
                             multipack_enb=effective_multipack_enb,
                             sparse_rd=effective_sparse_rd,
                             rdclk_div=effective_rdclk_div,
-                            trig_veto_len=effective_trig_veto_len)
+                            wrclk_div=effective_wrclk_div,
+                            rd_del=effective_rd_del,
+                            adc_dat_rdy_del=effective_adc_dat_rdy_del,
+                            trig_veto_len=effective_trig_veto_len,
+                            ovr_wrn_hwm=effective_ovr_wrn_hwm,
+                            ovr_wrn_lwm=effective_ovr_wrn_lwm,
+                            loc_throt=effective_loc_throt)
                         shutil.copy(cfg_run_path, sub_run_out_raw_inner_dir)
 
                         if effective_pedestals_dir is not None:
@@ -546,11 +558,21 @@ def _to_zs_typ(val):
 
 # Hardware sample period (ns) -> DREAM SCA clock dividers (RdClk_Div, WrClk_Div). The 100 MHz
 # trigger clock is divided by WrClk_Div to set the SCA write (sampling) period: 2.0 -> 20 ns,
-# 6.0 -> 60 ns. RdClk_Div sets the readout clock and is paired with WrClk_Div per the cfg presets.
-# Only these two sample periods are supported; anything else raises (see make_config_from_template).
+# 6.0 -> 60 ns. Only these two sample periods are supported; anything else raises.
+#
+# READ CLOCK IS PINNED AT THE 4.0 MINIMUM (25 MHz) for BOTH presets -- deliberately decoupled from
+# the sample clock. RdClk sets the SCA readout speed, hence per-event deadtime, hence sustained rate;
+# 4.0 is the hardware minimum divisor (Drm_RdClk_Div_Min in FeuUdpControl/DrmClkConfig.c -> below it
+# FeuCtrl_Open fails). Measured 2026-07-23: read clock 6.0->4.0 (16.7->25 MHz) buys a clean 1.5x rate
+# (7231->10847 Hz, 0 drops, tracers 100%, baseline unchanged) with the 60 ns / 32-sample / 1.92 us
+# window untouched. Full analysis + firmware limits: docs/CLOCK_RATE_SCAN_2026-07-23.md.
+# CAVEAT: 25 MHz is a mild overclock of the ASIC's rated 20 MHz RCk (the firmware permits it). Clean
+# in all short tests; a multi-hour soak to confirm long-term stability is still pending (do it with
+# beam back). To revert to the conservative 16.7 MHz read clock, set 60 -> ('6.0', '6.0').
+# WrClk_Phase 2 / AdcClk_Phase 5 (template) are valid at both -- 4.0/6.0 verified clean as `coarse_a`.
 SAMPLE_PERIOD_CLOCK_DIVS = {
-    20: ('4.0', '2.0'),
-    60: ('6.0', '6.0'),
+    20: ('4.0', '2.0'),   # 20 ns sampling, 25 MHz read (vendor pair)
+    60: ('4.0', '6.0'),   # 60 ns sampling, 25 MHz read -- production default (was ('6.0','6.0'))
 }
 
 
@@ -561,7 +583,8 @@ def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time
                               do_pedestal_threshold_run=None, do_data_run=None, sample_period=None,
                               daq_run_events=None, inter_packet_delay=None,
                               multipack_thr=None, multipack_enb=None, sparse_rd=None, rdclk_div=None,
-                              trig_veto_len=None):
+                              wrclk_div=None, rd_del=None, adc_dat_rdy_del=None,
+                              trig_veto_len=None, ovr_wrn_hwm=None, ovr_wrn_lwm=None, loc_throt=None):
     print('Making config file from template...')
     dest = run_dir
     cfg_file_name = os.path.basename(cfg_template_file_path)
@@ -637,12 +660,58 @@ def make_config_from_template(run_dir, cfg_template_file_path, cfg_file_run_time
         # (baseline ~256, no DreamRdErr). Overrides the sample_period-derived RdClk_Div; WrClk
         # (sampling period) is left untouched. Comb study 2026-07-19.
         updates["Feu * DrmClk RdClk_Div"] = f'{float(rdclk_div)}'
+    if wrclk_div is not None:
+        # DrmClk WrClk_Div = TrigClock/WrClk SCA *write* (sampling) divisor. 2.0 -> 20 ns/sample,
+        # 6.0 -> 60 ns/sample. Normally set as a pair with RdClk_Div via `sample_period`
+        # (SAMPLE_PERIOD_CLOCK_DIVS); this override exists to decouple the two so the readout
+        # clock can be raised WITHOUT collapsing the sampling window, or vice versa. Overrides
+        # the sample_period-derived WrClk_Div.
+        # CAUTION: WrClk_Phase / AdcClk_Phase in the cfg are tuned for the vendor divisor PAIRS
+        # (6.0/6.0 and 4.0/2.0). Any unpaired combination is un-phased territory -- VERIFY the
+        # decoded data (baseline ~256, ZS tracer channels present in 100% of events) before
+        # trusting a rate number taken there.
+        updates["Feu * DrmClk WrClk_Div"] = f'{float(wrclk_div)}'
+    if rd_del is not None:
+        # Feu_RunCtrl_RdDel -> RunControl 0x200008 bit 22 (DreamRdDel). FEU manual 3.2.3: "intended
+        # for tests", DEFAULT 0; when 1 the FIRST Dream Read of the train is delayed by a hardcoded
+        # 1536 core-clock cycles (12.3 us @125 MHz / 15.4 us @100 MHz). NOT in our template, so the
+        # hardware has been sitting at 1 (peeked on all 8 FEUs 2026-07-23) -- inherited, not chosen.
+        # SAFE TO SET: our data runs use `Sys DaqRun Trig Ext`, and that RunCtrl branch (RunCtrl.c
+        # ~1328) sets ONLY Feu_PreScale_EvtData -- it never touches RdDel, so unlike the trigger-FIFO
+        # watermarks this value is NOT clamped. VERIFY anyway: peek 0x200008 bit 22.
+        updates["Feu * Feu_RunCtrl_RdDel"] = int(rd_del)
+    if adc_dat_rdy_del is not None:
+        # Feu_RunCtrl_AdcDatRdyDel -> 0x200008 bits 20:16 (Rd2AdcDataDel): read-clock cycles the logic
+        # waits between the Dream Read strobe and valid ADC data. Manual: "for the 20.8(3) MHz read
+        # clock this value is usually set to 8"; hardware holds 8, but we now read at 25 MHz
+        # (RdClk_Div 4.0), so 8 may no longer centre the ADC eye. This is a DATA-QUALITY knob, not a
+        # rate knob -- judge it on baseline RMS / tracer integrity, not on IntRate.
+        updates["Feu * Feu_RunCtrl_AdcDatRdyDel"] = int(adc_dat_rdy_del)
     if trig_veto_len is not None:
         # Trig_Conf_TrigVetoLen (TrigGen CSR 0xE00000): per-trigger dead window in trigger-clock
         # periods (10-bit, max 1023 ≈ 8-10 µs). Rejects a new trigger within this window of the
         # previous one — kills close-spaced re-triggers ("ringing"), e.g. the ~5 µs-spaced γ-flash
         # burst. Cost: also drops genuine physics triggers closer than the window. Comb study 2026-07-19.
         updates["Feu * Trig_Conf_TrigVetoLen"] = int(trig_veto_len)
+    if ovr_wrn_hwm is not None:
+        # Main_Trig_OvrWrnHwm (TrigConfig 0x100008, bits 23:18): trigger-FIFO occupancy above
+        # which the FEU raises OverflowWarning -> FEU BUSY -> TCM stops sending triggers. FIFO is
+        # 64 deep; cfg default 20 (manual default 24). Raising it was a NULL result (comb study
+        # 2026-07-19: occupancy never exceeds ~11-12 so the mark is never reached). LOWERING it
+        # below the observed occupancy is the untested direction — it should make the FEU assert
+        # BUSY earlier and throttle the flash burst at the source. Pairs with loc_throt.
+        updates["Feu * Main_Trig_OvrWrnHwm"] = int(ovr_wrn_hwm)
+    if ovr_wrn_lwm is not None:
+        # Main_Trig_OvrWrnLwm (0x100008, bits 17:12): occupancy below which OverflowWarning
+        # clears. Hysteresis partner of the HWM — keep LWM < HWM. cfg default 16.
+        updates["Feu * Main_Trig_OvrWrnLwm"] = int(ovr_wrn_lwm)
+    if loc_throt is not None:
+        # Main_Trig_LocThrot (0x100008, bit 30): if 1, the FEU refuses triggers while in the
+        # OverflowWarning condition ("local trigger throttle", manual 3.1.3). cfg default 1.
+        # UNVERIFIED whether this gates EXTERNAL (TCM) triggers or only self-triggers — the
+        # sibling knob Trig_Conf_TrigVetoLen proved inert under external triggering (comb study).
+        # That is exactly what the HWM-down scan is designed to decide.
+        updates["Feu * Main_Trig_LocThrot"] = _to_bit(loc_throt)
     if do_pedestal_threshold_run is not None:
         updates["Sys Action PedThrRun"] = _to_bit(do_pedestal_threshold_run)
     if do_data_run is not None:
