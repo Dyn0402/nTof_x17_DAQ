@@ -5,12 +5,17 @@ Micromegas detectors and slicing it by any combination of **HV scan point**, **t
 the gamma flash**, and **beam-pulse intensity**. First applied to run_67
 (2026-07-24); the same three scripts run on any flash-anchored HV-scan run.
 
-**Reference implementation:**
-`~/beam_july/analysis/July_HV_Scan/run67_track_hv_time/`
+**Scripts (version-controlled):**
+`~/PycharmProjects/nTof_x17/ntof_july_analysis/track_rate_hv_time_intensity/`
+(`~/ana` → `nTof_x17`)
 - `build_cache.py` — tracking + denominator, once per run, cached to CSV
 - `plots.py` — HV × time figures and the best-HV-per-band table
 - `intensity_split.py` — the beam-intensity split (adds the pulse-intensity axis)
-- `README.md` — the run_67 results and run-specific caveats
+- `README.md` — usage + dependency notes
+
+**Outputs** (cache/, figures/, CSVs) live per-run under `~/beam_july/analysis/`, e.g. the
+first application: `~/beam_july/analysis/July_HV_Scan/run67_track_hv_time/` (its README has
+the run_67 results and caveats). Point the scripts at an output dir with `--cache`/`--out`.
 
 Run these with the tracking venv: `~/PycharmProjects/nTof_x17/.venv/bin/python`.
 
@@ -19,7 +24,7 @@ Run these with the tracking venv: `~/PycharmProjects/nTof_x17/.venv/bin/python`.
 ## 0. TL;DR — run it on a new dataset
 
 ```bash
-cd ~/beam_july/analysis/July_HV_Scan/run67_track_hv_time      # the reference dir
+cd ~/ana/ntof_july_analysis/track_rate_hv_time_intensity      # the scripts
 V=~/PycharmProjects/nTof_x17/.venv/bin/python
 C=~/beam_july/analysis/July_HV_Scan/run_XX/cache              # this run's cache dir
 F=~/beam_july/analysis/July_HV_Scan/run_XX/figures
@@ -236,19 +241,23 @@ constants.
 ## 7. Files & outputs
 
 ```
-run67_track_hv_time/
+ntof_july_analysis/track_rate_hv_time_intensity/   (in the nTof_x17 / ~/ana repo)
   build_cache.py            --run/--cache; SUB_PATTERNS is the only run-specific edit
-  plots.py                  HV × time figures + rate_vs_hv_time.csv
-  intensity_split.py        --rebuild refits pulse matching; intensity_split.csv
-  README.md                 run_67 results + caveats
-  cache/
+  plots.py                  --cache/--out; HV × time figures + rate_vs_hv_time.csv
+  intensity_split.py        --run/--cache/--out; --rebuild refits pulse matching
+  README.md                 usage + dependencies
+
+<output-dir>/                                       (per-run under ~/beam_july/analysis/)
+  cache/                                            (--cache)
     tracks.csv              one row per track: det, subrun, <axes>, event_id, projection,
                             n_hits, angle_deg, time_min, time_span, pos_span, dt_ms
     events.csv              one row per physics trigger (denominator): subrun, <axes>, dt_ms
     subruns.csv             bookkeeping: n_flash, n_phys, per-det track counts
     e10_tracks.csv          subrun, event_id, e10          (from pulse_match)
     e10_events.csv          subrun, dt_ms, e10             (denominator, burst-order mapped)
-  figures/
+  figures/                                          (--out; the CSV tables land here too)
+    rate_vs_hv_time.csv        best-HV table (plots.py)
+    intensity_split.csv        the intensity numbers (intensity_split.py)
     angle_sanity.png        CNS quality check — READ FIRST on any new run
     rate_vs_hv.png          headline: rate vs resist HV per dt band (loose + low-pileup)
     hv_time_heatmap.png     resist × dt map, ★ = best HV per time slice
