@@ -47,6 +47,7 @@ import json
 import re
 import time
 import datetime
+import signal
 import tempfile
 import subprocess
 from pathlib import Path
@@ -54,6 +55,29 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common_functions import create_dir_if_not_exist
+
+
+# Decode watchdog defaults (see _decode_file). The decoder can infinite-loop on
+# certain FDFs (100% CPU, input position and output ROOT both frozen — seen on
+# the banco P2 setup 2026-07-23/24, same DreamDecoder source); one such file
+# would block the pipeline forever. These bound a single decode. Overridable via
+# the processor config. Ported from the banco fork's watcher, 2026-07-24.
+DECODE_STALL_TIMEOUT_S = 180   # kill a decode whose output ROOT has not grown this long
+DECODE_HARD_TIMEOUT_S  = 1800  # absolute cap on a single decode
+
+
+class DecodeTimeout(Exception):
+    """A decode was killed for hanging (output frozen, or hard cap exceeded).
+
+    The raw FDF is preserved — renamed to <name>.hang — so the file_num can
+    still finish from the surviving FEUs and the file stays a reproducer for
+    the decoder bug.
+    """
+    def __init__(self, fdf_path, hang_path, reason):
+        super().__init__(f'decode of {os.path.basename(fdf_path)} killed: {reason}')
+        self.fdf_path = fdf_path
+        self.hang_path = hang_path
+        self.reason = reason
 
 
 def main():
@@ -100,6 +124,8 @@ def run_watcher(config: dict):
     stale_run_days = config.get('stale_run_days',  4)
     free_threads   = config.get('free_threads',    2)
     n_threads      = max(1, (os.cpu_count() or 1) - free_threads)
+    decode_stall_timeout_s = config.get('decode_stall_timeout_s', DECODE_STALL_TIMEOUT_S)
+    decode_hard_timeout_s  = config.get('decode_hard_timeout_s',  DECODE_HARD_TIMEOUT_S)
 
     print(f"[watcher] runs_dir      : {runs_dir}")
     if include_runs:
@@ -148,6 +174,7 @@ def run_watcher(config: dict):
 
             sample_period = _read_sample_period(run_dir)
             feu_det_map   = _read_feu_detector_map(run_dir)
+            zs_baseline   = _read_zs_baseline(run_dir)
 
             for subrun_dir in _newest_first(d for d in run_dir.iterdir() if d.is_dir()):
                 raw_dir = subrun_dir / raw_inner
@@ -157,7 +184,8 @@ def run_watcher(config: dict):
                 ped_dir = _resolve_pedestal_dir(raw_dir, pedestal_loc, pedestal_base_dir)
 
                 if do_decode and ped_dir:
-                    _decode_pedestals(ped_dir, decode_exe)
+                    _decode_pedestals(ped_dir, decode_exe,
+                                      decode_stall_timeout_s, decode_hard_timeout_s)
 
                 all_fnums  = _get_data_file_nums(raw_dir)
                 done_fnums = _get_processed_file_nums(
@@ -190,7 +218,8 @@ def run_watcher(config: dict):
                             do_decode, do_analyze, do_combine,
                             save_fdfs, save_decoded, n_threads,
                             sample_period, common_noise_subtraction,
-                            feu_det_map
+                            feu_det_map, zs_baseline,
+                            decode_stall_timeout_s, decode_hard_timeout_s
                         )
                         del prev_sizes[key]
                         return True
@@ -233,7 +262,9 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                        do_decode, do_analyze, do_combine,
                        save_fdfs, save_decoded, n_threads,
                        sample_period=None, common_noise_subtraction=True,
-                       feu_det_map=None):
+                       feu_det_map=None, zs_baseline=False,
+                       decode_stall_timeout_s=DECODE_STALL_TIMEOUT_S,
+                       decode_hard_timeout_s=DECODE_HARD_TIMEOUT_S):
 
     decoded_dir  = subrun_dir / decoded_inner
     hits_dir     = subrun_dir / hits_inner
@@ -248,9 +279,16 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                 root_path = decoded_dir / fdf.name.replace('.fdf', '.root')
                 if root_path.exists():
                     continue
-                tasks.append(pool.submit(_decode_file, str(fdf), str(root_path), decode_exe))
+                tasks.append(pool.submit(_decode_file, str(fdf), str(root_path), decode_exe,
+                                         decode_stall_timeout_s, decode_hard_timeout_s))
             for t in as_completed(tasks):
-                t.result()
+                try:
+                    t.result()
+                except DecodeTimeout as e:
+                    # Continue with the surviving FEUs; the quarantined FDF
+                    # stays behind as <name>.hang for offline debugging.
+                    print(f"[decode]  quarantined {os.path.basename(e.hang_path)} "
+                          f"({e.reason}); continuing with surviving FEUs")
 
     # Step 2: Analyze waveforms
     if do_analyze:
@@ -269,7 +307,7 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                     continue
                 tasks.append(pool.submit(
                     _analyze_file, str(root_path), ped_dir, str(hits_path), analyze_exe,
-                    sample_period, common_noise_subtraction, feu_det_map
+                    sample_period, common_noise_subtraction, feu_det_map, zs_baseline
                 ))
             for t in as_completed(tasks):
                 t.result()
@@ -297,7 +335,9 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                 print(f"[cleanup] Removed {f.name}")
 
 
-def _decode_pedestals(ped_dir: str, decode_exe: str):
+def _decode_pedestals(ped_dir: str, decode_exe: str,
+                      decode_stall_timeout_s=DECODE_STALL_TIMEOUT_S,
+                      decode_hard_timeout_s=DECODE_HARD_TIMEOUT_S):
     """Decode pedestal FDFs in ped_dir in-place, skipping already-decoded ones."""
     ped_path = Path(ped_dir)
     if not ped_path.exists():
@@ -309,7 +349,12 @@ def _decode_pedestals(ped_dir: str, decode_exe: str):
         if root_out.exists():
             continue
         print(f"[watcher] Decoding pedestal: {fdf.name}")
-        _decode_file(str(fdf), str(root_out), decode_exe)
+        try:
+            _decode_file(str(fdf), str(root_out), decode_exe,
+                         decode_stall_timeout_s, decode_hard_timeout_s)
+        except DecodeTimeout as e:
+            print(f"[decode]  quarantined pedestal "
+                  f"{os.path.basename(e.hang_path)} ({e.reason}); skipping it")
 
 
 # ---------------------------------------------------------------------------
@@ -462,6 +507,27 @@ def _read_sample_period(run_dir: Path):
         return None
 
 
+def _read_zs_baseline(run_dir: Path) -> bool:
+    """True when the run took zero-suppressed data with ON-FEU pedestal
+    subtraction (dream_daq_info in run_config.json): the decoded waveforms are
+    then re-centred at 256 and analyze_waveforms needs --zs-baseline 1 (the
+    pedestal file's per-channel means would be the wrong baseline; its RMS is
+    still used for thresholds). ZS without on-FEU subtraction sits on the raw
+    per-channel baselines, where the pedestal means ARE correct — hence the
+    two-condition test. Ported from the banco P2 fork, 2026-07-24."""
+    cfg_path = run_dir / 'run_config.json'
+    if not cfg_path.exists():
+        return False
+    try:
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+        daq = cfg.get('dream_daq_info', {})
+        return bool(daq.get('zero_suppress')) and bool(daq.get('pedestal_subtraction'))
+    except Exception as e:
+        print(f"[watcher] Could not read zs_baseline from {cfg_path}: {e}")
+        return False
+
+
 def _read_feu_detector_map(run_dir: Path) -> dict:
     """Return {feu_num: detector_label} from run_config.json, or {} if absent.
 
@@ -504,13 +570,71 @@ def _read_feu_detector_map(run_dir: Path) -> dict:
 # Worker functions (invoke C++ executables)
 # ---------------------------------------------------------------------------
 
-def _decode_file(fdf_path: str, root_path: str, decode_exe: str):
+def _decode_file(fdf_path: str, root_path: str, decode_exe: str,
+                 stall_timeout_s: float = DECODE_STALL_TIMEOUT_S,
+                 hard_timeout_s: float = DECODE_HARD_TIMEOUT_S):
+    """Decode one FDF, with a watchdog.
+
+    DreamDecoder can infinite-loop on certain files — 100% CPU with the input
+    read position and the output ROOT both frozen (seen on the banco P2 setup
+    2026-07-23/24; same decoder source). The watcher is sequential per subrun,
+    so one such file pegs a core AND blocks the pipeline behind it. Guard it:
+    poll the output ROOT while the decoder runs; if it stops growing for
+    stall_timeout_s (the hang signature) or the decode exceeds hard_timeout_s,
+    kill the decoder, drop the partial ROOT, and quarantine the FDF to
+    <name>.hang. The raw FDF is renamed, never deleted — it remains a
+    reproducer for the decoder bug.
+    """
     print(f"[decode]  {os.path.basename(fdf_path)}")
-    subprocess.run([decode_exe, fdf_path, root_path])
+    # own session/process group so the watchdog can reap the decoder and any
+    # children it might spawn in one shot.
+    proc = subprocess.Popen([decode_exe, fdf_path, root_path], start_new_session=True)
+    start = time.time()
+    last_size, last_progress = -1, start
+    while True:
+        try:
+            proc.wait(timeout=5)
+            return  # decode finished on its own (success or its own error)
+        except subprocess.TimeoutExpired:
+            pass
+        now = time.time()
+        try:
+            size = os.path.getsize(root_path)
+        except OSError:
+            size = 0
+        if size > last_size:
+            last_size, last_progress = size, now
+        stalled  = now - last_progress > stall_timeout_s
+        over_cap = now - start > hard_timeout_s
+        if not (stalled or over_cap):
+            continue
+        reason = (f'output frozen {int(now - last_progress)}s at {size} B'
+                  if stalled else f'exceeded {int(hard_timeout_s)}s hard cap')
+        print(f"[decode]  HANG: {os.path.basename(fdf_path)} — {reason}; killing decoder")
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()  # fallback if the group is already gone
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            if os.path.exists(root_path):
+                os.remove(root_path)
+        except OSError:
+            pass
+        hang_path = fdf_path + '.hang'
+        try:
+            os.replace(fdf_path, hang_path)
+        except OSError:
+            hang_path = fdf_path
+        raise DecodeTimeout(fdf_path, hang_path, reason)
 
 
 def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe: str,
-                  sample_period=None, common_noise_subtraction: bool = True, feu_det_map=None):
+                  sample_period=None, common_noise_subtraction: bool = True, feu_det_map=None,
+                  zs_baseline: bool = False):
     m = re.search(r'_(\d{3})_(\d{2})', os.path.basename(root_path))
     if not m:
         print(f"[analyze] Cannot extract FEU number from {root_path}, skipping")
@@ -541,6 +665,8 @@ def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe:
     if sample_period is not None:
         cmd += ['--tps', str(sample_period)]
     cmd += ['--cns', '1' if common_noise_subtraction else '0']
+    if zs_baseline:
+        cmd += ['--zs-baseline', '1']
     subprocess.run(cmd)
 
 
