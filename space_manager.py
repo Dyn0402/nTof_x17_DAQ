@@ -53,6 +53,13 @@ CURRENT_RUN_STATE    = os.path.join(BASE_DIR, 'config', 'current_run_state.json'
 DELETE_LOG           = os.path.join(BASE_DIR, 'logs', 'space_manager.log')
 
 RUN_NAME_RE = re.compile(r'^run_\d+$')
+# A subrun is a directory directly under a run dir, with the SAME name on SSD, HDD
+# and EOS (e.g. m090On_dr500_r520_062, or pedestals). Names are DAQ-chosen and not
+# as regular as run_<N>, so this is a whitelist of safe characters — it must start
+# with an alphanumeric and contain only [A-Za-z0-9._-], which by construction
+# excludes '.', '..', and anything with a path separator. The resolved-path guards
+# in delete_subrun are the real protection; this just rejects obvious nonsense early.
+SUBRUN_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
 
 DISKS = {
     'hdd': {'label': 'HDD (processed runs)',   'root': HDD_RUNS_DIR,  'fs': HDD_FS_PATH},
@@ -263,6 +270,110 @@ def verify_run(disk: str, run: str) -> dict:
     return verify_hdd_run(run) if disk == 'hdd' else verify_ssd_run(run)
 
 
+# --- Subrun verification ---------------------------------------------------
+# A subrun is a self-contained directory mirrored across all three tiers
+# (SSD raw -> HDD processed -> EOS), so the run-level safety model applies
+# unchanged, one directory deeper. The only extra signal is `.subrun_complete`,
+# the HDD-side marker the DAQ writes when a subrun finishes; it is mirrored to
+# EOS like any other file, so it never trips the file-set comparison.
+
+def verify_hdd_subrun(run: str, subrun: str) -> dict:
+    """Compare one HDD subrun directory against its EOS mirror (relpath + size),
+    exactly as verify_hdd_run does for a whole run, scoped one level deeper."""
+    root = HDD_RUNS_DIR / run / subrun
+    res = {'run': run, 'subrun': subrun, 'disk': 'hdd', 'size': 0, 'files': 0,
+           'ok': 0, 'missing': 0, 'mismatch': 0,
+           'safe': False, 'reason': '', 'unverifiable': False,
+           'complete': (root / '.subrun_complete').is_file()}
+    if not root.is_dir():
+        res['reason'] = 'subrun directory not found on HDD'
+        return res
+    local = _local_size_map(root)
+    res['files'] = len(local)
+    res['size'] = sum(local.values())
+    _, eos_runs = _eos_config()
+    remote = _remote_size_map(f"{eos_runs}/{run}/{subrun}")
+    if remote is None:
+        res['unverifiable'] = True
+        res['reason'] = 'could not list subrun on EOS (Kerberos/network?) — NOT safe'
+        return res
+    missing = mismatch = ok = 0
+    for rel, sz in local.items():
+        rsz = remote.get(rel)
+        if rsz == sz:
+            ok += 1
+        elif rsz is None:
+            missing += 1
+        else:
+            mismatch += 1
+    res.update(ok=ok, missing=missing, mismatch=mismatch)
+    if missing == 0 and mismatch == 0 and ok == len(local) and len(local) > 0:
+        res['safe'] = True
+        res['reason'] = f'all {ok} files verified on EOS'
+    elif len(local) == 0:
+        res['reason'] = 'subrun directory is empty'
+    else:
+        res['reason'] = f'{missing} missing + {mismatch} size-mismatched on EOS'
+    return res
+
+
+def verify_ssd_subrun(run: str, subrun: str) -> dict:
+    """An SSD raw subrun is safe iff every .fdf is on the HDD (same run/subrun) at
+    matching size AND that HDD subrun is fully verified on EOS. Mirrors
+    verify_ssd_run exactly, scoped to one subrun."""
+    root = SSD_DREAM_DIR / run / subrun
+    res = {'run': run, 'subrun': subrun, 'disk': 'ssd', 'size': 0, 'files': 0,
+           'fdf_total': 0, 'fdf_on_hdd': 0, 'staging_files': 0,
+           'hdd_safe': False, 'safe': False, 'reason': '', 'unverifiable': False,
+           'complete': False}
+    if not root.is_dir():
+        res['reason'] = 'subrun directory not found on SSD'
+        return res
+    local = _local_size_map(root)
+    res['files'] = len(local)
+    res['size'] = sum(local.values())
+
+    hdd_root = HDD_RUNS_DIR / run / subrun
+    if not hdd_root.is_dir():
+        res['reason'] = 'no matching HDD subrun — raw data not yet migrated; NOT safe'
+        return res
+
+    # (basename, size) multiset of everything on the HDD for this subrun.
+    hdd_pairs = set()
+    for rel, sz in _local_size_map(hdd_root).items():
+        hdd_pairs.add((os.path.basename(rel), sz))
+
+    fdf = {rel: sz for rel, sz in local.items() if rel.lower().endswith('.fdf')}
+    res['fdf_total'] = len(fdf)
+    res['staging_files'] = len(local) - len(fdf)
+    on_hdd = sum(1 for rel, sz in fdf.items()
+                 if (os.path.basename(rel), sz) in hdd_pairs)
+    res['fdf_on_hdd'] = on_hdd
+
+    hdd_res = verify_hdd_subrun(run, subrun)
+    res['hdd_safe'] = hdd_res['safe']
+    res['unverifiable'] = hdd_res.get('unverifiable', False)
+    res['complete'] = hdd_res['complete']
+
+    if len(fdf) == 0:
+        res['reason'] = 'no .fdf raw files present (nothing to protect)'
+    if on_hdd < len(fdf):
+        res['reason'] = (f'{len(fdf) - on_hdd}/{len(fdf)} raw .fdf files NOT '
+                         f'found on HDD — NOT safe')
+        return res
+    if not hdd_res['safe']:
+        res['reason'] = f"raw .fdf on HDD, but HDD subrun not on EOS: {hdd_res['reason']}"
+        return res
+    res['safe'] = True
+    res['reason'] = (f'all {len(fdf)} raw .fdf verified on HDD->EOS; '
+                     f'{res["staging_files"]} staging files reproducible')
+    return res
+
+
+def verify_subrun(disk: str, run: str, subrun: str) -> dict:
+    return verify_hdd_subrun(run, subrun) if disk == 'hdd' else verify_ssd_subrun(run, subrun)
+
+
 # --- Scan ------------------------------------------------------------------
 
 def list_runs(disk: str) -> list:
@@ -271,6 +382,25 @@ def list_runs(disk: str) -> list:
         return []
     runs = [p.name for p in root.iterdir() if p.is_dir() and RUN_NAME_RE.match(p.name)]
     return sorted(runs, key=_run_num)
+
+
+def _subrun_key(name: str):
+    """Sort subruns by their trailing _<NNN> acquisition index when present (so
+    m..._062 orders by 62, not lexically), falling back to the name otherwise."""
+    m = re.search(r'_(\d+)$', name)
+    return (0, int(m.group(1))) if m else (1, name)
+
+
+def list_subruns(disk: str, run: str) -> list:
+    """Subrun directory names directly under a run, acquisition-order-sorted.
+    Only real directories whose name passes SUBRUN_NAME_RE — loose run-level files
+    (run_config.json, dream_daq.log) and symlinks are ignored."""
+    root = DISKS[disk]['root'] / run
+    if not root.is_dir():
+        return []
+    subs = [p.name for p in root.iterdir()
+            if p.is_dir() and not p.is_symlink() and SUBRUN_NAME_RE.match(p.name)]
+    return sorted(subs, key=_subrun_key)
 
 
 def scan(disk: str, runs=None) -> dict:
@@ -298,6 +428,50 @@ def scan(disk: str, runs=None) -> dict:
         'safe_bytes': safe_bytes, 'safe_bytes_h': human(safe_bytes),
         'active_run': act,
         'usage': disk_usage().get(disk, {}),
+        'scanned_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }
+
+
+def scan_subruns(disk: str, run: str) -> dict:
+    """Per-subrun verdicts for one run — the finer-grained sibling of scan().
+
+    Every subrun is verified independently (SSD -> HDD -> EOS, or HDD -> EOS). For
+    the run that is CURRENTLY ACQUIRING there is an extra gate: a subrun is only ever
+    deletable once its HDD copy carries the `.subrun_complete` marker AND it verifies.
+    The in-progress subrun has no marker yet, so it can never be a candidate even if a
+    verification happens to pass mid-write. Completed subruns of the active run ARE
+    eligible — that is the whole point: a long run can be pruned while it is still
+    being taken.
+    """
+    if disk not in DISKS:
+        raise ValueError(f'unknown disk {disk!r}')
+    if not RUN_NAME_RE.match(run or ''):
+        raise ValueError(f'invalid run name {run!r}')
+    act = active_run()
+    is_active_run = (run == act)
+    results = []
+    for sub in list_subruns(disk, run):
+        v = verify_subrun(disk, run, sub)
+        v['active_run'] = is_active_run
+        v['held_active'] = False
+        # Active-run gate: an incomplete subrun of the active run is never deletable.
+        if is_active_run and not v.get('complete'):
+            v['held_active'] = True
+            if v['safe']:
+                v['safe'] = False
+                v['reason'] = 'active run: subrun not marked complete — never deletable yet'
+        v['size_h'] = human(v.get('size', 0))
+        results.append(v)
+    safe_bytes = sum(r['size'] for r in results if r['safe'])
+    total_bytes = sum(r['size'] for r in results)
+    return {
+        'disk': disk, 'run': run, 'active': is_active_run,
+        'subruns': results,
+        'n_subruns': len(results),
+        'n_safe': sum(1 for r in results if r['safe']),
+        'safe_bytes': safe_bytes, 'safe_bytes_h': human(safe_bytes),
+        'total_bytes': total_bytes, 'total_bytes_h': human(total_bytes),
+        'active_run': act,
         'scanned_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
 
@@ -372,6 +546,85 @@ def delete_runs(disk: str, runs: list) -> dict:
     freed = 0
     for run in runs:
         r = delete_run(disk, run)
+        results.append(r)
+        if r.get('success'):
+            freed += r.get('freed_bytes', 0)
+    return {'results': results, 'freed_bytes': freed, 'freed_h': human(freed),
+            'n_deleted': sum(1 for r in results if r.get('success')),
+            'n_failed': sum(1 for r in results if not r.get('success'))}
+
+
+def delete_subrun(disk: str, run: str, subrun: str) -> dict:
+    """Delete one subrun directory from a disk, only after re-verifying, here, that
+    it is safe. Same never-trust-the-caller model as delete_run, one level deeper.
+
+    Guards, in order:
+      1. disk is known; run matches ^run_\\d+$; subrun matches SUBRUN_NAME_RE.
+      2. target resolves to a real directory sitting DIRECTLY under a real run
+         directory that itself sits DIRECTLY under the disk root (no symlinks, no
+         traversal, no partial-name tricks). The run dir is never itself the target.
+      3. if the run is the active one, the subrun must be marked `.subrun_complete`
+         (an in-progress subrun is never deletable).
+      4. a fresh verify_subrun() says SAFE.
+    """
+    if disk not in DISKS:
+        return {'success': False, 'message': f'unknown disk {disk!r}'}
+    if not RUN_NAME_RE.match(run or ''):
+        return {'success': False, 'message': f'invalid run name {run!r}'}
+    if not SUBRUN_NAME_RE.match(subrun or ''):
+        return {'success': False, 'message': f'invalid subrun name {subrun!r}'}
+
+    root = DISKS[disk]['root'].resolve()
+    run_dir = DISKS[disk]['root'] / run
+    target = run_dir / subrun
+    try:
+        rrun = run_dir.resolve()
+        rtarget = target.resolve()
+    except OSError as e:
+        return {'success': False, 'message': f'cannot resolve path: {e}'}
+    if run_dir.is_symlink() or target.is_symlink():
+        return {'success': False, 'message': 'refusing to delete through a symlink'}
+    if not rtarget.is_dir():
+        return {'success': False, 'message': f'{run}/{subrun} is not a directory on {disk}'}
+    if rrun.parent != root or rrun == root:
+        return {'success': False, 'message': 'run is not directly under the disk root'}
+    if rtarget.parent != rrun or rtarget == rrun:
+        return {'success': False, 'message': 'subrun is not directly under its run directory'}
+
+    # Active-run gate: only a completed subrun of the acquiring run may go.
+    if run == active_run():
+        v0 = verify_subrun(disk, run, subrun)
+        if not v0.get('complete'):
+            _log_delete(f"REFUSED {disk}/{run}/{subrun}: active run, subrun not complete")
+            return {'success': False,
+                    'message': f'{run}/{subrun} is in the active run and not marked complete — refusing',
+                    'verdict': v0}
+
+    verdict = verify_subrun(disk, run, subrun)
+    if not verdict['safe']:
+        _log_delete(f"REFUSED {disk}/{run}/{subrun}: {verdict['reason']}")
+        return {'success': False, 'message': f"not safe to delete: {verdict['reason']}",
+                'verdict': verdict}
+
+    size = _dir_size(rtarget)
+    try:
+        shutil.rmtree(rtarget)
+    except Exception as e:
+        _log_delete(f"ERROR deleting {disk}/{run}/{subrun}: {e}")
+        return {'success': False, 'message': f'delete failed: {e}'}
+
+    _log_delete(f"DELETED {disk}/{run}/{subrun}  freed={human(size)}  ({verdict['reason']})")
+    return {'success': True, 'run': run, 'subrun': subrun, 'disk': disk,
+            'freed_bytes': size, 'freed_h': human(size),
+            'message': f'Deleted {disk}/{run}/{subrun}, freed {human(size)}'}
+
+
+def delete_subruns(disk: str, run: str, subruns: list) -> dict:
+    """Delete several subruns of one run; each independently re-verified."""
+    results = []
+    freed = 0
+    for sub in subruns:
+        r = delete_subrun(disk, run, sub)
         results.append(r)
         if r.get('success'):
             freed += r.get('freed_bytes', 0)

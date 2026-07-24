@@ -40,6 +40,11 @@ TELEGRAM_URL = "https://api.telegram.org/bot{token}/{method}"
 
 _REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# The auto-remover's own config. rule_ssd_disk_space anchors its alert levels to
+# the same emergency_gb the space_watcher acts on, so retuning the floor from the
+# Disk Space tab moves the alert with it — read live each check, never cached.
+SPACE_CONFIG_FILE = os.path.join(_REPO_DIR, "config", "space_config.json")
+
 
 def describe_zeroed(zeroed):
     """Format zeroed channels for an alert, borrowing the watcher's own formatter so
@@ -180,7 +185,7 @@ class DaqMonitor:
         "rule_stream1_zeroed_channels": (
             "n_TOF wall/liquid/plastic channels are producing waveforms again."),
         "rule_gas_flow_starved": "gas flow is back to normal.",
-        "rule_ssd_disk_space": "SSD (/) disk space is back to normal.",
+        "rule_ssd_disk_space": "SSD (/) free space is back above the auto-remover's emergency level.",
         "rule_hdd_disk_space": "HDD (/mnt/data) disk space is back to normal.",
     }
 
@@ -1011,11 +1016,91 @@ class DaqMonitor:
             return severity, detail
         return False, f"{label} OK — {pct:.0f}% full"
 
+    def _ssd_emergency_gb(self):
+        """The auto-remover's emergency free-space level (GB), read live from
+        space_config.json so a floor retune from the Disk Space tab moves the alert
+        with it. Falls back to space_watcher.py's own default (half the floor, or a
+        flat 50 GB) if the file is missing or malformed — an unreadable config must
+        never silence the last-resort disk alert."""
+        try:
+            with open(SPACE_CONFIG_FILE) as f:
+                cfg = json.load(f)
+            if "emergency_gb" in cfg:
+                return float(cfg["emergency_gb"])
+            if "low_water_gb" in cfg:            # mirror space_watcher's own default
+                return round(float(cfg["low_water_gb"]) / 2, 1)
+        except Exception:
+            pass
+        return 50.0
+
     def rule_ssd_disk_space(self):
-        """Alert as the OS/system SSD (/) fills up. Graded: warning at 70%, then
-        alert / critical / emergency as it climbs (thresholds configurable via
-        rule_options.rule_ssd_disk_space.thresholds)."""
-        return self._disk_space_alert("rule_ssd_disk_space", "/", "SSD (/)")
+        """Last-resort free-space safety net on the SSD staging filesystem (/), the
+        same disk the auto-remover (space_watcher) prunes.
+
+        This is NOT the percent-full gradient it used to be. The SSD dream_run
+        staging area and / are one filesystem, and space_watcher deliberately parks
+        free space just above its low_water floor — so "70% full" is the NORMAL,
+        healthy operating point now, and a fixed percent gradient would nag forever.
+
+        Division of labour with the space_watcher rules:
+          * While free space stays in the band the auto-remover owns (>= emergency),
+            this rule is SILENT. If the pruner is struggling in that band (held by
+            its soft guards, freed only partially, or nothing safe to delete),
+            rule_space_watcher_stuck reports that from the watcher's own state.
+          * This rule only speaks up once free space has fallen to the auto-remover's
+            EMERGENCY level or below — and it does so straight off a live statvfs, so
+            it still fires when the watcher is dead or its state file is stale, which
+            is exactly when rule_space_watcher_stuck cannot.
+          * No double alert: when the watcher is ALIVE and already announcing the low
+            disk itself (a fresh EMERGENCY or STUCK state, both of which
+            rule_space_watcher_stuck raises at "critical"), this rule stands down and
+            lets that one own it. It re-takes ownership the moment the watcher goes
+            quiet — STOPPED or Stale — which is precisely when nothing else would warn.
+
+        Graded on FREE GB, anchored to the auto-remover's emergency_gb:
+          critical   free has fallen to the emergency level (space_watcher has, or
+                     would have, dropped its newest-runs reserve and is deleting even
+                     recent runs) — high-degree heads-up.
+          emergency  free is at/below half the emergency level: the emergency deletes
+                     are not keeping up (or nothing runs) and the disk is close to
+                     stopping acquisition — highest degree.
+
+        Tunable via rule_options.rule_ssd_disk_space.free_gb_thresholds in
+        monitor_config.json, e.g. {"critical": 50, "emergency": 25}. Missing keys are
+        derived from emergency_gb (critical = emergency_gb, emergency = half of it)."""
+        opts = self.config.get("rule_options", {}).get("rule_ssd_disk_space", {})
+        emerg_gb = self._ssd_emergency_gb()
+        defaults = {"critical": emerg_gb, "emergency": round(emerg_gb / 2, 1)}
+        thresholds = dict(defaults, **(opts.get("free_gb_thresholds") or {}))
+
+        # Stand down while the watcher is alive and already raising the low disk itself,
+        # so the operator gets one message, not two. Only a FRESH state counts: STOPPED
+        # and Stale (and every other status) fall through to the live-statvfs net below.
+        wstatus = get_space_watcher_status().get("status")
+        if wstatus in ("EMERGENCY", "STUCK"):
+            return False, f"space_watcher reporting {wstatus} (covered by rule_space_watcher_stuck)"
+
+        try:
+            usage = shutil.disk_usage("/")
+        except Exception as e:
+            return False, f"SSD (/): disk usage unavailable ({e})"
+
+        gb = 1024 ** 3
+        free_gb = usage.free / gb
+        pct = usage.used / usage.total * 100 if usage.total else 0
+        detail = (f"SSD (/) has {free_gb:.0f} GB free ({pct:.0f}% full) — at or below the "
+                  f"auto-remover's {emerg_gb:.0f} GB emergency level; the pruner is deleting "
+                  f"even the newest EOS-verified runs to keep the DAQ alive. Data is safe on "
+                  f"EOS. Check backup_watcher/Kerberos if free space keeps falling.")
+
+        # Most severe level whose free-GB floor we have dropped to/below (lowest floor wins).
+        severity = None
+        for sev, floor_gb in sorted(thresholds.items(), key=lambda kv: kv[1], reverse=True):
+            if free_gb <= floor_gb:
+                severity = sev
+        if severity:
+            return severity, detail
+        return False, f"SSD (/) OK — {free_gb:.0f} GB free ({pct:.0f}% full), above the {emerg_gb:.0f} GB emergency level"
 
     def rule_hdd_disk_space(self):
         """Alert as the data HDD (/mnt/data) fills up. Graded: warning at 70%, then

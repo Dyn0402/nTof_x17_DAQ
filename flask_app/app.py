@@ -2657,6 +2657,20 @@ def space_usage():
     return jsonify(space_manager.disk_usage())
 
 
+@app.route("/space/forecast")
+def space_forecast():
+    """Time-to-full forecast for the SSD (/) and HDD (/mnt/data), from the fill rate
+    measured off the system_stats history (see disk_forecast.py). `hours` sets the
+    trailing window. Imported lazily so a missing pandas never breaks the tab that
+    only wants the usage bars from /space/usage."""
+    hours = request.args.get("hours", default=6.0, type=float)
+    try:
+        import disk_forecast
+        return jsonify(disk_forecast.forecast(hours))
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/space/scan")
 def space_scan():
     disk = request.args.get("disk", "hdd")
@@ -2684,6 +2698,45 @@ def space_delete():
     out = space_manager.delete_runs(disk, runs)
     log_event("SPACE_DELETE", "disk_space", disk=disk,
               runs=",".join(runs), freed=out["freed_h"],
+              ok=out["n_deleted"], failed=out["n_failed"])
+    out["success"] = out["n_failed"] == 0
+    out["usage"] = space_manager.disk_usage().get(disk, {})
+    return jsonify(out)
+
+
+@app.route("/space/scan_subruns")
+def space_scan_subruns():
+    """Per-subrun verdicts for one run (read-only) — backs the run-row dropdown that
+    lets an operator prune individual subruns of a long run."""
+    disk = request.args.get("disk", "ssd")
+    run = request.args.get("run", "")
+    if disk not in space_manager.DISKS:
+        return jsonify({"success": False, "message": f"unknown disk {disk}"}), 400
+    try:
+        return jsonify(space_manager.scan_subruns(disk, run))
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/space/delete_subruns", methods=["POST"])
+def space_delete_subruns():
+    data = request.get_json(silent=True) or {}
+    disk = data.get("disk")
+    run = data.get("run")
+    subruns = data.get("subruns") or []
+    confirm = data.get("confirm")
+    if disk not in space_manager.DISKS:
+        return jsonify({"success": False, "message": f"unknown disk {disk}"}), 400
+    if not space_manager.RUN_NAME_RE.match(run or ""):
+        return jsonify({"success": False, "message": f"invalid run {run!r}"}), 400
+    if not isinstance(subruns, list) or not subruns:
+        return jsonify({"success": False, "message": "no subruns selected"}), 400
+    # Typed confirmation must match exactly, so a stray click can't delete.
+    if confirm != "DELETE":
+        return jsonify({"success": False, "message": "confirmation text did not match"}), 400
+    out = space_manager.delete_subruns(disk, run, subruns)
+    log_event("SPACE_DELETE_SUBRUNS", "disk_space", disk=disk, run=run,
+              subruns=",".join(subruns), freed=out["freed_h"],
               ok=out["n_deleted"], failed=out["n_failed"])
     out["success"] = out["n_failed"] == 0
     out["usage"] = space_manager.disk_usage().get(disk, {})
