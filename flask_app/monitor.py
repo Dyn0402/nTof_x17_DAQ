@@ -189,6 +189,45 @@ class DaqMonitor:
         "rule_hdd_disk_space": "HDD (/mnt/data) disk space is back to normal.",
     }
 
+    # Presentational grouping for the Setup panel's rule list, ordered. Purely a
+    # display concern (list_rules tags each rule with its section); it does not
+    # affect which rules run. Any rule not named here falls into a trailing "Other"
+    # section, so adding a rule method never silently hides it from the UI.
+    _RULE_SECTIONS = [
+        ("DAQ processes", [
+            "rule_dream_daq_session_dead",
+            "rule_daq_control_session_dead",
+            "rule_hv_control_monitoring",
+            "rule_dream_daq_unknown_state",
+            "rule_daq_control_unknown_state",
+        ]),
+        ("Run lifecycle", [
+            "rule_run_ended",
+            "rule_long_run_warning",
+        ]),
+        ("Background watchers", [
+            "rule_gas_watcher_dead",
+            "rule_beam_watcher_dead",
+            "rule_stream1_watcher_dead",
+            "rule_backup_watcher_dead",
+            "rule_processor_watcher_dead",
+            "rule_qa_watcher_dead",
+            "rule_space_watcher_dead",
+            "rule_space_watcher_stuck",
+        ]),
+        ("Disk space", [
+            "rule_ssd_disk_space",
+            "rule_hdd_disk_space",
+        ]),
+        ("Beam & data quality", [
+            "rule_beam_off",
+            "rule_gas_flow_starved",
+            "rule_stream1_files_reduced",
+            "rule_stream1_detector_gain",
+            "rule_stream1_zeroed_channels",
+        ]),
+    ]
+
     def __init__(self, config_path):
         self.config_path = config_path
         self.config = self._load_config()
@@ -201,7 +240,10 @@ class DaqMonitor:
         self._stop_event = threading.Event()
 
         # Per-rule state
-        self._alert_active = {}    # rule_name → bool
+        self._alert_active = {}    # rule_name → bool (condition currently met past min_dur)
+        self._alert_notified = {}  # rule_name → bool (a 🔴 alert was actually DELIVERED this
+                                   # episode; gates the ✅ recovery so we never announce a
+                                   # recovery for an alert the user was never sent)
         self._alert_severity = {}  # rule_name → severity name of the last alert sent
         self._alert_sent_at = {}   # rule_name → datetime
         self._pending_since = {}   # rule_name → datetime | None (condition first went True)
@@ -271,13 +313,13 @@ class DaqMonitor:
         )
 
     def list_rules(self):
-        """Return [{name, label, description, enabled}] for every rule method.
+        """Return [{name, label, description, enabled, section}] for every rule method,
+        ordered and tagged by section per _RULE_SECTIONS (the Setup panel groups on it).
 
         `description` is the first paragraph of the rule method's docstring,
         collapsed to a single line.
         """
-        rules = []
-        for name in self._rule_names():
+        def entry(name, section):
             doc = (getattr(self, name).__doc__ or "").strip()
             # First blank-line-delimited paragraph, whitespace-collapsed.
             first_para = doc.split("\n\n", 1)[0]
@@ -296,17 +338,30 @@ class DaqMonitor:
                 resend_minutes = raw
             effective_secs = self._rule_resend_interval_secs(name)
 
-            rules.append({
+            return {
                 "name": name,
                 "label": label,
                 "description": description,
+                "section": section,
                 "enabled": self._is_rule_enabled(name),
                 "resend_mode": resend_mode,
                 "resend_minutes": resend_minutes,
                 "resend_effective_minutes": (
                     None if effective_secs is None else effective_secs / 60
                 ),
-            })
+            }
+
+        # Emit rules in section order; anything not placed in a section trails under
+        # "Other" so a newly added rule method is never dropped from the panel.
+        all_names = set(self._rule_names())
+        rules, placed = [], set()
+        for section, names in self._RULE_SECTIONS:
+            for name in names:
+                if name in all_names and name not in placed:
+                    rules.append(entry(name, section))
+                    placed.add(name)
+        for name in sorted(all_names - placed):
+            rules.append(entry(name, "Other"))
         return rules
 
     def set_rule_enabled(self, name, enabled):
@@ -314,9 +369,11 @@ class DaqMonitor:
         if name not in self._rule_names():
             return False, f"Unknown rule: {name}"
         self.config.setdefault("rules", {})[name] = bool(enabled)
-        # Clear any live alert state so a just-disabled rule stops nagging and a
-        # re-enabled one starts fresh rather than firing on stale state.
+        # Clear any live alert state so a just-disabled rule stops nagging (and does
+        # not fire a recovery on disable) and a re-enabled one starts fresh rather than
+        # firing on stale state.
         self._alert_active.pop(name, None)
+        self._alert_notified.pop(name, None)
         self._alert_severity.pop(name, None)
         self._alert_sent_at.pop(name, None)
         self._pending_since.pop(name, None)
@@ -465,9 +522,15 @@ class DaqMonitor:
                     pending_remaining = int(min_dur - elapsed)
                     print(f"[monitor] {name} in alert state — waiting {pending_remaining}s more before alerting.")
             else:
-                # Event rules self-clear each check; a "RECOVERED" for them is spurious.
-                if was_alert and name not in self._EVENT_RULES:
+                # Only announce recovery if a 🔴 alert was actually DELIVERED for this
+                # rule this episode. A "✅ back to normal" with no preceding alert is just
+                # noise — it happens when the send failed, when a graded rule stood down
+                # to another rule without ever alerting (e.g. rule_ssd_disk_space handing
+                # off to space_watcher), or on fresh state after a monitor restart. Event
+                # rules self-clear each check, so a recovery for them is always spurious.
+                if self._alert_notified.get(name) and name not in self._EVENT_RULES:
                     self._send_recovery(name)
+                self._alert_notified.pop(name, None)
                 self._alert_active[name] = False
                 self._alert_severity.pop(name, None)
                 self._pending_since[name] = None  # reset pending timer
@@ -485,6 +548,7 @@ class DaqMonitor:
         ok, err = send_telegram(self.token, self.chat_id, msg)
         if ok:
             self._alert_sent_at[rule_name] = datetime.now()
+            self._alert_notified[rule_name] = True   # arms the ✅ recovery for this episode
             self.last_alert_time = datetime.now()
             print(f"[monitor] Alert sent: {rule_name} — {detail}")
         else:

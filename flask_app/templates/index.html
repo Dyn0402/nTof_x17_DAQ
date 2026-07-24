@@ -2398,13 +2398,21 @@ async function renderMonitorRules() {
   const d = await res.json();
   const defaultLabel = d.default_resend_minutes == null ? "never" : `${d.default_resend_minutes}m`;
   const container = document.getElementById("monitor-rules");
+  // The backend returns rules already ordered and tagged by section; emit a header
+  // row each time the section changes so the list reads as grouped blocks.
+  let lastSection = null;
   container.innerHTML = (d.rules || []).map(r => {
+    let header = "";
+    if (r.section && r.section !== lastSection) {
+      lastSection = r.section;
+      header = `<div class="monitor-rule-section">${r.section}</div>`;
+    }
     const stateTxt = r.enabled ? "On" : "Off";
     const stateCls = r.enabled ? "text-success" : "text-muted";
     const btnTxt = r.enabled ? "Disable" : "Enable";
     const btnCls = r.enabled ? "btn-outline-danger" : "btn-outline-success";
     const mode = r.resend_mode || "default";
-    return `
+    return header + `
       <div class="d-flex align-items-start gap-2 py-1 border-bottom flex-wrap">
         <div class="flex-grow-1" style="min-width:220px;">
           <div class="small fw-bold">${r.label}</div>
