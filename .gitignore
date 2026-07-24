@@ -17,6 +17,15 @@ config/pedestal_qa_state.json
 config/processor_config.json
 config/qa_config.json
 config/qa_state.json
+# stream1 watcher: published state, plus the two frozen references it adopts at
+# runtime (operator-refreezable from the GUI, so they are local state, not source).
+config/stream1_filesize_state.json
+config/stream1_size_nominal.json
+config/stream1_waveform_nominal.json
+# SSD space watcher: published state, and its config (the free-space buffer is
+# operator-settable from the Disk Space tab, which writes this file directly).
+config/space_config.json
+config/space_watcher_state.json
 config/json_run_configs/
 run_config_beam.py.beam_backup
 runctrl_test/
@@ -256,6 +265,8 @@ config/n1081b_access/
 # Live runtime state, republished continuously by the watchers/daq_control
 # (a committed copy is stale the moment it lands). Same rationale as backup_state.json.
 config/beam_state.json
+# SPS spill test monitor: published state (rides along with the beam watcher).
+config/sps_state.json
 config/n1081b_scan_active.json
 config/n1081b_timetag_state.json
 

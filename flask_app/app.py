@@ -31,6 +31,7 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_pedestal_watcher_status,
                         get_gas_watcher_status, get_he3_pressure_watcher_status,
                         get_beam_watcher_status, get_n1081b_timetag_watcher_status,
+                        get_stream1_watcher_status,
                         get_n1081b_access_status, N1081B_ACCESS_DIR)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
@@ -50,8 +51,15 @@ from he3_pressure_reader.he3_pressure_controller import (HE3_PRESSURE_LOG_DIR,
 from beam_monitor.beam_intensity_controller import (BEAM_LOG_DIR, BEAM_STATE_PATH,
                                                     NXCALS_PYTHON, BEAM_UNIT,
                                                     PULSE_THRESHOLD_E10)
+# TEMPORARY (2026-07-23) — SPS spill test tab. Remove with the sps_monitor package.
+from sps_monitor.sps_spill_controller import (SPS_LOG_DIR, SPS_STATE_PATH, SPS_UNIT,
+                                              EXTRACTED_DEST)
 from n1081b.timetag_watcher_controller import (N1081B_TT_LOG_DIR, N1081B_TT_STATE_PATH,
                                                N1081B_TT_CONFIG_PATH)
+from stream1_monitor.stream1_size_controller import (STREAM1_LOG_DIR, STREAM1_STATE_PATH,
+                                                     STREAM1_CONFIG_PATH,
+                                                     STREAM1_NOMINAL_PATH,
+                                                     STREAM1_COMMAND_PATH)
 from system_monitor.system_stats_controller import SYSTEM_STATS_LOG_DIR
 import space_manager
 
@@ -251,7 +259,7 @@ def auth_status():
 
 TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
                  "pedestal_watcher", "gas_watcher", "he3_pressure_watcher",
-                 "beam_watcher", "n1081b_timetag_watcher"]
+                 "beam_watcher", "stream1_watcher", "n1081b_timetag_watcher"]
 sessions = {}
 
 @app.route("/")
@@ -411,6 +419,8 @@ def status_all():
             info = get_he3_pressure_watcher_status()
         elif s == "beam_watcher":
             info = get_beam_watcher_status()
+        elif s == "stream1_watcher":
+            info = get_stream1_watcher_status()
         elif s == "n1081b_timetag_watcher":
             info = get_n1081b_timetag_watcher_status()
         else:
@@ -712,6 +722,34 @@ def stop_beam_watcher():
     try:
         subprocess.run(["tmux", "kill-session", "-t", "beam_watcher"], capture_output=True)
         return jsonify({"success": True, "message": "Beam watcher stopped"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/start_stream1_watcher", methods=["POST"])
+def start_stream1_watcher():
+    """Start the n_TOF stream1 file-size watcher (polls EOS listings for raw-file sizes
+    and flags reduced-size episodes — the SiPM-wall dropout proxy). Read-only: it owns
+    no hardware, so it is safe to restart at any time. Needs a valid Kerberos ticket
+    (the keytab-seeded one the EOS backup uses)."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", "stream1_watcher"], capture_output=True)
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", "stream1_watcher",
+            sys.executable, f"{BASE_DIR}/stream1_watcher.py"
+        ])
+        return jsonify({"success": True, "message": "Stream1 file-size watcher started"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stop_stream1_watcher", methods=["POST"])
+def stop_stream1_watcher():
+    """Stop the stream1 file-size watcher. Nothing else is affected — the n_TOF DAQ
+    keeps writing; only the size logging/alerting pauses (it backfills on restart)."""
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", "stream1_watcher"], capture_output=True)
+        return jsonify({"success": True, "message": "Stream1 file-size watcher stopped"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
@@ -1274,6 +1312,12 @@ def monitor_bot_info():
 
 # Network interfaces and physical disks to report I/O rates for.
 # NICs are labelled by interface name; disks map to the SSD/HDD usage bars.
+#
+# ⚠ Since the 2026-07-22 NIC swap these two names mean the opposite of what they used to:
+# enp4s0 is now the 10 GbE AQC113 carrying DREAM/FEU readout (was CERN), and eno1 is now
+# the onboard I219-LM carrying CERN (was DREAM). The list itself needs no edit; the
+# interpretation of the plots does. See docs/network_upgrade_10g/05_as_built_2026-07-22.md §3
+# and KEEP IN SYNC with system_monitor/system_stats_controller.py.
 _NET_IFACES = ["enp4s0", "eno1"]
 _DISK_DEVS = {"ssd": "sdb", "hdd": "sda"}  # sdb2 -> /, sda4 -> /mnt/data
 
@@ -1796,6 +1840,236 @@ def beam_history():
         })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# SPS slow-extraction spill — TEMPORARY TEST TAB (added 2026-07-23)
+# ---------------------------------------------------------------------------
+# Companion to the n_TOF beam monitor, answering "is the SPS pause/spill/pause
+# structure visible the way the n_TOF pulse train is?". The NXCALS polling is
+# done inside the SAME beam_watcher process (it borrows that Spark session);
+# Flask only reads the published state file and the per-cycle CSVs.
+#
+# TO REMOVE: delete this section, the two routes, the sps_monitor import, the
+# #sps tab in base.html + index.html, and the _sps hooks in
+# beam_monitor/beam_intensity_controller.py.
+
+def _sps_read_state():
+    """The SPS monitor's latest published state, or a disconnected stub."""
+    try:
+        with open(SPS_STATE_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {"connected": False, "last_error": "beam watcher not running "
+                                                  "(the SPS monitor rides along with it)",
+                "unit": SPS_UNIT, "spill_on": None}
+
+
+@app.route("/sps/status")
+def sps_status():
+    """Latest SPS spill summary, including the stitched extraction-rate timeline
+    and the newest single-cycle spill profile."""
+    return jsonify(_sps_read_state())
+
+
+@app.route("/sps/history")
+def sps_history():
+    """Per-cycle spill history from the CSVs: extracted intensity, effective
+    spill length and duty factor, one row per SPS cycle."""
+    import glob
+    hours = request.args.get("hours", default=6.0, type=float)
+    max_points = request.args.get("max_points", default=3000, type=int)
+    try:
+        files = sorted(glob.glob(os.path.join(SPS_LOG_DIR, "sps_spill_*.csv")))
+        if not files:
+            return jsonify({"success": True, "time": [], "extracted": [],
+                            "spill_len_ms": [], "duty": [], "unit": SPS_UNIT})
+        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        df = df.sort_values("timestamp").drop_duplicates(subset=["timestamp"])
+        if hours and hours > 0:
+            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
+        # Only extracting cycles carry a spill; dump/other cycles are plotted as
+        # zero-intensity markers so the supercycle gaps stay visible.
+        if len(df) > max_points:
+            df = df.iloc[:: (len(df) // max_points) + 1]
+        ext = df[df["destination"] == EXTRACTED_DEST]
+        return jsonify({
+            "success": True,
+            "time": df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "extracted": df["extracted_e10"].fillna(0).round(1).tolist(),
+            "spill_time": ext["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "spill_len_ms": ext["spill_len_ms"].round(0).where(
+                ext["spill_len_ms"].notna(), None).tolist(),
+            "duty": ext["duty_factor"].round(4).where(
+                ext["duty_factor"].notna(), None).tolist(),
+            "unit": SPS_UNIT,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# n_TOF stream1 raw-file sizes (SiPM-wall dropout proxy)
+# ---------------------------------------------------------------------------
+# EOS is polled by the SEPARATE stream1_watcher process; Flask only reads its
+# published state file and the per-day CSVs. See stream1_monitor/.
+
+def _stream1_read_state():
+    """The stream1 watcher's latest published state, or a disconnected stub if it
+    isn't running yet / hasn't written the file."""
+    try:
+        with open(STREAM1_STATE_PATH) as f:
+            return json.load(f)
+    except Exception:
+        return {"connected": False, "state": "no_data",
+                "last_error": "stream1 watcher not running"}
+
+
+@app.route("/stream1/status")
+def stream1_status():
+    """Latest stream1 file-size summary published by the stream1_watcher process."""
+    return jsonify(_stream1_read_state())
+
+
+@app.route("/stream1/history")
+def stream1_history():
+    """Logged per-file sizes from the per-day CSV(s) for the plot. `hours` trims the
+    window; the reduced/full split is the classification the watcher recorded when
+    each file arrived (not recomputed here, so the plot matches the alerting)."""
+    import glob
+    hours = request.args.get("hours", default=24.0, type=float)
+    max_points = request.args.get("max_points", default=3000, type=int)
+    try:
+        files = sorted(glob.glob(os.path.join(STREAM1_LOG_DIR, "stream1_filesize_*.csv")))
+        if not files:
+            return jsonify({"success": True, "time": [], "size_gib": [], "grade": [],
+                            "run": [], "seq": [], "baseline_gib": []})
+        df = pd.concat([pd.read_csv(f) for f in files[-3:]], ignore_index=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"])
+        df = df.sort_values("timestamp").drop_duplicates(subset=["run", "seq"])
+        if hours and hours > 0:
+            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
+        if len(df) > max_points:
+            df = df.iloc[:: (len(df) // max_points) + 1]
+        # `grade` / the explicit cut columns are absent in rows written by earlier
+        # versions of the watcher; fall back so old CSVs still plot (the watcher
+        # migrates a day file in place the next time it appends to it).
+        st = _stream1_read_state()
+        if "grade" not in df.columns:
+            df["grade"] = ""
+        df["grade"] = df["grade"].fillna("").replace(
+            "", pd.NA).fillna(df["reduced"].map({1: "bad", 0: "good"}))
+        for col, ratio in (("quest_cut_gib", st.get("questionable_ratio", 0.9)),
+                           ("bad_cut_gib", st.get("reduced_ratio", 0.75))):
+            if col not in df.columns:
+                df[col] = pd.NA
+            df[col] = df[col].fillna(df["baseline_gib"] * ratio)
+        return jsonify({
+            "success": True,
+            "time": df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "size_gib": df["size_gib"].round(4).tolist(),
+            "baseline_gib": df["baseline_gib"].fillna(0).round(4).tolist(),
+            "quest_cut_gib": df["quest_cut_gib"].fillna(0).round(4).tolist(),
+            "bad_cut_gib": df["bad_cut_gib"].fillna(0).round(4).tolist(),
+            "grade": df["grade"].astype(str).tolist(),
+            "run": df["run"].astype(int).tolist(),
+            "seq": df["seq"].astype(int).tolist(),
+            # So the plot can draw the same cuts the watcher classified against.
+            "reduced_ratio": st.get("reduced_ratio", 0.75),
+            "questionable_ratio": st.get("questionable_ratio", 0.9),
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stream1/waveform_history")
+def stream1_waveform_history():
+    """Per-detector gamma-flash amplitude (as a fraction of nominal) over time, from
+    the waveform CSV — the "which detector, since when" view that file size cannot
+    give. One point per detector per sampled file."""
+    import glob
+    hours = request.args.get("hours", default=24.0, type=float)
+    try:
+        files = sorted(glob.glob(os.path.join(STREAM1_LOG_DIR, "stream1_waveform_*.csv")))
+        if not files:
+            return jsonify({"success": True, "detectors": {}, "n_samples": 0})
+        df = pd.concat([pd.read_csv(f) for f in files[-3:]], ignore_index=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"]).sort_values("timestamp")
+        if hours and hours > 0:
+            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
+        # Beam-less samples have no flash to measure, so plotting their ~0 ratios would
+        # draw a facility-wide collapse that never happened. Drop them from the trend.
+        df = df[df["grade"].fillna("") != "no_beam"]
+        out = {}
+        for det, g in df.groupby("det"):
+            out[str(det)] = {
+                "time": g["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+                "flash_ratio": g["flash_ratio"].astype(float).round(4).tolist(),
+                "grade": g["grade"].fillna("").astype(str).tolist(),
+            }
+        return jsonify({"success": True, "detectors": out,
+                        "n_samples": int(df["seq"].nunique())})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stream1/set_nominal", methods=["POST"])
+def stream1_set_nominal():
+    """Ask the watcher to re-freeze the waveform reference from the newest file.
+
+    Flask never decodes: it drops a command file the watcher picks up on its next
+    poll (same split as the gas watcher). The watcher refuses if the walls are down
+    in that file, so this cannot bless a dropout as normal."""
+    try:
+        with open(STREAM1_COMMAND_PATH, "w") as f:
+            json.dump({"cmd": "set_nominal",
+                       "requested": datetime.now().isoformat(timespec="seconds")}, f)
+        log_event("STREAM1_SET_NOMINAL", "flask_button", remote_addr=request.remote_addr)
+        return jsonify({"success": True,
+                        "message": "Re-baseline queued — applied within one poll (~2 min)"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stream1/set_size_nominal", methods=["POST"])
+def stream1_set_size_nominal():
+    """Freeze the file-size benchmark (bytes per proton pulse).
+
+    Body may carry {"per_pulse_gib": x} to set an explicit value; omitted means "use
+    what the recent data suggests". As with the waveform nominal, Flask only queues
+    the command — the watcher applies it and refuses if the waveform layer says a
+    detector is currently down, so a benchmark can't be frozen through a dropout."""
+    data = request.get_json(silent=True) or {}
+    cmd = {"cmd": "set_size_nominal",
+           "requested": datetime.now().isoformat(timespec="seconds")}
+    if data.get("per_pulse_gib"):
+        try:
+            cmd["per_pulse_bytes"] = float(data["per_pulse_gib"]) * (1024 ** 3)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "per_pulse_gib must be a number"}), 400
+    try:
+        with open(STREAM1_COMMAND_PATH, "w") as f:
+            json.dump(cmd, f)
+        log_event("STREAM1_SET_SIZE_NOMINAL", "flask_button",
+                  remote_addr=request.remote_addr, value=cmd.get("per_pulse_bytes"))
+        return jsonify({"success": True,
+                        "message": "Size benchmark queued — applied within one poll (~2 min)"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/stream1/nominal")
+def stream1_nominal():
+    """The frozen per-detector reference the waveform layer grades against."""
+    try:
+        with open(STREAM1_NOMINAL_PATH) as f:
+            return jsonify({"success": True, "nominal": json.load(f)})
+    except Exception:
+        return jsonify({"success": True, "nominal": None})
 
 
 def _n1081b_find_snapshot():
@@ -2414,6 +2688,154 @@ def space_delete():
     out["success"] = out["n_failed"] == 0
     out["usage"] = space_manager.disk_usage().get(disk, {})
     return jsonify(out)
+
+
+# --- Automatic SSD clearing (space_watcher) --------------------------------
+# On/Off + the free-space buffer for the background watcher that prunes the SSD
+# raw staging disk. The watcher re-reads its config file every poll, so a buffer
+# change here takes effect without a restart.
+#
+# The safety model is unchanged and is NOT weakened by anything here: the watcher
+# deletes only via space_manager.delete_run, which re-verifies SSD -> HDD -> EOS
+# itself and refuses the active run. These endpoints can change WHEN it acts and
+# HOW MUCH it frees, never WHAT counts as safe.
+
+SPACE_TMUX = "space_watcher"
+SPACE_CONFIG_PATH = f"{BASE_DIR}/config/space_config.json"
+
+# Bounds on the operator-settable buffer. The floor must leave room for the OS and
+# still be big enough to be worth acting on; the ceiling stops a typo (e.g. 4000)
+# from making the watcher try to delete every run on the disk.
+SPACE_MIN_GB = 20
+SPACE_MAX_GB = 400
+
+
+def _space_config():
+    with open(SPACE_CONFIG_PATH) as f:
+        return json.load(f)
+
+
+@app.route("/space/auto")
+def space_auto_status():
+    """Current on/off state + settings of the automatic clearer (read-only)."""
+    running = subprocess.run(["tmux", "has-session", "-t", SPACE_TMUX],
+                             capture_output=True).returncode == 0
+    out = {"running": running, "min_gb": SPACE_MIN_GB, "max_gb": SPACE_MAX_GB}
+    try:
+        cfg = _space_config()
+        out["config"] = {k: cfg.get(k) for k in
+                         ("low_water_gb", "target_free_gb", "keep_recent_runs",
+                          "min_age_hours", "emergency_gb", "dry_run")}
+    except Exception as e:
+        out["config"] = None
+        out["message"] = f"could not read space config: {e}"
+    # Live state published by the watcher (what it last did, and why).
+    try:
+        with open(f"{BASE_DIR}/config/space_watcher_state.json") as f:
+            out["state"] = json.load(f)
+    except Exception:
+        out["state"] = None
+    out["usage"] = space_manager.disk_usage().get("ssd", {})
+    return jsonify(out)
+
+
+@app.route("/space/auto/config", methods=["POST"])
+def space_auto_config():
+    """Set the free-space buffer. Validated here, not in the browser: the numbers
+    decide when data gets deleted, so a hand-crafted POST must not be able to set
+    a nonsensical floor."""
+    data = request.get_json(silent=True) or {}
+    try:
+        cfg = _space_config()
+    except Exception as e:
+        return jsonify({"success": False, "message": f"could not read space config: {e}"}), 500
+
+    try:
+        low = float(data.get("low_water_gb", cfg.get("low_water_gb")))
+        target = float(data.get("target_free_gb", cfg.get("target_free_gb")))
+        emerg = float(data.get("emergency_gb", cfg.get("emergency_gb", low / 2)))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "buffer values must be numbers"}), 400
+
+    if not (SPACE_MIN_GB <= low <= SPACE_MAX_GB):
+        return jsonify({"success": False,
+                        "message": f"keep-free must be between {SPACE_MIN_GB} and {SPACE_MAX_GB} GB"}), 400
+    if not (SPACE_MIN_GB <= target <= SPACE_MAX_GB):
+        return jsonify({"success": False,
+                        "message": f"free-up-to must be between {SPACE_MIN_GB} and {SPACE_MAX_GB} GB"}), 400
+    if target < low:
+        return jsonify({"success": False,
+                        "message": "free-up-to must be at least the keep-free floor"}), 400
+    # The emergency level drops the newest-run/min-age guards, so it must sit BELOW
+    # the floor: at or above it, the guards would effectively never apply.
+    if not (SPACE_MIN_GB <= emerg <= SPACE_MAX_GB):
+        return jsonify({"success": False,
+                        "message": f"emergency level must be between {SPACE_MIN_GB} and {SPACE_MAX_GB} GB"}), 400
+    if emerg > low:
+        return jsonify({"success": False,
+                        "message": "emergency level must be at or below the keep-free floor"}), 400
+
+    # Guard against a buffer that cannot physically be satisfied — the watcher
+    # would otherwise delete every eligible run and still report "cannot free".
+    try:
+        total_gb = space_manager.disk_usage()["ssd"]["total"] / (1024 ** 3)
+        if target > 0.9 * total_gb:
+            return jsonify({"success": False,
+                            "message": (f"free-up-to ({target:.0f} GB) is more than 90% of the "
+                                        f"{total_gb:.0f} GB disk — unreachable")}), 400
+    except Exception:
+        pass
+
+    if "dry_run" in data:
+        cfg["dry_run"] = bool(data["dry_run"])
+    cfg["low_water_gb"] = low
+    cfg["target_free_gb"] = target
+    cfg["emergency_gb"] = emerg
+    try:
+        tmp = SPACE_CONFIG_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(cfg, f, indent=4)
+        os.replace(tmp, SPACE_CONFIG_PATH)   # atomic: the watcher may read mid-write
+    except Exception as e:
+        return jsonify({"success": False, "message": f"could not write config: {e}"}), 500
+
+    log_event("SPACE_AUTO_CONFIG", "disk_space", low_water_gb=low,
+              target_free_gb=target, emergency_gb=emerg, dry_run=cfg.get("dry_run"))
+    return jsonify({"success": True, "config": cfg,
+                    "message": (f"Buffer set: keep {low:g} GB free, free up to {target:g} GB, "
+                                f"guards off below {emerg:g} GB")})
+
+
+@app.route("/space/auto/start", methods=["POST"])
+def space_auto_start():
+    if not os.path.exists(SPACE_CONFIG_PATH):
+        result = subprocess.run([sys.executable, f"{BASE_DIR}/space_config.py"],
+                                capture_output=True, text=True)
+        if result.returncode != 0:
+            return jsonify({"success": False,
+                            "message": f"Config generation failed: {result.stderr}"}), 500
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", SPACE_TMUX], capture_output=True)
+        # sys.executable (flask's venv python), not bare "python": the tmux login
+        # shell resets PATH and drops the venv.
+        subprocess.Popen([
+            "tmux", "new-session", "-d", "-s", SPACE_TMUX,
+            sys.executable, f"{BASE_DIR}/space_watcher.py", SPACE_CONFIG_PATH
+        ])
+        log_event("SPACE_AUTO_START", "disk_space")
+        return jsonify({"success": True, "message": "Automatic SSD clearing ON"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/space/auto/stop", methods=["POST"])
+def space_auto_stop():
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", SPACE_TMUX], capture_output=True)
+        log_event("SPACE_AUTO_STOP", "disk_space")
+        return jsonify({"success": True, "message": "Automatic SSD clearing OFF"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route("/space/restore_scan")

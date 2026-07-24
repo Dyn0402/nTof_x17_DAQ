@@ -17,6 +17,31 @@ else
     echo "[start_servers] WARNING: no keytab at $KEYTAB — beam/backup watchers need a manual kinit"
 fi
 
+# Absolute venv interpreter for anything launched INSIDE a tmux session: the tmux
+# login shell re-reads the profile and drops the venv from PATH, so a bare "python"
+# there is not reliably the venv's. (The Flask /start_* endpoints use sys.executable
+# for the same reason.)
+VENV_PY="$PWD/.venv/bin/python"
+
+# Launch a watcher that needs its JSON config regenerated from a .py generator first,
+# mirroring exactly what the Flask /start_processor|/start_qa|/start_backup buttons do.
+# If the generator fails we skip the watcher rather than starting it on a stale config.
+start_watcher_with_config () {
+    local session=$1 script=$2 generator=$3 config=$4 hist=${5:-5000}
+    # Check the session BEFORE regenerating anything, so re-running this script to fill
+    # a gap is a true no-op for whatever is already up (it must not rewrite a live
+    # watcher's config out from under it).
+    if tmux has-session -t "$session" 2>/dev/null; then
+        echo "❌ Tmux session '$session' already exists — leaving it alone."
+        return 1
+    fi
+    if ! "$VENV_PY" "$PWD/$generator" >/dev/null; then
+        echo "[start_servers] WARNING: $generator failed — $session NOT started"
+        return 1
+    fi
+    bash_scripts/start_tmux.sh "$session" "$VENV_PY $PWD/$script $PWD/$config" "$hist"
+}
+
 # Start sessions. 3rd arg = tmux scrollback cap in LINES (memory-saving).
 # hv_control is very chatty (HV monitor every monitor_interval seconds), so
 # keep it short. The others keep a longer buffer for debugging.
@@ -54,6 +79,50 @@ bash_scripts/start_tmux.sh system_stats_watcher "python system_stats_watcher.py"
 # error state and recovers on its own once the ticket is reseeded.
 # See beam_monitor/README.md.
 bash_scripts/start_tmux.sh beam_watcher "$HOME/venvs/nxcals/bin/python beam_watcher.py" 5000
+# stream1 file-size watcher: polls EOS listings (xrdfs ls -l — sizes/mtimes only, no
+# file contents) for the n_TOF raw-stream files and flags reduced-size episodes, the
+# online proxy for a SiPM wall dropping out (~50% size drop; see
+# ~/beam_july/analysis/sipm_wall_filesize/). Read-only, owns no hardware; needs the
+# same Kerberos ticket as the EOS backup. Flask reads config/stream1_filesize_state.json.
+bash_scripts/start_tmux.sh stream1_watcher "python stream1_watcher.py" 5000
+# --- watchers that used to be GUI-start-only ---------------------------------------
+# Added 2026-07-22. These three are started from the Flask GUI, so they were never in
+# this script and EVERY reboot silently left them down — the 07-22 reboot included.
+# Nothing alerted on their absence (see the new rule_*_watcher_dead rules in
+# flask_app/monitor.py), and a dead backup_watcher means runs stop reaching EOS, which
+# is the one failure here with real data-loss exposure. backup_watcher must come after
+# the kinit above (it needs the same Kerberos ticket as the EOS mirror).
+# To go back to manual start, comment out the relevant line — the GUI buttons are
+# unchanged and still kill/restart these sessions.
+start_watcher_with_config backup_watcher    backup_watcher.py    backup_config.py    config/backup_config.json
+start_watcher_with_config processor_watcher processor_watcher.py processor_config.py config/processor_config.json
+start_watcher_with_config qa_watcher        qa_watcher.py        qa_config.py        config/qa_config.json
+# SSD space watcher: keeps the raw staging disk (/home/mx17/july_dream/dream_run) above a
+# free-space floor by deleting the OLDEST runs that are verified SSD -> HDD -> EOS, newest
+# runs first to survive. Added 2026-07-22: nothing had ever pruned that disk and at the
+# measured ~22 GB/hr raw rate it was ~5 h from full, which stops acquisition outright.
+# Deletion goes through space_manager.delete_run, which re-verifies against EOS itself and
+# refuses the active run. Retune the floor in space_config.py. Depends on backup_watcher
+# above actually reaching EOS — if backups stall, this correctly frees NOTHING and the
+# rule_space_watcher_stuck alert fires.
+#
+# NB: this one deliberately does NOT use start_watcher_with_config. That helper
+# regenerates the JSON from the .py generator on every boot, which is right for the
+# watchers whose config only ever changes in git — but the space buffer is
+# operator-settable from the GUI (Disk Space tab), which writes this JSON directly.
+# Regenerating it here would silently reset the operator's buffer at every reboot.
+# So: seed the defaults only if the file is absent, then start.
+if [ ! -f "$PWD/config/space_config.json" ]; then
+    "$VENV_PY" "$PWD/space_config.py" >/dev/null \
+        || echo "[start_servers] WARNING: space_config.py failed — space_watcher NOT started"
+fi
+if [ -f "$PWD/config/space_config.json" ]; then
+    bash_scripts/start_tmux.sh space_watcher "$VENV_PY $PWD/space_watcher.py $PWD/config/space_config.json" 5000
+fi
+# NOT auto-started: pedestal_watcher (config/pedestal_qa_config.json). It is a
+# per-pedestal-run tool driven from the GUI, not a standing service, and an empty
+# 0-byte pedestal FDF deadlocks it — add a start_watcher_with_config line here if you
+# decide you want it standing.
 # N1081B time-tag watcher: sole owner of Module 5 (.244). Arms all four scintillator-wall
 # sections to Time-Tag and streams per-edge timestamps to a daily CSV (n1081b/logs/).
 # NOTE: this holds .244 in Time-Tag mode (not counter) for as long as it runs, and

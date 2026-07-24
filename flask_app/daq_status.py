@@ -23,6 +23,11 @@ HE3_PRESSURE_STATE_FILE = os.path.join(_REPO_DIR, "config", "he3_pressure_state.
 # Beam-intensity watcher publishes its state here (see
 # beam_monitor/beam_intensity_controller.py).
 BEAM_STATE_FILE = os.path.join(_REPO_DIR, "config", "beam_state.json")
+# n_TOF stream1 raw-file-size watcher publishes its state here (see
+# stream1_monitor/stream1_size_controller.py).
+STREAM1_STATE_FILE = os.path.join(_REPO_DIR, "config", "stream1_filesize_state.json")
+# SSD space watcher publishes its state here (see space_watcher.py).
+SPACE_STATE_FILE = os.path.join(_REPO_DIR, "config", "space_watcher_state.json")
 # N1081B time-tag watcher publishes its state here (see
 # n1081b/timetag_watcher_controller.py).
 N1081B_TIMETAG_STATE_FILE = os.path.join(_REPO_DIR, "config", "n1081b_timetag_state.json")
@@ -623,6 +628,99 @@ def get_n1081b_timetag_watcher_status():
     if age is not None and age > 60:
         return small("Stale", "warning")
     return small("Logging", "success")
+
+
+def get_stream1_watcher_status():
+    """Compact card for the n_TOF stream1 file-size watcher (polls EOS listings and
+    flags reduced-size files — the SiPM-wall dropout proxy). Derived from tmux session
+    existence + the published state file (connection, freshness, current verdict)."""
+    def small(status, color):
+        return {"status": status, "color": color, "small": True, "fields": []}
+
+    alive = subprocess.run(["tmux", "has-session", "-t", "stream1_watcher"],
+                           capture_output=True).returncode == 0
+    if not alive:
+        return small("STOPPED", "secondary")
+
+    try:
+        with open(STREAM1_STATE_FILE) as f:
+            st = json.load(f)
+    except Exception:
+        return small("Starting", "info")   # session up, no state published yet
+
+    if not st.get("connected"):
+        return small("No EOS", "warning")   # session up but xrdfs listings failing
+
+    # The watcher polls every ~2 min by default; allow 3 polls before calling it wedged.
+    try:
+        age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
+    except Exception:
+        age = None
+    if age is not None and age > 3 * float(st.get("poll_s") or 120) + 60:
+        return small("Stale", "warning")
+
+    state = st.get("state")
+    if state == "reduced":
+        return small("REDUCED", "danger")     # a wall-dropout episode is in progress
+    if state == "questionable":
+        return small("Low", "warning")        # below-par files, no declared episode
+    if state == "no_beam":
+        return small("No Beam", "info")       # nothing to judge without protons
+    if state == "run_ended":
+        return small("Run Ended", "info")     # quiet because the run was closed out
+    if state == "stale":
+        return small("No Files", "warning")   # run still open but nothing arriving
+    if state in ("unknown", "no_data"):
+        return small("Baselining", "info")
+    return small("Nominal", "success")
+
+
+def get_space_watcher_status():
+    """Compact card for the SSD space watcher (prunes EOS-verified raw runs off the
+    acquisition staging disk). Derived from tmux session existence + the published
+    state file.
+
+    The status that matters operationally is "Stuck": the SSD is below its floor and
+    NOTHING is safe to delete, which means runs are not reaching EOS. That is a
+    backup problem showing up as a disk problem, and it ends in a full disk stopping
+    acquisition if left alone."""
+    def small(status, color):
+        return {"status": status, "color": color, "small": True, "fields": []}
+
+    alive = subprocess.run(["tmux", "has-session", "-t", "space_watcher"],
+                           capture_output=True).returncode == 0
+    if not alive:
+        return small("STOPPED", "secondary")
+
+    try:
+        with open(SPACE_STATE_FILE) as f:
+            st = json.load(f)
+    except Exception:
+        return small("Starting", "info")   # session up, no state published yet
+
+    # Allow 3 polls before calling it wedged, matching the stream1 watcher's rule.
+    try:
+        age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
+    except Exception:
+        age = None
+    if age is not None and age > 3 * float(st.get("poll_s") or 300) + 60:
+        return small("Stale", "warning")
+
+    state = st.get("state")
+    if state == "cannot_free":
+        return small("STUCK", "danger")      # below floor, nothing safe to delete
+    if st.get("emergency"):
+        # Guards dropped: the disk is low enough that the newest runs are going too.
+        return small("EMERGENCY", "danger")
+    if state == "held":
+        return small("Held", "warning")      # below floor, only soft-guarded runs left
+    if state == "partial":
+        return small("Low", "warning")       # freed something, still under the floor
+    if state == "dry_run":
+        return small("Dry Run", "info")
+    if state == "freed":
+        return small("Freed", "success")
+    return small(st.get("free_h", "OK"), "success")
 
 
 def get_n1081b_access_status():

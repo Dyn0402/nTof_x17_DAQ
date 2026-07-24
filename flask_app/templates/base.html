@@ -452,6 +452,14 @@
                 <li class="nav-item">
                     <a class="nav-link" data-bs-toggle="tab" href="#beam">Beam</a>
                 </li>
+                <!-- TEMPORARY test tab (2026-07-23): SPS slow-extraction spill.
+                     Remove together with the #sps pane and the sps_monitor package. -->
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#sps">SPS (test)</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#stream1-size">Stream QA</a>
+                </li>
                 <li class="nav-item">
                     <a class="nav-link" data-bs-toggle="tab" href="#m5-walls">M5 Walls</a>
                 </li>
@@ -519,6 +527,7 @@
         "hv-off",
         "rerun-qa", "processor-toggle", "qa-toggle", "pedestal-toggle",
         "backup-toggle", "gas-watcher-toggle", "he3-pressure-watcher-toggle",
+        "stream1-watcher-toggle", "s1-set-nominal", "s1-set-size-nominal",
         "monitor-toggle", "monitor-test", "monitor-fetch-chat-id", "monitor-set-chat-id",
         "gas-apply", "gas-max-argon", "he3-pressure-hz-apply",
         "ds-delete", "ds-restore-go",  // Disk Space: delete + restore are control-only (checks stay open to viewers)
