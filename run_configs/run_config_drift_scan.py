@@ -43,6 +43,9 @@ PRE-RUN (once, after the current run stops + n1081b access is clear):
           D lemos=[0,1] -> "scint(singles)+ps")
 Launch: .venv/bin/python daq_control.py run_config_drift_scan.json
 """
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
 LATENCY   = 33     # first-arrival ~sample 3 (2-3 baseline samples ahead), max tail room in n=64

@@ -72,6 +72,9 @@ BEFORE LAUNCHING: restart the dream_daq server. `wrclk_div` was added to
 dream_daq_control.py today and the running server predates it -- an un-restarted server drops
 it silently and rd4wr4 becomes a duplicate of clk20 (docs/FEU_WATERMARKS_2026-07-22.md sec.3).
 """
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
 ZS_PED_SET = 'zs_k8_tracer_from_07-18-26_14-06-43'

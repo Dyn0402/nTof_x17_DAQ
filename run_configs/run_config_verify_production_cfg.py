@@ -33,6 +33,9 @@ almost nothing, which is fine because the point is the CONFIGURE, not the data):
 
 Expect PASS on all 8 FEUs. Background: docs/DAQ_OPTIMIZATION_SUMMARY_2026-07-23.md.
 """
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
 ZS_PED_SET = 'zs_k8_tracer_from_07-18-26_14-06-43'

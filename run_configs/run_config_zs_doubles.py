@@ -33,6 +33,9 @@ HV: set the physics operating point below (operator to confirm drift/resist). He
 the whole IPD scan (this is NOT an HV scan). Scint PMT bias auto-held at the run_config_beam
 (Y88-equalized) setpoints.
 """
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
 # ---- ZS + framing knobs (validated) ----

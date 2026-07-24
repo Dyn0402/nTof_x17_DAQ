@@ -12,6 +12,9 @@ Board: scint --singles --ps-pickup (set before this run). k8, IPD10, HV 550/700.
 n32/n8/n32 for beam control. NOTE: singles is a much higher DAQ load — watch for stalls; ZS keeps
 events small and we write to the SSD path.
 """
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
 ZS_PED_SET = 'zs_k8_tracer_from_07-18-26_14-06-43'

@@ -11,6 +11,9 @@ IPD 100. Scans PEDESTALS (k set) per sub-run. Watch event size collapse full-Raw
 
 Reuses the validated ZS machinery (Option B: Pd=0 + offline pedestal subtraction).
 """
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
 K_LADDER    = [5, 8, 12, 25]        # sigma multipliers to scan (prepped sets exist)

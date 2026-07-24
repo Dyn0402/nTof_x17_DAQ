@@ -54,6 +54,9 @@ TRIGGER (beam off): M4.C <- M6.D pulser. set_veto_open.py REQUIRED first. Satura
 RESTORE AFTER: trigger_mode.py scint --singles --ps-pickup + set_pulser.py.
 NOTE: the dream_daq server must already carry the wrclk_div plumbing (restarted 2026-07-23 ~10:40).
 """
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
 ZS_PED_SET = 'zs_k8_tracer_from_07-18-26_14-06-43'

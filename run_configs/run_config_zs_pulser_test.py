@@ -40,6 +40,9 @@ Pre-launch (see PLAN doc): the k8 set already exists
 (~/beam_july/pedestals/zs_k8_tracer_from_07-18-26_14-06-43, from prep_zs_thresholds.py).
 Regenerate the JSON (python run_config_zs_pulser_test.py) ONLY after run_57 is stopped.
 """
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
 ZS_PED_SET = 'zs_k8_tracer_from_07-18-26_14-06-43'  # from dream_scripts/prep_zs_thresholds.py --k 8

@@ -3,6 +3,9 @@
 """run_config_zs_latch.py — one long doubles sub-run for the FEU counter latch-read (2026-07-19).
 Doubles+PS, k8, IPD10, n32, HV 550/700. Single 5-min sub-run so we can latch+peek the trigger
 counters (accepted / close-drop / fifo-drop / max FIFO occupancy) several times live."""
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 ZS_PED_SET='zs_k8_tracer_from_07-18-26_14-06-43'
 class Config(BeamConfig):

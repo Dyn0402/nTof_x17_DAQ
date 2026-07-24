@@ -11,6 +11,9 @@ Created as Cosmic_Bench_DAQ_Control/run_config_template.py
 import copy
 from datetime import datetime
 
+# --- repo-root shim (run_config_beam/base live one dir up) ---
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_base import RunConfigBase
 from run_config_beam import Config as BeamConfig
 
