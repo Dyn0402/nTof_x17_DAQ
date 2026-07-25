@@ -1185,7 +1185,24 @@ def _log_delete(msg: str):
         pass
 
 
-def delete_run(disk: str, run: str) -> dict:
+def _batch_listing():
+    """Take ONE fresh whole-tree EOS listing to verify a batch of deletes against.
+
+    A listing costs a full xrdfs round trip (measured ~20-25 s against this EOS),
+    so re-taking it per run turned a 36-run freeing pass into ~15 minutes of
+    almost pure waiting. Reusing one listing across the batch is safe because
+    staleness here is FAIL-SAFE in one direction only: nothing we run ever
+    removes files from EOS (backup_watcher is push-only), so a file listed as
+    present is still present, while a file backed up *since* the listing merely
+    reads as not-yet-safe and its delete is refused. The local side — which is
+    the side that changes under us — is always re-read from disk immediately
+    before unlinking.
+    """
+    invalidate_remote_cache()
+    _remote_runs_map(force=True)
+
+
+def delete_run(disk: str, run: str, force: bool = True) -> dict:
     """Delete one run directory from a disk, but ONLY after re-verifying, here,
     that it is safe. Never trusts a caller verdict.
 
@@ -1195,7 +1212,11 @@ def delete_run(disk: str, run: str) -> dict:
          (no symlinks, no traversal, no partial-name tricks).
       3. run is not the active run, not the newest run on disk, and has no subrun
          missing its .subrun_complete marker.
-      4. a fresh verify_run() says SAFE.
+      4. verify_run() says SAFE.
+
+    force=False reuses the cached EOS listing (<=90 s old) instead of paying a
+    fresh whole-tree xrdfs per run — see _batch_listing() for why staleness here
+    is fail-safe. The LOCAL side is always re-read from disk.
     """
     if disk not in DISKS:
         return {'success': False, 'message': f'unknown disk {disk!r}'}
@@ -1215,7 +1236,7 @@ def delete_run(disk: str, run: str) -> dict:
     if rtarget.parent != root or rtarget == root:
         return {'success': False, 'message': 'path is not a run directly under the disk root'}
 
-    verdict = verify_run(disk, run, force=True)
+    verdict = verify_run(disk, run, force=force)
     verdict = _apply_local_guards(verdict, run, active_run(), newest_run())
     if not verdict['safe']:
         _log_delete(f"REFUSED {disk}/{run}: {verdict['reason']}")
@@ -1238,10 +1259,11 @@ def delete_run(disk: str, run: str) -> dict:
 def delete_runs(disk: str, runs: list) -> dict:
     """Delete several runs; each is independently re-verified. Stops nothing on a
     single failure — reports per-run outcomes."""
+    _batch_listing()
     results = []
     freed = 0
     for run in runs:
-        r = delete_run(disk, run)
+        r = delete_run(disk, run, force=False)
         results.append(r)
         if r.get('success'):
             freed += r.get('freed_bytes', 0)
@@ -1250,7 +1272,7 @@ def delete_runs(disk: str, runs: list) -> dict:
             'n_failed': sum(1 for r in results if not r.get('success'))}
 
 
-def delete_subrun(disk: str, run: str, subrun: str) -> dict:
+def delete_subrun(disk: str, run: str, subrun: str, force: bool = True) -> dict:
     """Delete one subrun directory from a disk, only after re-verifying, here,
     that it is safe. Same never-trust-the-caller model as delete_run, one level
     deeper.
@@ -1296,7 +1318,7 @@ def delete_subrun(disk: str, run: str, subrun: str) -> dict:
         return {'success': False,
                 'message': f'{run}/{subrun} is unmarked and recently written — refusing'}
 
-    verdict = verify_subrun(disk, run, subrun, force=True)
+    verdict = verify_subrun(disk, run, subrun, force=force)
     if not verdict['safe']:
         _log_delete(f"REFUSED {disk}/{run}/{subrun}: {verdict['reason']}")
         return {'success': False, 'message': f"not safe to delete: {verdict['reason']}",
@@ -1317,10 +1339,11 @@ def delete_subrun(disk: str, run: str, subrun: str) -> dict:
 
 def delete_subruns(disk: str, run: str, subruns: list) -> dict:
     """Delete several subruns of one run; each independently re-verified."""
+    _batch_listing()
     results = []
     freed = 0
     for sub in subruns:
-        r = delete_subrun(disk, run, sub)
+        r = delete_subrun(disk, run, sub, force=False)
         results.append(r)
         if r.get('success'):
             freed += r.get('freed_bytes', 0)

@@ -365,11 +365,18 @@ def freeing_pass(cfg: dict) -> dict:
         return {'freed': 0, 'deleted': [], 'state': 'dry_run', 'emergency': emergency}
 
     deleted, deleted_subs, freed = [], [], 0
+    # One fresh whole-tree EOS listing for the whole pass, instead of one per run:
+    # an xrdfs listing costs ~20-25 s here, so a 36-run pass otherwise spent a
+    # quarter of an hour re-listing the same tree. Verification itself still runs
+    # per run, against this listing plus a fresh read of the local tree — see
+    # space_manager._batch_listing() for why reusing it cannot make an unsafe
+    # delete look safe.
+    space_manager._batch_listing()
     for r in plan:
-        # delete_run re-verifies SSD -> HDD -> EOS from scratch and refuses the
-        # active run. A refusal here is expected and safe (a run can finish
-        # backing up, or start being written, between the scan and now).
-        res = space_manager.delete_run('ssd', r['run'])
+        # delete_run re-verifies against EOS from scratch and refuses the active
+        # run. A refusal here is expected and safe (a run can finish backing up,
+        # or start being written, between the scan and now).
+        res = space_manager.delete_run('ssd', r['run'], force=False)
         if res.get('success'):
             freed += res['freed_bytes']
             deleted.append({'run': r['run'], 'freed_h': res['freed_h']})
@@ -383,7 +390,7 @@ def freeing_pass(cfg: dict) -> dict:
         for u in sub_plan:
             # delete_subrun re-verifies and, for the active run, refuses any subrun
             # not marked .subrun_complete. Refusals are expected and safe.
-            res = space_manager.delete_subrun('ssd', u['run'], u['subrun'])
+            res = space_manager.delete_subrun('ssd', u['run'], u['subrun'], force=False)
             if res.get('success'):
                 freed += res['freed_bytes']
                 deleted_subs.append({'run': u['run'], 'subrun': u['subrun'],
