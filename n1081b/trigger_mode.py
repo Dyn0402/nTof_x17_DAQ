@@ -8,16 +8,23 @@ power-cycles, so re-run this script after any power event.
 Cabling (verified 2026-07-11, see HANDOFF_2026-07-11_latency_tuning.md):
   M4.C  or_veto : lemo0 = Singles (M4.A out)     lemo1 = Doubles (M4.B out)
                   lemo4 = M6.D pulser (~667 Hz)  lemo5 = implicit VETO
-                  (veto line = N93B 30 ms delay-timer window, inverted NIM:
+                  (veto line = N93B delay-timer window, inverted NIM:
                    HIGH in-window = enable, LOW outside = veto.
+                   ACCEPTANCE WINDOW, 2026-07-22: gate START moved 5 ms -> ~1 ms
+                   after the flash, to match the GEANT thermal-trigger study's
+                   t > 1 ms gate (MX17_Full_Geant .claude/al_pair_background/
+                   PLASTIC_THRESHOLD.md). Window history: ~30 ms -> ~5-85 ms
+                   (07-21) -> ~1 ms start (07-22). This is an EXTERNAL N93B
+                   front-panel setting, NOT set by any script here and NOT
+                   software-verifiable — read it off the module, do not assume.
                    2026-07-11: line measured CONSTANTLY HIGH -> no windowing;
-                   pulser passes ungated at ~667 Hz until the N93B is sorted)
+                   pulser passed ungated at ~667 Hz until the N93B was sorted)
   M4.D  or      : lemo0 = gamma-flash trigger line   lemo1 = M4.C out0
         out0    = DREAM external trigger (cable to TCM)
 
 Modes:
   flash        D = OR(lemo0)          gamma flash only; C output suppressed
-  flash_random C = or_veto(pulser)    flash + 30 ms-gated random pulser
+  flash_random C = or_veto(pulser)    flash + N93B-gated random pulser
                D = OR(lemo0, lemo1)
   scint        C = or_veto(Singles and/or Doubles)   scintillator trigger
                D = OR(lemo1)  [+ lemo0 PS/flash if --ps-pickup]
