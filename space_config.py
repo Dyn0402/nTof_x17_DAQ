@@ -35,6 +35,13 @@ CONFIG = {
     # space_manager.delete_run itself.
     'keep_recent_runs': 3,
 
+    # When a run cannot be reclaimed as a whole (it is being acquired, or not yet
+    # fully on EOS) the watcher can still prune its completed, EOS-verified subruns
+    # oldest-first — this is what keeps a single long run from filling the disk. Keep
+    # this many newest subruns of such a run back, mirroring keep_recent_runs one
+    # level down. Dropped in the emergency band along with keep_recent_runs.
+    'keep_recent_subruns': 3,
+
     # Free space below which the two guards above (keep_recent_runs, min_age_hours)
     # are BOTH ignored and any EOS-verified run may be deleted, newest included.
     # They are conveniences; a disk that hits zero stops acquisition outright, and
