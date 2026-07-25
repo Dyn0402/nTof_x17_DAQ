@@ -12,7 +12,7 @@ import os
 from run_config_beam import BASE_DATA_DIR
 
 # --- Paths ---
-BASE_SOFT = '/home/mx17/CLionProjects/mm_strip_reconstruction/build/'
+BASE_SOFT = '/home/mx17/CLionProjects/mm_strip_reconstruction/cmake-build-release/'
 BASE_DATA = BASE_DATA_DIR
 
 CONFIG = {
@@ -38,7 +38,12 @@ CONFIG = {
     # Common-noise subtraction (median across each 64-channel block, per sample) during
     # waveform analysis. NB: the pedestal RMS is ALWAYS computed after CNS in the processor;
     # this flag only toggles CNS on the DATA waveforms.
-    'common_noise_subtraction': False,
+    'common_noise_subtraction': True,   # 2026-07-23: RE-ENABLED. Was off (commit ca7baed,
+    # likely to spare flash events) but that left ALL RAW runs common-mode dominated — the
+    # plane's ±300 ADC common-mode fired every channel (see ~/beam_july/analysis/
+    # waveform_cns_study). CNS is per-sample median in 64-ch connector blocks; needed for
+    # any real hit/tracking. Flash events are still fine (median is robust to the coherent
+    # rail). Turn back off only for a deliberate raw-baseline study.
 
     # Cleanup options
     'save_fdfs':    True,  # Keep raw FDF files after processing
@@ -58,7 +63,11 @@ CONFIG = {
     # If exclude_runs is a non-empty list, those run directories are skipped.
     # Both null/empty means process all runs as normal.
     'include_runs': None,  # None,  # e.g. ['run_1', 'run_2'] — only process these runs, None for all
-    'exclude_runs': None,  # e.g. ['run_3']          — skip these runs
+    'exclude_runs': ['run_67', 'run_67_recon', 'run_68', 'run_69', 'run_74', 'run_70'],  # TEMP 2026-07-24:
+    # bulk CNS reprocess of these completed runs in flight (reprocess_all_cns.sh); keep the
+    # watcher off them so they can't touch the same files. run_71 is LIVE (not excluded, gets
+    # CNS from the watcher); run_70 already reprocessed. REVERT to None when the bulk job ends.
+    # e.g. ['run_3'] — skip these runs
 
     # Watcher behavior
     'poll_interval':  10,  # seconds between full directory scans
