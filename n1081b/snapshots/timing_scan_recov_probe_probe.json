@@ -1,0 +1,249 @@
+{
+ "probe": true,
+ "gate_ns": 20,
+ "count_s": 30,
+ "delays": [
+  0,
+  10,
+  15,
+  20,
+  25,
+  30,
+  40,
+  50
+ ],
+ "rows": [
+  {
+   "signed_delay": 0,
+   "wall_delay": 0,
+   "scint_delay": 0,
+   "sectors": {
+    "SEC_A": {
+     "wall": 964.069,
+     "scint": 669.453,
+     "C": 46.434
+    },
+    "SEC_B": {
+     "wall": 922.634,
+     "scint": 971.584,
+     "C": 74.634
+    },
+    "SEC_C": {
+     "wall": 931.588,
+     "scint": 961.128,
+     "C": 62.903
+    },
+    "SEC_D": {
+     "wall": 937.927,
+     "scint": 833.949,
+     "C": 52.969
+    }
+   },
+   "beam_stable": true,
+   "beam_e10_after": 857.18
+  },
+  {
+   "signed_delay": 10,
+   "wall_delay": 10,
+   "scint_delay": 0,
+   "sectors": {
+    "SEC_A": {
+     "wall": 893.068,
+     "scint": 624.821,
+     "C": 79.34
+    },
+    "SEC_B": {
+     "wall": 857.548,
+     "scint": 910.681,
+     "C": 110.71
+    },
+    "SEC_C": {
+     "wall": 872.22,
+     "scint": 892.578,
+     "C": 110.253
+    },
+    "SEC_D": {
+     "wall": 873.625,
+     "scint": 766.575,
+     "C": 89.013
+    }
+   },
+   "beam_stable": true,
+   "beam_e10_after": 414.18
+  },
+  {
+   "signed_delay": 15,
+   "wall_delay": 15,
+   "scint_delay": 0,
+   "sectors": {
+    "SEC_A": {
+     "wall": 948.423,
+     "scint": 664.099,
+     "C": 80.124
+    },
+    "SEC_B": {
+     "wall": 921.17,
+     "scint": 969.173,
+     "C": 109.207
+    },
+    "SEC_C": {
+     "wall": 939.535,
+     "scint": 959.141,
+     "C": 108.652
+    },
+    "SEC_D": {
+     "wall": 935.025,
+     "scint": 822.354,
+     "C": 89.666
+    }
+   },
+   "beam_stable": true,
+   "beam_e10_after": 859.91
+  },
+  {
+   "signed_delay": 20,
+   "wall_delay": 20,
+   "scint_delay": 0,
+   "sectors": {
+    "SEC_A": {
+     "wall": 900.516,
+     "scint": 639.981,
+     "C": 82.248
+    },
+    "SEC_B": {
+     "wall": 864.604,
+     "scint": 900.973,
+     "C": 103.488
+    },
+    "SEC_C": {
+     "wall": 881.628,
+     "scint": 883.262,
+     "C": 102.835
+    },
+    "SEC_D": {
+     "wall": 873.361,
+     "scint": 762.945,
+     "C": 84.078
+    }
+   },
+   "beam_stable": true,
+   "beam_e10_after": 857.38
+  },
+  {
+   "signed_delay": 25,
+   "wall_delay": 25,
+   "scint_delay": 0,
+   "sectors": {
+    "SEC_A": {
+     "wall": 952.443,
+     "scint": 669.916,
+     "C": 84.797
+    },
+    "SEC_B": {
+     "wall": 923.982,
+     "scint": 962.083,
+     "C": 108.979
+    },
+    "SEC_C": {
+     "wall": 933.621,
+     "scint": 951.594,
+     "C": 104.11
+    },
+    "SEC_D": {
+     "wall": 928.85,
+     "scint": 822.486,
+     "C": 83.36
+    }
+   },
+   "beam_stable": true,
+   "beam_e10_after": 407.37
+  },
+  {
+   "signed_delay": 30,
+   "wall_delay": 30,
+   "scint_delay": 0,
+   "sectors": {
+    "SEC_A": {
+     "wall": 37.611,
+     "scint": 681.445,
+     "C": 0.065
+    },
+    "SEC_B": {
+     "wall": 36.566,
+     "scint": 982.334,
+     "C": 0.065
+    },
+    "SEC_C": {
+     "wall": 36.925,
+     "scint": 956.258,
+     "C": 0.131
+    },
+    "SEC_D": {
+     "wall": 32.906,
+     "scint": 831.334,
+     "C": 0.131
+    }
+   },
+   "beam_stable": true,
+   "beam_e10_after": 416.36
+  },
+  {
+   "signed_delay": 40,
+   "wall_delay": 40,
+   "scint_delay": 0,
+   "sectors": {
+    "SEC_A": {
+     "wall": 0.261,
+     "scint": 626.065,
+     "C": 0.0
+    },
+    "SEC_B": {
+     "wall": 0.229,
+     "scint": 907.221,
+     "C": 0.0
+    },
+    "SEC_C": {
+     "wall": 0.294,
+     "scint": 898.366,
+     "C": 0.0
+    },
+    "SEC_D": {
+     "wall": 0.196,
+     "scint": 764.454,
+     "C": 0.0
+    }
+   },
+   "beam_stable": true,
+   "beam_e10_after": 416.27
+  },
+  {
+   "signed_delay": 50,
+   "wall_delay": 50,
+   "scint_delay": 0,
+   "sectors": {
+    "SEC_A": {
+     "wall": 0.294,
+     "scint": 671.584,
+     "C": 0.0
+    },
+    "SEC_B": {
+     "wall": 0.359,
+     "scint": 977.181,
+     "C": 0.0
+    },
+    "SEC_C": {
+     "wall": 0.261,
+     "scint": 955.451,
+     "C": 0.0
+    },
+    "SEC_D": {
+     "wall": 0.327,
+     "scint": 822.062,
+     "C": 0.0
+    }
+   },
+   "beam_stable": true,
+   "beam_e10_after": 412.11
+  }
+ ]
+}
