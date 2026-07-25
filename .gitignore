@@ -278,3 +278,7 @@ config/n1081b_scan_schedule.json.*_backup
 
 # N1081B time-tag watcher per-day CSV data logs
 n1081b/logs/
+
+# Ad-hoc pre-release backups of live configs (processor_config.py.bak_predrelease
+# and friends) — local snapshots taken before a config edit, not source.
+*.bak_predrelease
