@@ -184,9 +184,13 @@ WITNESS_BEAM_RATIO = 0.50   # witnesses below this fraction of nominal = no prot
 #   RMP   the RAMP channels. Excluded on request (2026-07-22) — they are not part of
 #         the detector health question this layer answers, and are reported for
 #         reference only. Remove the prefix here to bring them back under grading.
+#   SILI  the silicon monitor. Excluded on request (2026-07-25) for the same reason as
+#         RMP: not part of the detector health question this layer answers. Its numbers
+#         are still measured and shown; they just cannot move the verdict or alert.
 UNGRADED_PREFIX_REASONS = {
     "PKUP": "beam-intensity proportional — witness only, not graded",
     "RMP": "RAMP channel — reported only, ignored for alerts",
+    "SILI": "silicon monitor — reported only, ignored for alerts",
 }
 UNGRADED_PREFIXES = tuple(UNGRADED_PREFIX_REASONS)
 
