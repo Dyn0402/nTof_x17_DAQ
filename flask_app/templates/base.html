@@ -410,6 +410,59 @@
         .shift-flag-na   { color: var(--muted); }
         .shift-note { color: var(--muted); font-size: 0.75rem; margin-top: 0.45rem; }
 
+        /* ---------- Disk Space: prune-parts (component) view ---------- */
+        /* The "what to delete" axis: one toggle chip per component. Selecting a
+           chip highlights that column in the table below, so the intersection of
+           chips x ticked rows is always visible at a glance. */
+        .ds-chip {
+            display: inline-flex; flex-direction: column; gap: 0.1rem;
+            border: 1px solid var(--border); border-radius: 8px;
+            padding: 0.42rem 0.7rem; cursor: pointer; user-select: none;
+            background: var(--panel-2); text-align: left; min-width: 8.6rem;
+            transition: border-color .12s, background .12s;
+        }
+        .ds-chip:hover     { border-color: var(--sec); }
+        .ds-chip .n        { font-size: 0.82rem; font-weight: 600; }
+        .ds-chip .s        { font-size: 0.74rem; color: var(--muted); font-family: var(--mono); }
+        .ds-chip.on        { border-color: var(--bad); background: rgba(239,91,91,0.13); }
+        .ds-chip.on .n     { color: var(--bad); }
+        .ds-chip.empty     { opacity: 0.45; cursor: not-allowed; }
+        .ds-chip.empty:hover { border-color: var(--border); }
+
+        /* Component columns. .sel marks a column whose chip is active, i.e. bytes
+           that would actually go if the row is ticked. */
+        .ds-cc            { text-align: right; font-family: var(--mono); font-size: 0.8rem;
+                            white-space: nowrap; }
+        .ds-cc.sel        { background: rgba(239,91,91,0.14); color: var(--bad); font-weight: 600; }
+        .ds-cc.none       { color: #4a5462; }
+        .ds-cc .u         { color: var(--muted); font-weight: 400; }
+
+        .ds-prune-sub > td { background: rgba(0,0,0,0.18); }
+        .ds-sub-name      { padding-left: 1.9rem !important; font-size: 0.83rem; color: var(--muted); }
+        .ds-caret         { cursor: pointer; user-select: none; color: var(--muted);
+                            display: inline-block; width: 1rem; transition: transform .12s; }
+        .ds-caret.open    { transform: rotate(90deg); }
+        .ds-run-name      { cursor: pointer; }
+
+        /* Inline progress strip for the EOS safety check. Takes a full row of the
+           flex control bar so it sits under the buttons, not beside them. The
+           striped animation marks the phase whose progress is an ESTIMATE (the
+           xrdfs listing, which reports nothing until it is done). */
+        .ds-jobprog       { flex-basis: 100%; width: 100%; margin-top: 0.15rem; }
+        .sys-bar-fill.ds-striped,
+        .ds-jobprog.est .sys-bar-fill {
+            background-image: linear-gradient(45deg, rgba(255,255,255,0.14) 25%, transparent 25%,
+                              transparent 50%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0.14) 75%,
+                              transparent 75%, transparent);
+            background-size: 14px 14px;
+            animation: ds-stripes 0.9s linear infinite;
+        }
+        @keyframes ds-stripes { from { background-position: 0 0; } to { background-position: 14px 0; } }
+
+        .ds-warnbox       { border: 1px solid var(--warn); border-radius: 8px; padding: 0.5rem 0.7rem;
+                            background: rgba(240,192,64,0.10); font-size: 0.82rem; margin-bottom: 0.6rem; }
+        .ds-warnbox b     { color: var(--warn); }
+
         /* Emergency stop: two-step (arm -> confirm), auto-disarms after 5 s. */
         .estop-btn {
             width: 100%; height: 100%; min-height: 96px;

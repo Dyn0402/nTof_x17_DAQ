@@ -1155,6 +1155,7 @@
       <!-- mode toggle -->
       <div class="btn-group btn-group-sm mb-3" role="group">
         <button id="ds-mode-free" class="btn btn-info">Free space</button>
+        <button id="ds-mode-prune" class="btn btn-outline-info">Prune parts</button>
         <button id="ds-mode-restore" class="btn btn-outline-info">Restore from lxplus</button>
       </div>
 
@@ -1171,6 +1172,48 @@
           <button id="ds-check" class="btn btn-info btn-sm">Run safety check</button>
         </div>
         <div class="btn-group-block mb-0 ms-auto text-muted" id="ds-scan-meta" style="font-size:0.8rem;"></div>
+        <div class="ds-jobprog" id="ds-check-prog" style="display:none;">
+          <div class="sys-bar-track" style="height:10px;">
+            <div class="sys-bar-fill" id="ds-check-prog-bar" style="width:0%; background:var(--info);"></div>
+          </div>
+          <div class="d-flex justify-content-between" style="font-size:0.76rem; color:var(--muted); margin-top:0.22rem;">
+            <span id="ds-check-prog-msg"></span>
+            <span id="ds-check-prog-pct" style="font-family:var(--mono);"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- prune-parts controls: the "what to delete" axis -->
+      <div id="ds-prune-controls" style="display:none; flex-direction:column; gap:0.7rem;">
+        <div>
+          <div class="d-flex align-items-baseline gap-2 mb-1" style="flex-wrap:wrap;">
+            <label class="form-label mb-0">What to delete</label>
+            <span class="text-muted" style="font-size:0.78rem;">
+              pick the kinds of data — then tick the runs or subruns below. Both disks are
+              covered at once. Only pieces provably on EOS can go; everything else is refused
+              server-side.</span>
+          </div>
+          <div id="ds-chips" class="d-flex gap-2" style="flex-wrap:wrap;"></div>
+        </div>
+        <div class="d-flex align-items-center gap-2" style="flex-wrap:wrap;">
+          <span class="text-muted" style="font-size:0.78rem;">Presets:</span>
+          <button class="btn btn-outline-secondary btn-sm ds-preset" data-preset="staging">Reclaim SSD staging</button>
+          <button class="btn btn-outline-secondary btn-sm ds-preset" data-preset="keep_hits">Keep hits + combined</button>
+          <button class="btn btn-outline-secondary btn-sm ds-preset" data-preset="keep_combined">Keep combined only</button>
+          <button class="btn btn-outline-secondary btn-sm ds-preset" data-preset="all">Everything</button>
+          <button class="btn btn-outline-secondary btn-sm ds-preset" data-preset="none">Clear</button>
+          <button id="ds-prune-check" class="btn btn-info btn-sm ms-2">Run safety check</button>
+          <span class="ms-auto text-muted" id="ds-prune-meta" style="font-size:0.8rem;"></span>
+        </div>
+        <div class="ds-jobprog" id="ds-prune-prog" style="display:none;">
+          <div class="sys-bar-track" style="height:10px;">
+            <div class="sys-bar-fill" id="ds-prune-prog-bar" style="width:0%; background:var(--info);"></div>
+          </div>
+          <div class="d-flex justify-content-between" style="font-size:0.76rem; color:var(--muted); margin-top:0.22rem;">
+            <span id="ds-prune-prog-msg"></span>
+            <span id="ds-prune-prog-pct" style="font-family:var(--mono);"></span>
+          </div>
+        </div>
       </div>
 
       <!-- restore controls -->
@@ -1268,6 +1311,35 @@
         </table>
       </div>
       <p id="ds-empty" class="text-muted d-none mb-0 mt-2">No runs found on this disk.</p>
+    </div>
+  </div>
+
+  <!-- Prune-parts results panel: the "where" axis (runs, expandable to subruns) -->
+  <div class="panel" id="ds-prune-panel" style="display:none;">
+    <div class="panel-header">
+      <span class="panel-title">Runs &amp; subruns</span>
+      <span id="ds-prune-summary" class="panel-header-note"></span>
+      <div class="ms-auto d-flex gap-2 align-items-center">
+        <button id="ds-prune-expand" class="btn btn-outline-secondary btn-sm">Expand all</button>
+        <button id="ds-prune-select" class="btn btn-outline-secondary btn-sm">Select all safe</button>
+        <button id="ds-prune-clear" class="btn btn-outline-secondary btn-sm">Clear</button>
+        <button id="ds-prune-delete" class="btn btn-danger btn-sm" disabled>Delete selected…</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div id="ds-prune-warn" class="ds-warnbox" style="display:none;"></div>
+      <p class="text-muted mb-2" style="font-size:0.8rem;">
+        Ticking a run selects all of its subruns. Click a run name (or the ▸) to open it and
+        pick subruns individually. Highlighted cells are what your chip selection would remove;
+        <b>✓</b> marks a piece verified on EOS, so it can be pulled back with
+        <i>Restore from lxplus</i> later.</p>
+      <div class="table-responsive">
+        <table class="table table-dark table-sm align-middle mb-0" id="ds-prune-table">
+          <thead><tr id="ds-prune-head"></tr></thead>
+          <tbody id="ds-prune-tbody"></tbody>
+        </table>
+      </div>
+      <p id="ds-prune-empty" class="text-muted d-none mb-0 mt-2">No runs found on disk.</p>
     </div>
   </div>
 
@@ -4798,6 +4870,10 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
 (function () {
   const $ = (id) => document.getElementById(id);
   const gb = (n) => (n / 1073741824).toFixed(1) + " GB";
+  // Run/subrun names and server-supplied reasons go into innerHTML in several
+  // places below; they come off the disk, so escape them rather than trust them.
+  const esc = (s) => String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   const usageBox = $("ds-usage");
   const diskSel  = $("ds-disk");
@@ -4883,7 +4959,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
                      : `<input type="checkbox" class="form-check-input" disabled title="not safe to delete">`}</td>
         <td><button class="btn btn-link btn-sm p-0 ds-expand" data-run="${r.run}"
                     title="Show subruns" style="text-decoration:none; width:1.2rem;">▸</button>
-            <b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}</td>
+            <b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}${r.newest && !r.active ? ' <span class="text-muted">(newest)</span>' : ''}</td>
         <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
         <td style="font-size:0.82rem; color:var(--muted);">${r.reason}</td>
         <td>${badge}</td>`;
@@ -5009,15 +5085,62 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       onClose: () => { delete subScanCache[run]; delete subSel[run]; runCheck(); },
     });
   }
+  // What is on the disk, from local stat() only — instant, and it still works
+  // with EOS/Kerberos down. Painted as soon as the tab opens so the operator sees
+  // the disk contents without waiting for (or being blocked by) the EOS check;
+  // nothing is selectable until "Run safety check" replaces it with the verified
+  // view.
+  function renderLocalRows(d) {
+    const tb = $("ds-tbody"); tb.innerHTML = ""; delSel.clear(); delTable = null;
+    if (!d.runs.length) { $("ds-empty").classList.remove("d-none"); updateDelBtn(); return; }
+    $("ds-empty").classList.add("d-none");
+    for (const r of d.runs) {
+      const tr = document.createElement("tr");
+      const badge = r.active ? `<span class="shift-flag-na">● acquiring</span>`
+        : (r.newest || r.incomplete) ? `<span class="shift-flag-bad">✗ not safe</span>`
+        : `<span class="text-muted">? unverified</span>`;
+      tr.innerHTML = `
+        <td><input type="checkbox" class="form-check-input" disabled title="run the safety check first"></td>
+        <td><b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}${r.newest && !r.active ? ' <span class="text-muted">(newest)</span>' : ''}</td>
+        <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
+        <td style="font-size:0.82rem; color:var(--muted);">${r.note}</td>
+        <td>${badge}</td>`;
+      tb.appendChild(tr);
+    }
+    updateDelBtn();
+  }
+  async function loadLocal() {
+    if (mode !== "free") return;
+    try {
+      const r = await fetch(`/space/local?disk=${encodeURIComponent(diskSel.value)}`);
+      const d = await r.json();
+      if (!r.ok || d.success === false) throw new Error(d.message || "listing failed");
+      if (lastScan) return;   // an EOS-verified scan is on screen — don't downgrade it
+      $("ds-results-panel").style.display = "";
+      renderLocalRows(d);
+      $("ds-summary").innerHTML =
+        `${d.n_runs} runs · <b>${d.total_h}</b> on disk` +
+        (d.active_run ? ` · active: ${d.active_run}` : "") +
+        ` — run the safety check to see what is safe to delete`;
+      $("ds-scan-meta").textContent =
+        `Disk contents as of ${d.scanned_at} (not yet verified against EOS)`;
+    } catch (e) {
+      $("ds-scan-meta").innerHTML =
+        `<span style="color:var(--bad);">Could not list disk: ${esc(e.message)}</span>`;
+    }
+  }
+
   async function runCheck() {
     const disk = diskSel.value;
     const btn = $("ds-check");
-    btn.disabled = true; btn.textContent = "Checking… (verifying against EOS)";
+    btn.disabled = true; btn.textContent = "Checking…";
     $("ds-scan-meta").textContent = "";
+    const pb = inlineProgress("ds-check-prog", "check");
     try {
-      const r = await fetch(`/space/scan?disk=${encodeURIComponent(disk)}`);
-      const d = await r.json();
-      if (!r.ok || d.success === false) throw new Error(d.message || "scan failed");
+      const est = await fetch("/space/estimate").then(r => r.json()).catch(() => ({}));
+      pb.start(est.listing_s || 9);
+      const d = await runSpaceJob("/space/job/check", { mode: "runs", disk }, s => pb.tick(s));
+      pb.finish(true, `verified ${d.n_runs} run(s) against EOS`);
       lastScan = d;
       $("ds-results-panel").style.display = "";
       renderDeleteRows(d);
@@ -5027,7 +5150,8 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       $("ds-scan-meta").textContent = `Scanned ${d.n_runs} runs at ${d.scanned_at}`;
       loadUsage();
     } catch (e) {
-      $("ds-scan-meta").innerHTML = `<span style="color:var(--bad);">Check failed: ${e.message}</span>`;
+      pb.finish(false, e.message);
+      $("ds-scan-meta").innerHTML = `<span style="color:var(--bad);">Check failed: ${esc(e.message)}</span>`;
     } finally {
       btn.disabled = false; btn.textContent = "Run safety check";
     }
@@ -5087,6 +5211,422 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     }
   }
 
+  // ================= background space jobs + progress =================
+  // The EOS-backed operations run on a server thread and publish progress; we
+  // start one and poll it. See the note in app.py: the `xrdfs ls -R` listing
+  // itself CANNOT be tracked — it emits nothing for tens of seconds and then
+  // dumps every line at once — so that phase is animated against the previous
+  // run's duration and labelled as an estimate (striped bar). Every phase after
+  // it is a real count.
+  const PHASE_BANDS = {
+    check:  { scan: [0, 4],   listing: [4, 75],  verify: [75, 100] },
+    delete: { listing: [0, 25], delete: [25, 100] },
+  };
+  const PHASE_TEXT = {
+    scan: "Reading the local run tree",
+    listing: "Contacting EOS and listing files",
+    verify: "Verifying runs against EOS",
+    delete: "Deleting",
+  };
+
+  // Maps a job tick to a 0-100 percentage. Determinate phases use done/total;
+  // indeterminate ones creep toward the top of their band on elapsed time and
+  // stop at 95% of it, so the bar never claims to be finished when it isn't.
+  function makePhaseTracker(kind, estimate) {
+    const bands = PHASE_BANDS[kind];
+    let cur = null, t0 = 0, high = 0;
+    return (s) => {
+      if (s.phase !== cur) { cur = s.phase; t0 = Date.now(); }
+      const b = bands[s.phase] || [0, 100];
+      const det = s.total != null && s.total > 0;
+      const f = det ? Math.min(1, s.done / s.total)
+                    : Math.min(0.95, ((Date.now() - t0) / 1000) / Math.max(1, estimate));
+      high = Math.max(high, b[0] + (b[1] - b[0]) * f);   // never go backwards
+      return { pct: high, estimated: !det };
+    };
+  }
+
+  async function runSpaceJob(url, body, onTick) {
+    const r = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.job) throw new Error(d.message || "could not start job");
+    let seen = 0, last = null;
+    for (;;) {
+      const sr = await fetch(`/space/job/${d.job}?since=${seen}`);
+      const s = await sr.json();
+      if (!sr.ok || s.success === false) throw new Error(s.message || "job vanished");
+      seen = s.n_items;
+      last = s;
+      onTick(s);
+      if (!s.running) break;
+      await new Promise(res => setTimeout(res, 300));
+    }
+    if (last.error) throw new Error(last.error);
+    return last.result;
+  }
+
+  // Drives one of the inline progress strips (prefix = "ds-prune-prog" | "ds-check-prog").
+  function inlineProgress(prefix, kind) {
+    const box = $(prefix), bar = $(prefix + "-bar");
+    const msg = $(prefix + "-msg"), pct = $(prefix + "-pct");
+    let track = null;
+    return {
+      start(estimate) {
+        track = makePhaseTracker(kind, estimate);
+        box.style.display = ""; box.classList.remove("est");
+        bar.style.width = "0%"; bar.style.background = "var(--info)";
+        msg.textContent = "starting…"; pct.textContent = "";
+      },
+      tick(s) {
+        if (!track) return;
+        const { pct: p, estimated } = track(s);
+        bar.style.width = p.toFixed(1) + "%";
+        box.classList.toggle("est", estimated);
+        msg.textContent = `${PHASE_TEXT[s.phase] || s.phase}${s.msg ? " — " + s.msg : ""}`;
+        pct.textContent = (estimated ? "~" : "") + Math.round(p) + "%  ·  " + s.elapsed.toFixed(1) + "s";
+      },
+      finish(ok, text) {
+        if (!track) return;
+        box.classList.remove("est");
+        bar.style.width = "100%";
+        bar.style.background = ok ? "var(--ok)" : "var(--bad)";
+        msg.textContent = text || (ok ? "done" : "failed");
+        pct.textContent = "100%";
+        setTimeout(() => { box.style.display = "none"; }, ok ? 1400 : 4000);
+      },
+    };
+  }
+
+  // ================= PRUNE PARTS (component-level delete) =================
+  // Two independent axes: the chips choose WHAT kind of data to remove, the table
+  // chooses WHERE (which runs / subruns), across BOTH disks at once. What actually
+  // gets deleted is the intersection, recomputed live so the footer always shows
+  // the real number. Selection is stored per-subrun; a run checkbox is shorthand
+  // for all of that run's subruns. Nothing here decides safety — the server does,
+  // and re-verifies again at delete time.
+  let pruneData = null;
+  const compSel  = new Set();     // component keys
+  const pruneSel = new Set();     // "run subrun"
+  const expanded = new Set();     // run names currently open
+  const skey = (run, sub) => run + " " + sub;
+
+  // Presets are expressed as what to DELETE. The names describe what survives,
+  // because that is how you actually think about it at 3am.
+  const PRESETS = {
+    staging:       ["dream_run"],
+    keep_hits:     ["dream_run", "raw_fdf", "decoded_root"],
+    keep_combined: ["dream_run", "raw_fdf", "decoded_root", "hits_root"],
+    all:           null,          // every component present in the scan
+    none:          [],
+  };
+
+  function renderChips() {
+    const box = $("ds-chips");
+    if (!pruneData) { box.innerHTML = ""; return; }
+    box.innerHTML = pruneData.component_order.map(c => {
+      const meta = pruneData.components[c];
+      const tot = pruneData.totals[c] || { size: 0, size_h: "0 B", safe_size_h: "0 B" };
+      const empty = !tot.size;
+      const on = compSel.has(c) && !empty;
+      return `<div class="ds-chip${on ? " on" : ""}${empty ? " empty" : ""}" data-comp="${c}"
+                   title="${esc(meta.blurb)}">
+                <span class="n">${on ? "✓ " : ""}${esc(meta.label)}</span>
+                <span class="s">${tot.size_h}${pruneData.verified
+                  ? ` · ${tot.safe_size_h} safe` : ""}</span>
+              </div>`;
+    }).join("");
+    box.querySelectorAll(".ds-chip").forEach(el => {
+      if (el.classList.contains("empty")) return;
+      el.addEventListener("click", () => {
+        const c = el.dataset.comp;
+        if (compSel.has(c)) compSel.delete(c); else compSel.add(c);
+        renderChips(); renderPruneTable(); recalcPrune();
+      });
+    });
+  }
+
+  // One cell per component. `sel` marks columns whose chip is on, so the
+  // highlighted area IS the deletion set.
+  function compCell(v, comp) {
+    if (!v) return `<td class="ds-cc none">—</td>`;
+    const sel = compSel.has(comp) ? " sel" : "";
+    const mark = pruneData.verified ? (v.safe ? " ✓" : ' <span class="u">✗</span>') : "";
+    return `<td class="ds-cc${sel}" title="${esc(v.reason || "")}">${v.size_h}${mark}</td>`;
+  }
+
+  function runCheckState(r) {
+    const subs = r.subruns.map(s => pruneSel.has(skey(r.run, s.subrun)));
+    if (!subs.length) return "none";
+    if (subs.every(Boolean)) return "all";
+    return subs.some(Boolean) ? "some" : "none";
+  }
+
+  function renderPruneTable() {
+    if (!pruneData) return;
+    const order = pruneData.component_order;
+    $("ds-prune-head").innerHTML =
+      `<th style="width:2.2rem;"></th><th>Run / subrun</th>` +
+      order.map(c => `<th class="text-end" style="font-size:0.76rem;">${esc(pruneData.components[c].label)}</th>`).join("") +
+      `<th style="width:30%;">Status</th>`;
+
+    const tb = $("ds-prune-tbody");
+    tb.innerHTML = "";
+    if (!pruneData.runs.length) { $("ds-prune-empty").classList.remove("d-none"); return; }
+    $("ds-prune-empty").classList.add("d-none");
+
+    for (const r of pruneData.runs) {
+      const st = runCheckState(r);
+      const open = expanded.has(r.run);
+      const tr = document.createElement("tr");
+      const note = r.guard
+        ? `<span class="shift-flag-bad">✗ ${esc(r.guard)}</span>`
+        : (pruneData.verified
+            ? `<span class="text-muted">${r.n_subruns} subrun(s) · ${r.other_h} kept (logs, config)</span>`
+            : `<span class="text-muted">not yet verified against EOS</span>`);
+      tr.innerHTML =
+        `<td><input type="checkbox" class="form-check-input ds-runcb" data-run="${esc(r.run)}"
+             ${st === "all" ? "checked" : ""} ${r.guard ? "disabled" : ""}></td>
+         <td class="ds-run-name" data-run="${esc(r.run)}">
+           <span class="ds-caret${open ? " open" : ""}">▸</span><b>${esc(r.run)}</b>
+           ${r.active ? ' <span class="text-muted">(acquiring)</span>' : ""}
+           ${r.newest && !r.active ? ' <span class="text-muted">(newest)</span>' : ""}
+           <span class="text-muted" style="font-family:var(--mono); font-size:0.78rem;"> ${r.size_h}</span>
+         </td>` +
+        order.map(c => compCell(r.components[c] ? {
+          size_h: r.components[c].size_h,
+          safe: r.components[c].n_safe === r.components[c].n_total,
+          reason: `${r.components[c].n_safe}/${r.components[c].n_total} subrun(s) safe`,
+        } : null, c)).join("") +
+        `<td style="font-size:0.8rem;">${note}</td>`;
+      tb.appendChild(tr);
+      const cb = tr.querySelector(".ds-runcb");
+      if (cb) cb.indeterminate = st === "some";
+
+      if (!open) continue;
+      for (const s of r.subruns) {
+        const str = document.createElement("tr");
+        str.className = "ds-prune-sub";
+        const sn = s.guard
+          ? `<span class="shift-flag-bad">✗ ${esc(s.guard)}</span>`
+          : `<span class="text-muted">${s.other_h} kept</span>`;
+        str.innerHTML =
+          `<td><input type="checkbox" class="form-check-input ds-prunecb"
+               data-run="${esc(r.run)}" data-sub="${esc(s.subrun)}"
+               ${pruneSel.has(skey(r.run, s.subrun)) ? "checked" : ""} ${s.guard ? "disabled" : ""}></td>
+           <td class="ds-sub-name">${esc(s.subrun)}
+             <span style="font-family:var(--mono); font-size:0.76rem;"> ${s.size_h}</span></td>` +
+          order.map(c => compCell(s.components[c], c)).join("") +
+          `<td style="font-size:0.78rem;">${sn}</td>`;
+        tb.appendChild(str);
+      }
+    }
+
+    tb.querySelectorAll(".ds-runcb").forEach(cb => cb.addEventListener("change", () => {
+      const r = pruneData.runs.find(x => x.run === cb.dataset.run);
+      if (!r) return;
+      for (const s of r.subruns) {
+        if (s.guard) continue;
+        if (cb.checked) pruneSel.add(skey(r.run, s.subrun));
+        else pruneSel.delete(skey(r.run, s.subrun));
+      }
+      renderPruneTable(); recalcPrune();
+    }));
+    tb.querySelectorAll(".ds-prunecb").forEach(cb => cb.addEventListener("change", () => {
+      const k = skey(cb.dataset.run, cb.dataset.sub);
+      if (cb.checked) pruneSel.add(k); else pruneSel.delete(k);
+      renderPruneTable(); recalcPrune();
+    }));
+    tb.querySelectorAll(".ds-run-name").forEach(td => td.addEventListener("click", () => {
+      const run = td.dataset.run;
+      if (expanded.has(run)) expanded.delete(run); else expanded.add(run);
+      renderPruneTable();
+    }));
+  }
+
+  // The intersection of the two axes, restricted to pieces the scan called safe.
+  // This is what the delete request will contain.
+  function pruneItems() {
+    if (!pruneData || !pruneData.verified) return [];
+    const out = [];
+    for (const r of pruneData.runs) {
+      if (r.guard) continue;
+      for (const s of r.subruns) {
+        if (s.guard || !pruneSel.has(skey(r.run, s.subrun))) continue;
+        for (const c of compSel) {
+          const v = s.components[c];
+          if (v && v.safe && v.size > 0) out.push({ run: r.run, subrun: s.subrun, component: c, bytes: v.size });
+        }
+      }
+    }
+    return out;
+  }
+
+  function recalcPrune() {
+    const items = pruneItems();
+    const bytes = items.reduce((a, i) => a + i.bytes, 0);
+    const btn = $("ds-prune-delete");
+    btn.disabled = !items.length;
+    btn.textContent = items.length ? `Delete selected (${items.length})…` : "Delete selected…";
+
+    const nSubs = new Set(items.map(i => i.run + " " + i.subrun)).size;
+    if (!pruneData) { $("ds-prune-summary").textContent = ""; return; }
+    $("ds-prune-summary").innerHTML = pruneData.verified
+      ? (items.length
+          ? `${compSel.size} kind(s) × ${nSubs} subrun(s) — would free <b>${gb(bytes)}</b>`
+          : (pruneSel.size && !compSel.size
+              ? `${pruneSel.size} subrun(s) ticked — now pick what to delete above`
+              : (compSel.size && !pruneSel.size
+                  ? `pick the runs or subruns to apply this to`
+                  : `${pruneData.total_h} on disk · <b>${pruneData.safe_bytes_h}</b> reclaimable`)))
+      : `${pruneData.total_h} on disk — run the safety check to see what can go`;
+
+    // Local mirror of the server's reprocess rule, so the warning appears while
+    // you are still choosing rather than only in the confirm dialog.
+    const sentinel = pruneData.reprocess_sentinel || "combined_hits_root";
+    const warn = [];
+    if (compSel.has(sentinel) && !compSel.has("raw_fdf")) {
+      for (const i of items) {
+        if (i.component !== sentinel) continue;
+        const r = pruneData.runs.find(x => x.run === i.run);
+        const s = r && r.subruns.find(x => x.subrun === i.subrun);
+        const raw = s && s.components["raw_fdf"];
+        if (raw && raw.size > 0) warn.push(`${i.run}/${i.subrun}`);
+      }
+    }
+    const box = $("ds-prune-warn");
+    if (warn.length) {
+      box.style.display = "";
+      box.innerHTML = `<b>⚠ The processor will redo these ${warn.length} subrun(s).</b>
+        Combined hits are the watcher's "already done" marker — removing them while the raw
+        FDFs stay makes it re-decode, re-analyze and re-combine from scratch. Add
+        <i>Raw FDFs</i> to the selection, or stop the processor first.
+        <div style="font-family:var(--mono); font-size:0.76rem; margin-top:0.3rem; max-height:5rem; overflow:auto;">
+          ${warn.map(esc).join("<br>")}</div>`;
+    } else {
+      box.style.display = "none";
+    }
+  }
+
+  let prunePB = null;
+
+  async function loadPrune(verify) {
+    const btn = $("ds-prune-check");
+    if (verify) { btn.disabled = true; btn.textContent = "Checking…"; }
+    try {
+      let d;
+      if (verify) {
+        // Long (one whole-tree EOS listing + the local walk): run it as a job so
+        // the bar can move.
+        prunePB = inlineProgress("ds-prune-prog", "check");
+        const est = await fetch("/space/estimate").then(r => r.json()).catch(() => ({}));
+        prunePB.start(est.listing_s || 9);
+        d = await runSpaceJob("/space/job/check", { mode: "prune" }, s => prunePB.tick(s));
+        prunePB.finish(true, `verified ${d.n_runs} run(s) against EOS`);
+      } else {
+        const r = await fetch("/space/components?verify=0");
+        d = await r.json();
+        if (!r.ok || d.success === false) throw new Error(d.message || "scan failed");
+      }
+      pruneData = d;
+      if (PRESETS.all === null) PRESETS.all = d.component_order.slice();
+      // Drop selections for anything that no longer exists.
+      for (const k of [...pruneSel]) {
+        const [run, sub] = k.split(" ");
+        const r2 = d.runs.find(x => x.run === run);
+        if (!r2 || !r2.subruns.some(s => s.subrun === sub)) pruneSel.delete(k);
+      }
+      $("ds-prune-panel").style.display = "";
+      renderChips(); renderPruneTable(); recalcPrune();
+      $("ds-prune-meta").innerHTML = d.unverifiable
+        ? `<span style="color:var(--bad);">Could not reach EOS — nothing can be marked safe</span>`
+        : (d.verified
+            ? `Verified ${d.n_runs} run(s) against EOS at ${d.scanned_at}`
+            : `Disk contents as of ${d.scanned_at} (not yet verified)`);
+      loadUsage();
+    } catch (e) {
+      if (prunePB) prunePB.finish(false, e.message);
+      $("ds-prune-meta").innerHTML = `<span style="color:var(--bad);">Failed: ${esc(e.message)}</span>`;
+    } finally {
+      if (verify) { btn.disabled = false; btn.textContent = "Run safety check"; }
+    }
+  }
+
+  function applyPreset(name) {
+    const list = PRESETS[name] === null ? (pruneData ? pruneData.component_order : []) : PRESETS[name];
+    compSel.clear();
+    for (const c of list || []) {
+      const tot = pruneData && pruneData.totals[c];
+      if (tot && tot.size) compSel.add(c);
+    }
+    renderChips(); renderPruneTable(); recalcPrune();
+  }
+
+  async function openPrune() {
+    const items = pruneItems();
+    if (!items.length) return;
+    const btn = $("ds-prune-delete");
+    btn.disabled = true; btn.textContent = "Checking…";
+    let pf;
+    try {
+      const r = await fetch("/space/preflight", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: items.map(({ run, subrun, component }) => ({ run, subrun, component })) }),
+      });
+      pf = await r.json();
+      if (!r.ok || pf.success === false) throw new Error(pf.message || "preflight failed");
+    } catch (e) {
+      $("ds-prune-meta").innerHTML = `<span style="color:var(--bad);">Preflight failed: ${esc(e.message)}</span>`;
+      recalcPrune(); return;
+    }
+    recalcPrune();
+
+    // Roll the per-(subrun,component) list up to one line per subrun so the
+    // dialog stays readable when a whole run is selected.
+    const bySub = new Map();
+    for (const it of pf.items) {
+      const k = `${it.run}/${it.subrun}`;
+      const e = bySub.get(k) || { names: [], bytes: 0 };
+      e.names.push(it.label); e.bytes += it.size;
+      bySub.set(k, e);
+    }
+    const lines = [...bySub.entries()].map(([k, e]) =>
+      ({ name: `${k} — ${e.names.join(", ")}`, sizeH: "", bytes: e.bytes }));
+
+    const warnHtml = (pf.reprocess_warnings || []).length
+      ? `<div class="ds-warnbox" style="margin-top:0.5rem;"><b>⚠ Reprocessing:</b>
+           ${pf.reprocess_warnings.length} subrun(s) will be re-decoded, re-analyzed and
+           re-combined by the processor, because their combined hits are being removed while
+           the raw FDFs stay.</div>` : "";
+    const refusedHtml = (pf.refused || []).length
+      ? `<div style="margin-top:0.5rem; color:var(--muted); font-size:0.8rem;">
+           ${pf.refused.length} selected piece(s) will be skipped (not provably on EOS or
+           guarded).</div>` : "";
+
+    openAction({
+      needType: true, danger: true, batch: true,
+      title: "Permanently delete selected data",
+      intro: `About to remove <b>${pf.n_ok}</b> piece(s) across <b>${bySub.size}</b> subrun(s). ` +
+             `Every one is re-verified on the server against a fresh EOS listing immediately ` +
+             `before deletion — anything not provably backed up is skipped. Logs, run_time.txt, ` +
+             `configs and the .subrun_complete markers are always kept.` + warnHtml + refusedHtml,
+      sizeLabel: "Total to free:", items: lines,
+      goLabel: "Delete permanently", goClass: "btn-danger", barColor: "var(--bad)",
+      verbing: "Deleting", working: "removing",
+      endpoint: "/space/job/delete_components",
+      batchBody: () => ({
+        items: items.map(({ run, subrun, component }) => ({ run, subrun, component })),
+        confirm: "DELETE",
+      }),
+      onClose: () => { pruneSel.clear(); loadPrune(true); },
+      meta: (res) => { $("ds-prune-meta").innerHTML = res.nFail
+        ? `<span style="color:var(--warn);">Deleted ${res.nOk}, skipped ${res.nFail}, freed ${gb(res.bytes)}.</span>`
+        : `<span style="color:var(--ok);">Deleted ${res.nOk} piece(s), freed ${gb(res.bytes)}.</span>`; },
+    });
+  }
+
   // ================= shared confirm + progress modal =================
   const modal = $("ds-confirm-modal");
   const cInput = $("ds-confirm-input");
@@ -5135,6 +5675,61 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     const total = cfg.items.reduce((a, it) => a + (it.bytes || 0), 0) || 1;
     const log = $("ds-progress-log"); log.innerHTML = "";
     let done = 0, bytes = 0, nOk = 0, nFail = 0;
+
+    // Batch actions run as a server-side job: the whole selection needs ONE fresh
+    // EOS listing to re-verify against, and issuing one per piece would pay the
+    // multi-second xrdfs connect cost dozens of times over. We poll that job, so
+    // the bar is real — byte-weighted across the selection — and each per-item
+    // verdict is logged the moment it lands. Only the leading listing phase is an
+    // estimate (it cannot be tracked; see app.py).
+    if (cfg.batch) {
+      const est = await fetch("/space/estimate").then(r => r.json()).catch(() => ({}));
+      const track = makePhaseTracker("delete", est.listing_s || 9);
+      const bar = $("ds-progress-bar");
+      let result = null, failMsg = null;
+      try {
+        result = await runSpaceJob(cfg.endpoint, cfg.batchBody(), (s) => {
+          const { pct, estimated } = track(s);
+          bar.style.width = pct.toFixed(1) + "%";
+          bar.classList.toggle("ds-striped", estimated);
+          $("ds-progress-pct").textContent =
+            (estimated ? "~" : "") + Math.round(pct) + "%  ·  " + s.elapsed.toFixed(1) + "s";
+          $("ds-progress-status").textContent =
+            `${PHASE_TEXT[s.phase] || s.phase}${s.msg ? " — " + s.msg : ""}`;
+          for (const rr of s.items) {
+            const name = `${rr.run}/${rr.subrun} — ${rr.label || rr.component}`;
+            const li = document.createElement("li");
+            if (rr.success) {
+              nOk++; bytes += rr.freed_bytes || 0;
+              li.innerHTML = `<span class="shift-flag-ok">✓ ${esc(name)}</span> <span class="text-muted">${esc(rr.message || "")}</span>`;
+            } else {
+              nFail++;
+              li.innerHTML = `<span class="shift-flag-bad">✗ ${esc(name)}</span> <span class="text-muted">${esc(rr.message || "skipped")}</span>`;
+            }
+            log.appendChild(li); log.scrollTop = log.scrollHeight;
+          }
+        });
+      } catch (e) { failMsg = e.message; }
+
+      // A refusal that stops the batch before any item runs (e.g. EOS
+      // unreachable) produces no per-item lines — surface it explicitly.
+      if (failMsg || (!nOk && !nFail)) {
+        const li = document.createElement("li");
+        li.innerHTML = `<span class="shift-flag-bad">✗ ${esc(failMsg || (result && result.message) || "nothing was deleted")}</span>`;
+        log.appendChild(li);
+        nFail = nFail || cfg.items.length;
+      }
+      bar.classList.remove("ds-striped");
+      bar.style.width = "100%";
+      $("ds-progress-pct").textContent = "100%";
+      bar.style.background = nFail ? "var(--warn)" : "var(--ok)";
+      $("ds-progress-status").innerHTML = cfg.doneText
+        ? cfg.doneText(nOk, nFail, bytes)
+        : `Done — removed ${nOk}` + (nFail ? `, <span style="color:var(--warn);">skipped ${nFail}</span>` : "") +
+          `, freed ${gb(bytes)}.`;
+      return { nOk, nFail, bytes };
+    }
+
     for (let i = 0; i < cfg.items.length; i++) {
       const it = cfg.items[i];
       $("ds-progress-status").textContent = `${cfg.verbing} ${it.name} (${i + 1}/${cfg.items.length})…`;
@@ -5236,12 +5831,19 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   // ---- mode toggle ----
   function setMode(m) {
     mode = m;
-    $("ds-mode-free").className    = "btn btn-sm " + (m === "free" ? "btn-info" : "btn-outline-info");
-    $("ds-mode-restore").className = "btn btn-sm " + (m === "restore" ? "btn-info" : "btn-outline-info");
+    for (const [k, id] of [["free", "ds-mode-free"], ["prune", "ds-mode-prune"], ["restore", "ds-mode-restore"]])
+      $(id).className = "btn btn-sm " + (m === k ? "btn-info" : "btn-outline-info");
     $("ds-free-controls").style.display    = m === "free" ? "flex" : "none";
+    $("ds-prune-controls").style.display   = m === "prune" ? "flex" : "none";
     $("ds-restore-controls").style.display = m === "restore" ? "flex" : "none";
     $("ds-results-panel").style.display = "none";
+    $("ds-prune-panel").style.display   = "none";
     $("ds-restore-panel").style.display = "none";
+    // Paint what is on disk instantly from local stat; the EOS verification that
+    // decides what may actually go is a click away (it costs a whole-tree xrdfs
+    // listing).
+    if (m === "free")  { lastScan = null; loadLocal(); }
+    if (m === "prune") { pruneData = null; loadPrune(false); }
   }
 
   // ---- automatic SSD clearing (space_watcher) ----
@@ -5361,7 +5963,32 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   $("ds-delete").addEventListener("click", openDelete);
   $("ds-select-safe").addEventListener("click", () => { if (delTable) delTable.all(); });
   $("ds-clear-sel").addEventListener("click", () => { if (delTable) delTable.clear(); });
-  diskSel.addEventListener("change", () => { $("ds-results-panel").style.display = "none"; lastScan = null; });
+  diskSel.addEventListener("change", () => {
+    $("ds-results-panel").style.display = "none"; lastScan = null; loadLocal(); });
+
+  $("ds-prune-check").addEventListener("click", () => loadPrune(true));
+  $("ds-prune-delete").addEventListener("click", openPrune);
+  document.querySelectorAll(".ds-preset").forEach(b =>
+    b.addEventListener("click", () => applyPreset(b.dataset.preset)));
+  $("ds-prune-expand").addEventListener("click", () => {
+    if (!pruneData) return;
+    const openAll = expanded.size < pruneData.runs.length;
+    expanded.clear();
+    if (openAll) pruneData.runs.forEach(r => expanded.add(r.run));
+    $("ds-prune-expand").textContent = openAll ? "Collapse all" : "Expand all";
+    renderPruneTable();
+  });
+  $("ds-prune-select").addEventListener("click", () => {
+    if (!pruneData) return;
+    for (const r of pruneData.runs) {
+      if (r.guard) continue;
+      for (const s of r.subruns) if (!s.guard) pruneSel.add(skey(r.run, s.subrun));
+    }
+    renderPruneTable(); recalcPrune();
+  });
+  $("ds-prune-clear").addEventListener("click", () => {
+    pruneSel.clear(); renderPruneTable(); recalcPrune();
+  });
 
   $("ds-restore-check").addEventListener("click", runRestoreCheck);
   $("ds-restore-go").addEventListener("click", openRestore);
@@ -5369,10 +5996,14 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   $("ds-restore-clear").addEventListener("click", () => { if (resTable) resTable.clear(); });
 
   $("ds-mode-free").addEventListener("click", () => setMode("free"));
+  $("ds-mode-prune").addEventListener("click", () => setMode("prune"));
   $("ds-mode-restore").addEventListener("click", () => setMode("restore"));
 
   const dsTab = document.querySelector('a[href="#disk-space"]');
-  if (dsTab) dsTab.addEventListener("shown.bs.tab", () => { loadUsage(); loadAuto(); });
+  if (dsTab) dsTab.addEventListener("shown.bs.tab", () => {
+    loadUsage(); loadAuto();
+    if (mode === "prune") loadPrune(false); else if (mode === "free") loadLocal();
+  });
   setMode("free");
   loadAuto();
   // Refresh the auto-clearing card while the tab is open, so a freeing pass (or a

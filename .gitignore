@@ -7,6 +7,12 @@ flask_app/access_config.py
 config/backup_config.json
 config/backup_state.json
 config/backup_state.may.bak
+# Per-run signature of the loose files sitting directly in a run dir, so the
+# backup watcher notices run-level edits without waiting for the daily reconcile.
+config/backup_loose_state.json
+# How long the last whole-tree EOS listing took — only used to calibrate the Disk
+# Space tab's progress bar, worthless anywhere but this machine.
+logs/space_scan_hint.json
 config/current_run_state.json
 config/gas_state.json
 config/gas_command.json
