@@ -29,20 +29,41 @@ Full story: `n1081b/HANDOFF_2026-07-15_wedge_root_cause.md`, memory `n1081b-wedg
    assume a daemon may hold it — `poll_modules` (inside `daq_control`) and
    `n1081b_scan_watcher` talk to boards on their own schedule.
 
-3. **Never SIGKILL a process mid-session** (or `kill -9` a tmux pane running one). A
+   ⚠ **The board's own WEB GUI is a second controller and the `flock` cannot see it.**
+   Close the GUI tab before scripted board work; two writers on this old firmware is a
+   wedge risk on boards that sit in the live trigger. The GUI is also **1-based on
+   channels** where the SDK is 0-based (GUI "Output 1" = SDK lemo/ch `0`).
+
+3. **TWO ENABLE LAYERS — a signal needs BOTH.** Learned the hard way on 2026-07-22
+   (see `docs/HANDOFF_2026-07-22_m6_enable_layers.md`):
+
+   | layer | read | write | who uses it |
+   |---|---|---|---|
+   | per-channel `status` | `get_{input,output}_channel_configuration` | `set_…` | `scan_watcher` (`mesh_b`, `input_status`/`output_status`), our M6 scripts |
+   | function `lemo_enables` | `get_function_configuration` | `configure_or` / `configure_or_veto` / … | `trigger_mode.py`, **and the web GUI** |
+
+   They are **separate registers, ANDed**. A channel with `status=True` but its lemo
+   disabled passes nothing — and each side's readback looks perfectly healthy. **For a
+   FANOUT section the SDK can only READ `lemo_enables`**: there is no `FN_FANOUT` in
+   `N1081B.FunctionType` and no `configure_fanout`, so on M6.A/B/C that layer is
+   **GUI-only**. An evening was lost with one side setting `status` and the other setting
+   `lemo_enables`, both reporting success, while the hardware stayed dark.
+   **Always check both layers before concluding anything about board state.**
+
+4. **Never SIGKILL a process mid-session** (or `kill -9` a tmux pane running one). A
    killed connection is a DIRTY disconnect — the exact thing that wedges boards. Let
    scripts exit cleanly (SIGINT/SIGTERM, which the wrapper's `finally` handles).
 
-4. **On `BoardWedgedError` / `BoardQuarantinedError`: STOP.** The board needs hours of
+5. **On `BoardWedgedError` / `BoardQuarantinedError`: STOP.** The board needs hours of
    zero contact to self-heal. Do **not** retry in a loop, do **not** "just check on it."
    The wrapper auto-writes a quarantine marker; respect it. Only `clear_quarantine(ip)`
    after the board is verified healthy (e.g. post-reboot).
 
-5. **Never reproduce a wedge without physical access** to the crate that same
+6. **Never reproduce a wedge without physical access** to the crate that same
    session/day, and never on a **trigger** board (.240–.243, .245). `.244` is
    walls-monitoring only (safe-ish to reboot); the others are in the live trigger.
 
-6. **Reads are cheap; dirty disconnects are the poison.** It is NOT a
+7. **Reads are cheap; dirty disconnects are the poison.** It is NOT a
    polling-frequency limit (the web GUI polls ~4 Hz for days). Pace config writes
    ~0.3–1 s apart and never churn reconnects (~15+/s → transient ConnectionRefused).
 
@@ -53,6 +74,37 @@ Runtime state lives in `config/n1081b_access/` (gitignored):
 Quick check: `python -c "from n1081b.n1081b_session import quarantine_status; print(quarantine_status('192.168.10.244'))"`.
 
 ## Current board state (update when it changes)
+- **M6 (.245) SEC_B/SEC_C enable ALIASING + 07-23 mesh re-cabling.** On SEC_C's Out 4, the
+  NIM/TTL type and the invert follow **Section C** (correct) but the **enable bit follows
+  Section B's Out 4** — confirmed after a hard power cycle. SEC_B's status switches still
+  drive SEC_B's own outputs, so the enable is **GANGED, not displaced**: one bit gates
+  **both `B Out N` and `C Out N`**. Index-preserving ⇒ B Out 1/2 gate the two *cabled* SiPM
+  enables on C Out 1/2. **⚠ B Out 1/2 must therefore be left ENABLED even though they now
+  carry only a scope — disabling them kills the SiPM walls (61× collapse).** The alias is
+  **one-way B → C** (C Out 1 status OFF does not affect B Out 1), and **SEC_C's own output
+  `status` is a DEAD REGISTER** — a C leg is gated *solely* by the same-numbered B status
+  bit. So SEC_B's mesh legs are safe from anything done on SEC_C, and **any script writing
+  SEC_C output `status` is a no-op** (`set_m6_secC_sipm_enable.py --outputs-off` included —
+  audit before reuse). Applies to the `status` layer only; the separate `lemo_enables` layer
+  (rule 3) is untested here.
+  The mesh was re-cabled 2026-07-23 to
+  **SEC_B Out 3 = det A, Out 4 = det C** (SDK `out2`/`out3`); **dets B/D unplugged**;
+  **Out 1/2 (SDK `out0`/`out1`) now carry only a scope**.
+  ⚠ **`set_mesh_injection.py` (`OUT_CHS=(0,1,2,3)`) and the `mesh_b` scan target
+  (`n1081b_module_map.py`, `("B", None)`) still drive ALL FOUR legs — under the alias that
+  disables the SiPM enables and reproduces the 07-22 wall collapse. Pass `--outputs 2 3`
+  until those defaults are fixed.** Whether the alias really holds for the cabled C Out 1/2
+  is **still unverified**, as is the prediction that this restores a mesh ON/OFF axis.
+  Docs: `docs/HANDOFF_2026-07-23_m6_secBC_control_aliasing.md`,
+  `docs/HANDOFF_2026-07-23_m6_mesh_recable_out34.md`.
+- **Acceptance window (N93B veto gate, M4.C lemo5):** **~1 → 81 ms** after the γ-flash as
+  of **2026-07-22** (start 1 ms, width 80 ms — only the START moved; the width is
+  unchanged). Moved down from a 5 ms start to match the `t > 1 ms` thermal gate
+  of the GEANT trigger study (`~/CLionProjects/MX17_Full_Geant`
+  `.claude/al_pair_background/PLASTIC_THRESHOLD.md`), so the measured in-gate trigger rate
+  is directly comparable to that study's per-pulse background budget. History:
+  ~30 ms → ~5–85 ms (07-21) → ~1 ms start (07-22). **SCOPE-MEASURED on 2026-07-22 (delay to leading edge 1 ms, allow-pulse width 80 ms -> accept 1-81 ms). The N93B has no front panel and no software interface: it is not settable or readable from here, but it IS confirmable after the fact from the DREAM event time-since-flash distribution (the PS/flash pickup is co-framed at 1800 ns), which should show a hard turn-on at 1 ms and turn-off at 81 ms.** Data taken before 07-22 evening used the 5 ms start (see
+  `HANDOFF_2026-07-22_recov_trigger_scan_analysis.md`).
 - **Standing front-end config (post-FIFO; walls + plastic HV updated 2026-07-19):**
   M1 walls **+25/+35/+34/+36 mV** (Y88 half-MIP, `daq/calibrations/wal_trigger/
   thresholds_halfMIP_run224503.json`, adopted 2026-07-19; **was +15/+16/+15/+16**);

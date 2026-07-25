@@ -1,0 +1,61 @@
+{
+  "ip": "192.168.10.245",
+  "section": "SEC_B",
+  "saved": "2026-07-22_20-01-28",
+  "inputs": {
+    "0": {
+      "status": false,
+      "enable_gd": true,
+      "gate": 50,
+      "delay": 1260,
+      "invert": false
+    },
+    "1": {
+      "status": false,
+      "enable_gd": true,
+      "gate": 50,
+      "delay": 40,
+      "invert": false
+    },
+    "2": {
+      "status": false,
+      "enable_gd": false,
+      "gate": 0,
+      "delay": 0,
+      "invert": false
+    },
+    "3": {
+      "status": false,
+      "enable_gd": false,
+      "gate": 50,
+      "delay": 0,
+      "invert": false
+    }
+  },
+  "outputs": {
+    "0": {
+      "status": false,
+      "enable_mono": true,
+      "mono_value": 500,
+      "invert": false
+    },
+    "1": {
+      "status": false,
+      "enable_mono": true,
+      "mono_value": 500,
+      "invert": false
+    },
+    "2": {
+      "status": false,
+      "enable_mono": true,
+      "mono_value": 500,
+      "invert": false
+    },
+    "3": {
+      "status": false,
+      "enable_mono": true,
+      "mono_value": 500,
+      "invert": false
+    }
+  }
+}
