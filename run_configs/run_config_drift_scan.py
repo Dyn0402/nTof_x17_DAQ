@@ -77,7 +77,7 @@ class Config(BeamConfig):
         self.dream_daq_info['data_out_dir'] = f'{self.run_out_dir}'
         self.processor_info['run_dir'] = f'{self.run_out_dir}'
         self.hv_info['run_out_dir'] = self.run_out_dir
-        self.resume = False
+        self.resume = True  # 2026-07-20: resume run_58 from subrun 065 (skips 000-064 via .subrun_complete)
         self.n1081b_scan = 'off'  # static trigger (scint --singles --ps-pickup), no inline mesh modulation
         self.trigger = ('RAW singles+PS 2D drift x resist scan (run_58): scint --singles --ps-pickup '
                         '— M4.C = or_veto(Singles, lemo0) gated by the 30 ms N93B window; M4.D = '

@@ -46,8 +46,8 @@ _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)
 from run_config_beam import Config as BeamConfig
 
 ZS_PED_SET = 'zs_k8_tracer_from_07-18-26_14-06-43'  # from dream_scripts/prep_zs_thresholds.py --k 8
-N_TEST_SUBRUNS = 3
-TEST_SUBRUN_MIN = 2
+N_TEST_SUBRUNS = 1
+TEST_SUBRUN_MIN = 3.0
 
 
 class Config(BeamConfig):
@@ -56,7 +56,12 @@ class Config(BeamConfig):
         super()._set_defaults(config_path)
 
         # ---- rename + re-derive every path that depends on run_name ----
-        self.run_name = 'zs_pulser_test'
+        import os as _os
+        _paced = _os.environ.get('PACED_RATE_HZ')
+        self.run_name = f'zs_paced_{_paced}hz' if _paced else 'zs_flashoff_pulser'
+        # static veto-open trigger (setup_fulltime_trigger.py) already holds M4.C open;
+        # scan watcher not needed and not running -> 'off' so daq_control doesn't fail-closed.
+        self.n1081b_scan = 'off'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
         self.dream_daq_info['run_directory'] = f'/home/mx17/july_dream/dream_run/{self.run_name}/'
         self.dream_daq_info['data_out_dir'] = f'{self.run_out_dir}'
