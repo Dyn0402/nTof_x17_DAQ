@@ -33,6 +33,11 @@ STOP_SUBRUN_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.st
 # (Resume). One-shot: clearing it lets the run continue without re-pausing.
 PAUSE_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.pause_run')
 
+# Abort the run after this many CONSECUTIVE sub-runs record zero data bytes. Two
+# rather than one so a single odd sub-run does not kill an overnight grid, but the
+# run still stops long before it can burn the whole schedule on empty points.
+MAX_EMPTY_SUBRUNS = 2
+
 
 def _remove_flag(path):
     try:
@@ -197,6 +202,31 @@ def main():
             # run_30/run_33 corruption). Inside the try so restore-on-exit always
             # covers a snapshot that partially applied.
             ok_to_run = True
+
+            # DREAM crate pre-flight — FAIL CLOSED. If any FEU (or the TCM) is not
+            # answering, RunCtrl aborts configuration on every sub-run and the grid
+            # races to "complete" recording nothing; that cost 51 of run_75's 60
+            # points on 2026-07-24 (docs/HANDOFF_2026-07-24_feu3_dropout.md).
+            # Set skip_feu_preflight=True in the run config to take data with a
+            # known-missing board on purpose.
+            if not getattr(config, 'skip_feu_preflight', False):
+                try:
+                    import feu_health
+                    _crate = feu_health.sweep()
+                    if not _crate['ok']:
+                        print(f'[feu] !! {", ".join(_crate["missing"])} not answering '
+                              f'— REFUSING to start. RunCtrl cannot configure the crate, '
+                              f'so every sub-run would record ZERO data while still being '
+                              f'marked complete. Fix the crate (see feu_health.py), or set '
+                              f'skip_feu_preflight=True to override.')
+                        ok_to_run = False
+                    else:
+                        print(f'[feu] pre-flight OK — {_crate["summary"]}')
+                except Exception as e:  # noqa: BLE001
+                    # Fail OPEN on a checker bug: a broken pre-flight must never be
+                    # the reason a beam run does not start.
+                    print(f'[feu] pre-flight could not run ({e!r}) — continuing anyway.')
+
             if scan_ctl is None:
                 print('[n1081b] !! scan control could not be built — REFUSING to start. '
                       'Fix the error above, or set n1081b_scan="off" in the run config '
@@ -218,6 +248,11 @@ def main():
                               f'({e!r}) — REFUSING to start a scan run without trigger '
                               f'control. Fix the board network and relaunch.')
                         ok_to_run = False
+
+            # Consecutive sub-runs that recorded nothing; reset by any good sub-run.
+            # Guards against the 07-24 pathology where a dead FEU let the whole grid
+            # race to "complete" in a fraction of its scheduled time.
+            empty_subruns = 0
 
             for sub_run in (config.sub_runs if ok_to_run else []):
                 if os.path.exists(STOP_RUN_FLAG):
@@ -307,9 +342,39 @@ def main():
                     stop_subrun_req = os.path.exists(STOP_SUBRUN_FLAG)
                     if stop_subrun_req:
                         _remove_flag(STOP_SUBRUN_FLAG)
+                    # Did this sub-run actually record anything? A sub-run whose
+                    # configuration aborted still reaches this point looking normal, so
+                    # without this check the completion marker is written over an empty
+                    # directory and `resume` will skip it forever. Counts only datrun
+                    # bytes: the ~305 MB of copied pedestal files is present either way.
+                    recorded_bytes = None
+                    try:
+                        import subrun_health
+                        staging = None
+                        _rundir = getattr(config, 'dream_daq_info', {}).get('run_directory')
+                        if _rundir:
+                            staging = f'{_rundir}{sub_run_name}/'
+                        recorded_bytes, _where = subrun_health.datrun_bytes_any(
+                            sub_out_dir, staging)
+                    except Exception as e:  # noqa: BLE001
+                        # Fail OPEN: a checker bug must not throw away a good sub-run.
+                        print(f'[data] could not verify sub-run output ({e!r}) — '
+                              f'assuming it is fine.')
+
                     if stop_run_req or stop_subrun_req:
                         print(f'[stop] Sub run {sub_run_name} stopped manually — not marking complete.')
+                    elif recorded_bytes == 0:
+                        empty_subruns += 1
+                        print(f'[data] !! Sub run {sub_run_name} recorded ZERO data bytes '
+                              f'— NOT marking it complete (a resume will re-take it). '
+                              f'Check the crate: python3 feu_health.py')
+                        if empty_subruns >= MAX_EMPTY_SUBRUNS:
+                            print(f'[data] !! {empty_subruns} consecutive sub-runs recorded '
+                                  f'nothing — ABORTING the run rather than burning the rest '
+                                  f'of the grid on empty points. Fix the DAQ and resume.')
+                            break
                     else:
+                        empty_subruns = 0
                         with open(complete_marker, 'w') as f:
                             f.write(datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '\n')
 

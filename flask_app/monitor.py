@@ -187,6 +187,9 @@ class DaqMonitor:
         "rule_gas_flow_starved": "gas flow is back to normal.",
         "rule_ssd_disk_space": "SSD (/) free space is back above the auto-remover's emergency level.",
         "rule_hdd_disk_space": "HDD (/mnt/data) disk space is back to normal.",
+        "rule_feu_unreachable": "All FEUs and the TCM are answering again. Verify the "
+                                "next sub-run is full-size before trusting the data.",
+        "rule_subrun_no_data": "Sub-runs are recording data again.",
     }
 
     # Presentational grouping for the Setup panel's rule list, ordered. Purely a
@@ -200,6 +203,10 @@ class DaqMonitor:
             "rule_hv_control_monitoring",
             "rule_dream_daq_unknown_state",
             "rule_daq_control_unknown_state",
+        ]),
+        ("DREAM crate & data integrity", [
+            "rule_feu_unreachable",
+            "rule_subrun_no_data",
         ]),
         ("Run lifecycle", [
             "rule_run_ended",
@@ -1171,6 +1178,147 @@ class DaqMonitor:
         alert / critical / emergency as it climbs (thresholds configurable via
         rule_options.rule_hdd_disk_space.thresholds)."""
         return self._disk_space_alert("rule_hdd_disk_space", "/mnt/data", "HDD (/mnt/data)")
+
+    # ---- DREAM crate health --------------------------------------------
+    #
+    # Both rules exist because of the 2026-07-24 FEU 3 dropout
+    # (docs/HANDOFF_2026-07-24_feu3_dropout.md): a board fell off the network,
+    # RunCtrl aborted configuration on every following sub-run, daq_control marked
+    # them complete anyway, and 51 of run_75's 60 grid points recorded nothing with
+    # no alarm of any kind. rule_feu_unreachable catches the cause, rule_subrun_no_data
+    # catches the consequence — deliberately redundant, because either detector alone
+    # can miss a variant of the same failure.
+
+    # Sub-set of get_daq_control_status() statuses that mean a run is in progress, so
+    # an outage can be reported as "losing data right now" rather than merely noted.
+    _DAQ_ACTIVE_STATUSES = {"RUNNING", "Prepping DAQs", "Ramping HV", "STARTING",
+                            "Finished Sub Run", "Paused"}
+
+    def _repo_import(self, module_name):
+        """Import a repo-root module (feu_health / subrun_health) lazily.
+
+        Lazy because monitor.py lives in flask_app/ and is imported before the repo
+        root is necessarily on sys.path — the same reason daq_status._run_dir defers
+        its import."""
+        import sys
+        if _REPO_DIR not in sys.path:
+            sys.path.append(_REPO_DIR)
+        return __import__(module_name)
+
+    def _daq_is_running(self):
+        try:
+            return get_daq_control_status()["status"] in self._DAQ_ACTIVE_STATUSES
+        except Exception:
+            return False
+
+    def rule_feu_unreachable(self):
+        """Alert when any FEU (or the TCM) stops answering on the DREAM subnet.
+
+        This is the direct cause-side check: if a board is unreachable, RunCtrl
+        cannot configure it and every sub-run from that moment records nothing.
+
+        Graded, because the blast radius differs:
+          critical — the TCM is down, or 2+ FEUs are (crate/switch-level problem),
+                     or a run is actively in progress (data is being lost NOW)
+          alert    — a single FEU is down while the DAQ is idle
+
+        An ARP entry that is missing entirely is called out in the message: it means
+        the board is not answering ARP at all (dead at the link/board level, i.e.
+        power-cycle territory) rather than merely hung at the IP layer.
+
+        Tunable via rule_options.rule_feu_unreachable:
+          min_duration_seconds — ride out brief blips (default 90; a couple of
+                                 missed ICMP replies on a loaded 10 GbE link should
+                                 not page anyone)
+        """
+        try:
+            feu_health = self._repo_import("feu_health")
+        except Exception as e:                                  # noqa: BLE001
+            return False, f"feu_health module unavailable ({e!r})"
+
+        try:
+            res = feu_health.sweep()
+        except Exception as e:                                  # noqa: BLE001
+            return False, f"FEU sweep failed ({e!r})"
+
+        if res["ok"]:
+            return False, f"DREAM crate OK — {res['summary']}"
+
+        running = self._daq_is_running()
+        tcm_down = bool(res["tcm"]) and not res["tcm"]["ping"]
+        n_feu_down = sum(1 for v in res["feus"].values() if not v["ping"])
+        severity = "critical" if (tcm_down or n_feu_down >= 2 or running) else "alert"
+
+        detail = "🔌 <b>DREAM crate unreachable</b>: " + ", ".join(res["missing"])
+        if running:
+            info = get_daq_control_status()
+            detail += (f"\n⚠️ A run is IN PROGRESS ({status_field(info, 'Run') or '?'} / "
+                       f"{status_field(info, 'Subrun') or '?'}) — sub-runs are recording "
+                       f"NOTHING while this persists.")
+        dead_link = [f"FEU {n}" for n, d in sorted(res["feus"].items())
+                     if not d["ping"] and d["arp_incomplete"]]
+        if dead_link:
+            detail += (f"\n{', '.join(dead_link)} not answering ARP → dead at the "
+                       f"link/board level (power cycle, not an IP hang).")
+        detail += "\nDo NOT start a run until <code>python3 feu_health.py</code> is clean."
+        return severity, detail
+
+    def rule_subrun_no_data(self):
+        """Alert when the current run's sub-runs are completing without recording data.
+
+        The consequence-side check, and the one that would have capped 07-24 at a
+        single lost grid point. It is cause-agnostic: a RunCtrl config abort, a dead
+        TCM, or a silently misconfigured run all land here, because the test is simply
+        "did datrun bytes appear on disk".
+
+        Graded: one empty sub-run is an alert; three or more means the grid is racing
+        through its points writing nothing, which is the 07-24 pathology and critical.
+
+        Only the run daq_control currently reports is examined, so stale empty dirs from
+        an earlier run stop alarming once the next run starts. Sub-runs already pruned
+        from SSD staging by space_watcher are simply absent and never counted as failed.
+
+        Tunable via rule_options.rule_subrun_no_data:
+          grace_seconds        — how long a quiet, empty sub-run may be excused as
+                                 "still writing" (default 180)
+          critical_count       — empty sub-runs before escalating (default 3)
+          min_duration_seconds — default 60
+        """
+        opts = self.config.get("rule_options", {}).get("rule_subrun_no_data", {})
+        grace = int(opts.get("grace_seconds", 180))
+        crit_n = int(opts.get("critical_count", 3))
+
+        try:
+            subrun_health = self._repo_import("subrun_health")
+        except Exception as e:                                  # noqa: BLE001
+            return False, f"subrun_health module unavailable ({e!r})"
+
+        run = status_field(get_daq_control_status(), "Run")
+        if not run or run in ("?", "None"):
+            return False, "no current run"
+
+        try:
+            res = subrun_health.scan_run(run, grace_s=grace)
+        except Exception as e:                                  # noqa: BLE001
+            return False, f"sub-run scan failed ({e!r})"
+
+        if not res["n_empty"]:
+            return False, (f"{run}: {res['n_good']} sub-run(s) with data, "
+                           f"{res['n_pending']} in progress")
+
+        empties = [c["name"] for c in res["subruns"] if c["status"] == "empty"]
+        severity = "critical" if res["n_empty"] >= crit_n else "alert"
+        detail = (f"📼 <b>{run} is recording NO DATA</b> — {res['n_empty']} sub-run(s) "
+                  f"finished with zero datrun bytes: " + ", ".join(f"<code>{e}</code>"
+                                                                  for e in empties[:6]))
+        if len(empties) > 6:
+            detail += f" (+{len(empties) - 6} more)"
+        if res["bad_feus"]:
+            detail += (f"\nRunCtrl could not configure <b>FEU {res['bad_feus']}</b> — "
+                       f"check the crate with <code>python3 feu_health.py</code>.")
+        detail += ("\n⚠️ Sub-runs are still being marked complete. STOP THE RUN — every "
+                   "further point is a lost grid point.")
+        return severity, detail
 
     # ---- Run lifecycle (one-shot events, see _EVENT_RULES) -------------
 
