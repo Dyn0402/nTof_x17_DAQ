@@ -1,8 +1,14 @@
 {
   "_comment": "HV alert thresholds for CAEN drift (card 9) / resist (card 5) channels. Evaluated on the 1 Hz reads hv_control.monitor_hvs already does (no extra crate reads). Edited live: hv_control re-reads this on mtime change, no restart needed. A condition must persist for sustain_s seconds before it alerts; transient blips are ignored. resend_interval_minutes throttles repeats of the same channel's alert.",
+  "_comment_ramp": "During a ramp (set_hvs, bracketed by begin_ramp/end_ramp) the v_tol and over-current tests are suppressed — a ramping channel is off setpoint by definition. Instead the ramp must keep closing the gap: < ramp_min_progress_v of progress in ramp_stall_s alerts as a STALLED ramp, and a failure to reach setpoint within hv_info.ramp_timeout_s (180 s) alerts as RAMP FAILED with the sub-run skipped. A trip (power off with a setpoint applied) alerts during a ramp just as it does at any other time. Healthy ramps in the run_46-run_66 archive advanced >= 26 V per 30 s, so 5 V / 45 s has large margin.",
   "enabled": true,
   "resend_interval_minutes": 15,
   "ramp_grace_s": 30,
+  "ramp_stall_s": 45,
+  "ramp_min_progress_v": 5.0,
+  "ramp_max_s": 300,
+  "post_ramp_settle_s": 10,
+  "ramp_slow_notice_s": 150,
   "overcurrent_droop_v": 1.0,
   "poweroff_sustain_s": 5,
   "drift": {
