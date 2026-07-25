@@ -4877,7 +4877,14 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
 
   const usageBox = $("ds-usage");
   const diskSel  = $("ds-disk");
-  let mode = "free";              // 'free' | 'restore'
+  let mode = "free";              // 'free' | 'prune' | 'restore'
+  // Every mode switch bumps this. The scans are slow (a whole-tree EOS listing
+  // takes ~25 s), so a check started in one mode can land long after the operator
+  // has moved to another; without this the late one re-shows ITS panel next to the
+  // current one and you end up looking at two run tables at once. Async renderers
+  // capture the generation and drop their DOM writes if it has moved on.
+  let modeGen = 0;
+  const stale = (gen) => gen !== modeGen;
   let lastScan = null;           // last /space/scan (delete side)
   let lastRestore = null;        // last /space/restore_scan
   const delSel = new Set();      // runs selected for deletion
@@ -5111,10 +5118,12 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   }
   async function loadLocal() {
     if (mode !== "free") return;
+    const gen = modeGen;
     try {
       const r = await fetch(`/space/local?disk=${encodeURIComponent(diskSel.value)}`);
       const d = await r.json();
       if (!r.ok || d.success === false) throw new Error(d.message || "listing failed");
+      if (stale(gen)) return;
       if (lastScan) return;   // an EOS-verified scan is on screen — don't downgrade it
       $("ds-results-panel").style.display = "";
       renderLocalRows(d);
@@ -5125,6 +5134,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       $("ds-scan-meta").textContent =
         `Disk contents as of ${d.scanned_at} (not yet verified against EOS)`;
     } catch (e) {
+      if (stale(gen)) return;
       $("ds-scan-meta").innerHTML =
         `<span style="color:var(--bad);">Could not list disk: ${esc(e.message)}</span>`;
     }
@@ -5132,6 +5142,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
 
   async function runCheck() {
     const disk = diskSel.value;
+    const gen = modeGen;
     const btn = $("ds-check");
     btn.disabled = true; btn.textContent = "Checking…";
     $("ds-scan-meta").textContent = "";
@@ -5141,6 +5152,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       pb.start(est.listing_s || 9);
       const d = await runSpaceJob("/space/job/check", { mode: "runs", disk }, s => pb.tick(s));
       pb.finish(true, `verified ${d.n_runs} run(s) against EOS`);
+      if (stale(gen)) return;          // operator moved to another mode meanwhile
       lastScan = d;
       $("ds-results-panel").style.display = "";
       renderDeleteRows(d);
@@ -5151,7 +5163,8 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       loadUsage();
     } catch (e) {
       pb.finish(false, e.message);
-      $("ds-scan-meta").innerHTML = `<span style="color:var(--bad);">Check failed: ${esc(e.message)}</span>`;
+      if (!stale(gen))
+        $("ds-scan-meta").innerHTML = `<span style="color:var(--bad);">Check failed: ${esc(e.message)}</span>`;
     } finally {
       btn.disabled = false; btn.textContent = "Run safety check";
     }
@@ -5189,6 +5202,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     updateResBtn();
   }
   async function runRestoreCheck() {
+    const gen = modeGen;
     const btn = $("ds-restore-check");
     btn.disabled = true; btn.textContent = "Checking lxplus…";
     $("ds-restore-meta").textContent = "";
@@ -5196,6 +5210,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       const r = await fetch("/space/restore_scan");
       const d = await r.json();
       if (!r.ok || d.success === false) throw new Error(d.message || "scan failed");
+      if (stale(gen)) return;          // operator moved to another mode meanwhile
       lastRestore = d;
       $("ds-restore-panel").style.display = "";
       renderRestoreRows(d);
@@ -5513,6 +5528,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   let prunePB = null;
 
   async function loadPrune(verify) {
+    const gen = modeGen;
     const btn = $("ds-prune-check");
     if (verify) { btn.disabled = true; btn.textContent = "Checking…"; }
     try {
@@ -5530,6 +5546,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
         d = await r.json();
         if (!r.ok || d.success === false) throw new Error(d.message || "scan failed");
       }
+      if (stale(gen)) return;          // operator moved to another mode meanwhile
       pruneData = d;
       if (PRESETS.all === null) PRESETS.all = d.component_order.slice();
       // Drop selections for anything that no longer exists.
@@ -5548,7 +5565,8 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       loadUsage();
     } catch (e) {
       if (prunePB) prunePB.finish(false, e.message);
-      $("ds-prune-meta").innerHTML = `<span style="color:var(--bad);">Failed: ${esc(e.message)}</span>`;
+      if (!stale(gen))
+        $("ds-prune-meta").innerHTML = `<span style="color:var(--bad);">Failed: ${esc(e.message)}</span>`;
     } finally {
       if (verify) { btn.disabled = false; btn.textContent = "Run safety check"; }
     }
@@ -5831,6 +5849,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   // ---- mode toggle ----
   function setMode(m) {
     mode = m;
+    modeGen++;                       // invalidates any check still in flight
     for (const [k, id] of [["free", "ds-mode-free"], ["prune", "ds-mode-prune"], ["restore", "ds-mode-restore"]])
       $(id).className = "btn btn-sm " + (m === k ? "btn-info" : "btn-outline-info");
     $("ds-free-controls").style.display    = m === "free" ? "flex" : "none";

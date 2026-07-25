@@ -436,33 +436,70 @@ def _run_num(name: str) -> int:
 
 
 def _run_mtime(run: str) -> float:
-    """Newest SUBRUN mtime for a run across both disks (-1 if absent). Used to
+    """When a run was last WRITTEN, across both disks (-1 if absent). Used to
     order runs oldest-first, which is what space_watcher's newest-N reserve and
     the GUI listing both mean by 'newest'. Run names are free-form (run_75, but
     also zs_singles, hwm_beam), so a numeric sort cannot be relied on.
 
-    Deliberately the children's mtimes, not the run directory's own: removing a
-    subrun re-stamps the parent, so a dir-mtime sort would push exactly the runs
-    the watcher has been pruning to the "newest" end and protect them instead.
-    Falls back to the run dir when nothing is left inside it.
+    Directory mtimes are useless for this: removing anything re-stamps its
+    parent, so pruning a run would make it look freshly written and push exactly
+    the runs we have been reclaiming to the "newest" end. Preference order per
+    subrun, each immune to our own deletions:
+      1. its .subrun_complete marker — written when the DAQ finished it;
+      2. the newest FILE it still contains (deleting siblings does not restamp
+         the survivors);
+      3. the subrun directory, for a subrun that holds no files at all.
     """
     t = -1.0
-    for d in (HDD_RUNS_DIR / run, SSD_DREAM_DIR / run):
-        child_t = -1.0
+    for root in (HDD_RUNS_DIR / run, SSD_DREAM_DIR / run):
         try:
-            for child in d.iterdir():
-                try:
-                    child_t = max(child_t, child.stat().st_mtime)
-                except OSError:
-                    pass
+            subs = list(root.iterdir())
         except OSError:
             continue
-        if child_t < 0:
+        best = -1.0
+        for sub in subs:
+            marker = sub / '.subrun_complete'
             try:
-                child_t = d.stat().st_mtime
+                if marker.is_file():
+                    best = max(best, marker.stat().st_mtime)
+                    continue
+            except OSError:
+                pass
+            best = max(best, _newest_file_mtime(sub))
+        if best < 0:
+            try:
+                best = root.stat().st_mtime
             except OSError:
                 continue
-        t = max(t, child_t)
+        t = max(t, best)
+    return t
+
+
+def _newest_file_mtime(path: Path) -> float:
+    """Newest mtime of any FILE under path (-1 if there are none), falling back
+    to path's own mtime when it holds no files at all.
+
+    File mtimes, never directory mtimes: unlinking a file re-stamps its parent
+    directory, so any dir-based "was this touched recently?" test reports our own
+    deletions as fresh writes. That is what made ten fully-backed-up runs read as
+    "possibly mid-write" the moment a component prune ran inside their one
+    unmarked subrun.
+    """
+    t = -1.0
+    try:
+        for f in path.rglob('*'):
+            try:
+                if f.is_file() and not f.is_symlink():
+                    t = max(t, f.stat().st_mtime)
+            except OSError:
+                pass
+    except OSError:
+        return -1.0
+    if t < 0:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return -1.0
     return t
 
 
@@ -549,34 +586,19 @@ def subrun_complete(run: str, subrun: str) -> bool:
 INCOMPLETE_GRACE_S = 2 * 3600
 
 
-def _newest_mtime_shallow(path: Path) -> float:
-    """mtime of a directory and its immediate children (-1 if absent). A new .fdf
-    landing in raw_daq_data bumps that subdirectory, which the subrun dir itself
-    would not show."""
-    t = -1.0
-    try:
-        t = path.stat().st_mtime
-    except OSError:
-        return -1.0
-    try:
-        for child in path.iterdir():
-            try:
-                t = max(t, child.stat().st_mtime)
-            except OSError:
-                pass
-    except OSError:
-        pass
-    return t
-
-
 def mid_write_subrun(run: str, subrun: str) -> bool:
-    """True when a subrun has no .subrun_complete marker AND was touched recently
-    on either disk — i.e. it may still be being written."""
+    """True when a subrun has no .subrun_complete marker AND still holds a file
+    written recently on either disk — i.e. it may be being written right now.
+
+    Judged on FILE mtimes (see _newest_file_mtime): a deletion inside the subrun
+    restamps its directories, so a directory-based test flags our own pruning as
+    a live write and locks the run out of any further deletion.
+    """
     if subrun_complete(run, subrun):
         return False
     now = time.time()
     for root in (HDD_RUNS_DIR, SSD_DREAM_DIR):
-        t = _newest_mtime_shallow(root / run / subrun)
+        t = _newest_file_mtime(root / run / subrun)
         if t > 0 and now - t < INCOMPLETE_GRACE_S:
             return True
     return False
