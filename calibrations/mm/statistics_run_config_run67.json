@@ -1,0 +1,518 @@
+{
+  "provenance": {
+    "run": "run_67 (2026-07-22/23)",
+    "exported": "2026-07-26",
+    "source": "nTof_x17/ntof_july_analysis/run67_scan/export_stats_config.py",
+    "reco": "ntof_tracking.reco on the 2026-07-24 re-decoded hits (small-pulse reprocessing); cache re-reco'd 2026-07-25/26",
+    "purpose": "STATISTICS run: maximise reconstructed tracks per spill over the whole 1-76 ms gate.",
+    "metric": "P(3D x/y pair) per recorded trigger. Denominator = events the detector was READ OUT for (post-flash blindness stays in the denominator).",
+    "method": "stats.per_cell_stats on non-overlapping windows [[1.0, 6.0], [6.0, 12.0], [12.0, 30.0], [30.0, 76.0]] ms; resist optimum evaluated at the fixed drift 700 V; plastic threshold chosen on tracks/spill, not per-trigger efficiency.",
+    "caveats": [
+      "RELATIVE efficiency (single-arm events dominate; no absolute normalisation). Det A is the clean-M1 reference.",
+      "The surfaces are FLAT near the optimum (per-cell error ~0.0016 on p~0.10): use the 1-sigma plateau, do not chase the peak.",
+      "The resist optimum MOVES with time since flash \u2014 low gain early, high gain late (see resist_optimum_by_window). A single setting is a compromise; this file optimises the WHOLE gate.",
+      "Efficiency only. run_67 carries no spark/stability information, so if a listed resist sits near a chamber's discharge threshold, that overrides this file.",
+      "Det B works ONLY at drift 700 V (10-30x better than 500/600 at every resist) \u2014 treat as a hardware symptom, not a setting.",
+      "Several optima sit at the EDGE of the scanned ladder (threshold 0.90 MIP, drift 700 V, Det D resist 520 V); the true optimum may lie outside the scan."
+    ]
+  },
+  "role": {
+    "this_file": "STATISTICS run \u2014 most tracks per spill across the full gate.",
+    "not_this_file": "resist_hv_run67.json recommends per-detector fine SCAN RANGES optimised for the 2-8 ms IPC signal window, and is deliberately LOWER in resist. It was also generated 2026-07-23 from the PRE-reprocessing reco, so its absolute efficiencies are ~10x low; its shapes still hold. Do not mix the two."
+  },
+  "plastic_threshold": {
+    "recommended_mip": 0.9,
+    "tag": "0.90 MIP",
+    "chosen_on": "throughput (tracks per spill), pooled over the HV grid",
+    "note": "Lowest threshold on the run_67 ladder. Throughput rises toward lower threshold on ALL four detectors; on A and D the per-trigger efficiency rises too, so the extra triggers are better than average, not junk. The optimum is at the ladder edge \u2014 extend below 0.90 MIP in the next scan.",
+    "evidence_per_threshold": {
+      "141": {
+        "A": {
+          "eff_p_pair": 0.0985,
+          "triggers_per_cell": 10094,
+          "tracks_per_cell": 995
+        },
+        "B": {
+          "eff_p_pair": 0.0405,
+          "triggers_per_cell": 10094,
+          "tracks_per_cell": 408
+        },
+        "C": {
+          "eff_p_pair": 0.1274,
+          "triggers_per_cell": 10094,
+          "tracks_per_cell": 1286
+        },
+        "D": {
+          "eff_p_pair": 0.0725,
+          "triggers_per_cell": 10094,
+          "tracks_per_cell": 732
+        }
+      },
+      "113": {
+        "A": {
+          "eff_p_pair": 0.1063,
+          "triggers_per_cell": 11994,
+          "tracks_per_cell": 1275
+        },
+        "B": {
+          "eff_p_pair": 0.036,
+          "triggers_per_cell": 11994,
+          "tracks_per_cell": 432
+        },
+        "C": {
+          "eff_p_pair": 0.1149,
+          "triggers_per_cell": 11994,
+          "tracks_per_cell": 1378
+        },
+        "D": {
+          "eff_p_pair": 0.0839,
+          "triggers_per_cell": 11994,
+          "tracks_per_cell": 1007
+        }
+      },
+      "90": {
+        "A": {
+          "eff_p_pair": 0.1113,
+          "triggers_per_cell": 13111,
+          "tracks_per_cell": 1459
+        },
+        "B": {
+          "eff_p_pair": 0.0335,
+          "triggers_per_cell": 13111,
+          "tracks_per_cell": 440
+        },
+        "C": {
+          "eff_p_pair": 0.1151,
+          "triggers_per_cell": 13111,
+          "tracks_per_cell": 1509
+        },
+        "D": {
+          "eff_p_pair": 0.087,
+          "triggers_per_cell": 13111,
+          "tracks_per_cell": 1141
+        }
+      }
+    }
+  },
+  "drift_hv_V": {
+    "value": 700,
+    "applies_to": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "chosen_by": "operator 2026-07-26",
+    "note": "Uniform 700 V; also raises drift speed. Det A is flat in drift (0.105-0.107 over 500/600/700), C prefers 600-700, D prefers 700, and B only works at 700 \u2014 so 700 costs A nothing and helps the rest. 700 V is the TOP of the scanned range; the optimum may be higher."
+  },
+  "detectors": {
+    "A": {
+      "drift_hv_V": 700,
+      "resist_hv_V": 540,
+      "resist_1sigma_plateau_V": [
+        540,
+        540
+      ],
+      "resist_2sigma_band_V": [
+        535,
+        540
+      ],
+      "expected_p_pair": 0.1148,
+      "expected_p_pair_err": 0.0017,
+      "measured_profile_at_drift": {
+        "resist_V": [
+          520,
+          525,
+          530,
+          535,
+          540,
+          545,
+          550
+        ],
+        "p_pair": [
+          0.0893,
+          0.0978,
+          0.1082,
+          0.1124,
+          0.1148,
+          0.1099,
+          0.1083
+        ],
+        "p_err": [
+          0.0015,
+          0.0016,
+          0.0017,
+          0.0017,
+          0.0017,
+          0.0017,
+          0.0016
+        ],
+        "n": [
+          35474,
+          35381,
+          35246,
+          35530,
+          35409,
+          34840,
+          35686
+        ]
+      },
+      "resist_optimum_by_window": {
+        "1-6 ms": {
+          "best_resist_V": 535,
+          "p_pair": [
+            0.2277,
+            0.2412,
+            0.2792,
+            0.2874,
+            0.2626,
+            0.1724,
+            0.1445
+          ]
+        },
+        "6-12 ms": {
+          "best_resist_V": 545,
+          "p_pair": [
+            0.0667,
+            0.0679,
+            0.0662,
+            0.0677,
+            0.0926,
+            0.1351,
+            0.119
+          ]
+        },
+        "12-30 ms": {
+          "best_resist_V": 550,
+          "p_pair": [
+            0.0581,
+            0.0625,
+            0.073,
+            0.0727,
+            0.0759,
+            0.0778,
+            0.0915
+          ]
+        },
+        "30-76 ms": {
+          "best_resist_V": 550,
+          "p_pair": [
+            0.0669,
+            0.0786,
+            0.0809,
+            0.0894,
+            0.0926,
+            0.1001,
+            0.1028
+          ]
+        }
+      }
+    },
+    "B": {
+      "drift_hv_V": 700,
+      "resist_hv_V": 540,
+      "resist_1sigma_plateau_V": [
+        540,
+        545
+      ],
+      "resist_2sigma_band_V": [
+        540,
+        545
+      ],
+      "expected_p_pair": 0.1002,
+      "expected_p_pair_err": 0.0016,
+      "measured_profile_at_drift": {
+        "resist_V": [
+          520,
+          525,
+          530,
+          535,
+          540,
+          545,
+          550
+        ],
+        "p_pair": [
+          0.0587,
+          0.071,
+          0.0818,
+          0.0899,
+          0.1002,
+          0.0991,
+          0.0617
+        ],
+        "p_err": [
+          0.0012,
+          0.0014,
+          0.0015,
+          0.0015,
+          0.0016,
+          0.0016,
+          0.0013
+        ],
+        "n": [
+          35474,
+          35381,
+          35246,
+          35530,
+          35409,
+          34840,
+          35686
+        ]
+      },
+      "resist_optimum_by_window": {
+        "1-6 ms": {
+          "best_resist_V": 535,
+          "p_pair": [
+            0.23,
+            0.2558,
+            0.3153,
+            0.3433,
+            0.3348,
+            0.2994,
+            0.2087
+          ]
+        },
+        "6-12 ms": {
+          "best_resist_V": 545,
+          "p_pair": [
+            0.0574,
+            0.0684,
+            0.0739,
+            0.08,
+            0.0967,
+            0.123,
+            0.0679
+          ]
+        },
+        "12-30 ms": {
+          "best_resist_V": 545,
+          "p_pair": [
+            0.0206,
+            0.0292,
+            0.0287,
+            0.0325,
+            0.046,
+            0.0476,
+            0.0258
+          ]
+        },
+        "30-76 ms": {
+          "best_resist_V": 540,
+          "p_pair": [
+            0.0174,
+            0.0231,
+            0.0245,
+            0.0286,
+            0.0405,
+            0.0402,
+            0.023
+          ]
+        }
+      }
+    },
+    "C": {
+      "drift_hv_V": 700,
+      "resist_hv_V": 525,
+      "resist_1sigma_plateau_V": [
+        525,
+        535
+      ],
+      "resist_2sigma_band_V": [
+        525,
+        535
+      ],
+      "expected_p_pair": 0.1336,
+      "expected_p_pair_err": 0.0018,
+      "measured_profile_at_drift": {
+        "resist_V": [
+          520,
+          525,
+          530,
+          535,
+          540,
+          545,
+          550
+        ],
+        "p_pair": [
+          0.1282,
+          0.1336,
+          0.13,
+          0.1318,
+          0.1107,
+          0.1117,
+          0.1063
+        ],
+        "p_err": [
+          0.0018,
+          0.0018,
+          0.0018,
+          0.0018,
+          0.0017,
+          0.0017,
+          0.0016
+        ],
+        "n": [
+          35474,
+          35381,
+          35246,
+          35530,
+          35409,
+          34840,
+          35686
+        ]
+      },
+      "resist_optimum_by_window": {
+        "1-6 ms": {
+          "best_resist_V": 520,
+          "p_pair": [
+            0.3004,
+            0.2851,
+            0.265,
+            0.2233,
+            0.1412,
+            0.0883,
+            0.0412
+          ]
+        },
+        "6-12 ms": {
+          "best_resist_V": 535,
+          "p_pair": [
+            0.1087,
+            0.1049,
+            0.1174,
+            0.1372,
+            0.1328,
+            0.1159,
+            0.0715
+          ]
+        },
+        "12-30 ms": {
+          "best_resist_V": 550,
+          "p_pair": [
+            0.0859,
+            0.0985,
+            0.093,
+            0.103,
+            0.0975,
+            0.1156,
+            0.1391
+          ]
+        },
+        "30-76 ms": {
+          "best_resist_V": 550,
+          "p_pair": [
+            0.0997,
+            0.1092,
+            0.1079,
+            0.1139,
+            0.098,
+            0.1174,
+            0.1214
+          ]
+        }
+      }
+    },
+    "D": {
+      "drift_hv_V": 700,
+      "resist_hv_V": 520,
+      "resist_1sigma_plateau_V": [
+        520,
+        525
+      ],
+      "resist_2sigma_band_V": [
+        520,
+        530
+      ],
+      "expected_p_pair": 0.0973,
+      "expected_p_pair_err": 0.0016,
+      "measured_profile_at_drift": {
+        "resist_V": [
+          520,
+          525,
+          530,
+          535,
+          540,
+          545,
+          550
+        ],
+        "p_pair": [
+          0.0973,
+          0.0954,
+          0.0945,
+          0.0896,
+          0.0832,
+          0.073,
+          0.0673
+        ],
+        "p_err": [
+          0.0016,
+          0.0016,
+          0.0016,
+          0.0015,
+          0.0015,
+          0.0014,
+          0.0013
+        ],
+        "n": [
+          35474,
+          35381,
+          35246,
+          35530,
+          35409,
+          34840,
+          35686
+        ]
+      },
+      "resist_optimum_by_window": {
+        "1-6 ms": {
+          "best_resist_V": 520,
+          "p_pair": [
+            0.0453,
+            0.0277,
+            0.0104,
+            0.0053,
+            0.0021,
+            0.0014,
+            0.0007
+          ]
+        },
+        "6-12 ms": {
+          "best_resist_V": 520,
+          "p_pair": [
+            0.0944,
+            0.0684,
+            0.0364,
+            0.0218,
+            0.0063,
+            0.0023,
+            0.0015
+          ]
+        },
+        "12-30 ms": {
+          "best_resist_V": 530,
+          "p_pair": [
+            0.1302,
+            0.148,
+            0.1568,
+            0.1535,
+            0.139,
+            0.1126,
+            0.1026
+          ]
+        },
+        "30-76 ms": {
+          "best_resist_V": 540,
+          "p_pair": [
+            0.0883,
+            0.0862,
+            0.099,
+            0.0974,
+            0.1036,
+            0.1029,
+            0.0961
+          ]
+        }
+      }
+    }
+  }
+}

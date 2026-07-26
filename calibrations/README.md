@@ -16,7 +16,7 @@ are exported snapshots with provenance — regenerate rather than hand-edit.
 | `pss/` | Plastic PMT gain curves G∝V^n, HV equalization + global gain-slide table | **filled** (run224466 HV scan) |
 | `pss_trigger/` | Plastic trigger thresholds vs the 10 mV discriminator floor: efficiencies + HV-recovery options | **filled** (run224466) |
 | `liq/` | Liquid scintillators (LS): MIP / PSD calibration | placeholder — awaiting LIQ readout |
-| `mm/` | Micromegas tracker HV operating points: per-detector resist-HV fine-scan ranges (drift/resist) | **filled** (run_67 resist zoom) |
+| `mm/` | Micromegas tracker HV operating points: statistics-run setpoint + per-detector resist-HV fine-scan ranges (drift/resist) | **filled** (run_67) |
 
 Anticipated later: `sili/` (Si monitor), MM gain-vs-HV curves + per-strip threshold maps.
 
@@ -30,6 +30,13 @@ Anticipated later: `sili/` (Si monitor), MM gain-vs-HV curves + per-strip thresh
 3. Rates in the table are *relative* (late-TOF sample, per bunch) — scale your
    currently observed rate by the ratio of table rates between old and new
    thresholds.
+
+## Operational quick answer: "set up a Micromegas statistics run"
+
+`mm/statistics_run_config_run67.json`: drift **700 V** on all four, plastic
+discriminator **0.90 MIP**, resist **A 540 / B 540 / C 525 / D 520 V**. Bands,
+evidence and caveats (notably: efficiency only — no spark data; and Det B only
+works at drift 700) in `mm/README.md`.
 
 ## Operational quick answer: "we want more/less plastic gain globally"
 
