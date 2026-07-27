@@ -144,8 +144,39 @@ FILE_SPAN_CLAMP_S = (20.0, 300.0)
 # Cost: `xrdfs cat` of the file head at ~90 MB/s, stopping at the second event header.
 # One event across all 51 channels is ~150-200 MB, decoded in ~0.2 s.
 WAVEFORM_ENABLED = True
-WAVEFORM_MAX_BYTES = 260_000_000  # head to read before giving up on a complete event
+# Read cap for one event. The decode BREAKS at the second EVEH, so in the healthy case
+# exactly one event crosses the network however high this sits — a generous cap costs
+# nothing. A tight one is not free: it drops the tail of the event and with it the last
+# channels, which then look absent. The cap exists only to bound a malformed file where
+# the second EVEH never arrives at all.
+#
+# 2026-07-27: the original 260 MB was chosen when an event was "~150-200 MB". ZS
+# occupancy grew (zs_blocks 1.24x the 07-22 nominal) until a typical event sat just
+# under the cap and the upper tail crossed it. Run 224583_34 was 268.8 MB, so the LAST
+# bank in the event — PSSD ch 1 — never arrived, and _zeroed_channels reported it
+# "missing": an EMERGENCY "PSSD 1/2 missing" alert for a channel that re-decoding at a
+# larger cap showed to be perfectly healthy (3139 ZS blocks). Twice in six days, both
+# times PSSD, because PSSD ch 1 is the last bank in the event and so is always the
+# first casualty. Three separate defences below exist because of that, and each covers
+# a different way this can bite:
+#   * the cap starts well clear of a real event and GROWS itself as events grow, so
+#     rising occupancy cannot creep up on it again (_update_waveform_cap);
+#   * `missing` is only ever reported from a COMPLETE read, because a read that
+#     stopped early cannot tell "absent" from "not reached yet" (_zeroed_channels);
+#   * a nominal is never adopted from an incomplete read, or a short sample would
+#     freeze the truncated channel count as the reference and permanently blind the
+#     check it is supposed to arm (adopt_nominal).
+WAVEFORM_MAX_BYTES = 600_000_000
+# Ceiling for the self-growing cap: past this, something is wrong with the file rather
+# than merely large, and reading further is throwing bandwidth at a corrupt stream.
+WAVEFORM_MAX_BYTES_CEILING = 2_000_000_000
+WAVEFORM_CAP_HEADROOM = 2.0       # keep the cap >= this x the largest complete event
 WAVEFORM_MIN_INTERVAL_S = 300.0   # at most one sampled file per this interval
+# Consecutive incomplete reads before the missing-channel check counts as disarmed and
+# says so out loud. One is a large event or an EOS hiccup and self-corrects on the next
+# sample (the cap grows); a run of them means the layer is half blind and nobody would
+# otherwise know, because the symptom of this failure is SILENCE.
+WAVEFORM_INCOMPLETE_CONSEC = 3
 WAVEFORM_BASELINE_SAMPLES = 2000  # leading samples of the first block used for base/RMS
 
 # Per-detector grading of the flash amplitude against the stored nominal.
@@ -418,6 +449,12 @@ class Stream1SizeMonitor:
         self._last_waveform_at = 0.0
         self._waveform_error = None
         self._nominal_message = None
+        # Effective read cap. Starts at the configured value and only ever grows, so
+        # events getting bigger cannot silently start truncating the channel list —
+        # see WAVEFORM_MAX_BYTES for what that cost us on 2026-07-27.
+        self._waveform_cap = self.waveform_max_bytes
+        self._waveform_event_bytes = None      # largest COMPLETE event seen this session
+        self._waveform_incomplete_consec = 0   # run of reads that never reached event 2
         self._size_nominal_message = None
 
     # ---------------- EOS listing ----------------
@@ -488,10 +525,15 @@ class Stream1SizeMonitor:
         path = f"{self.eos_base}/{run}/stream1/run{run}_{seq}_s1.raw.finished"
         proc = subprocess.Popen(["xrdfs", EOS_URL, "cat", path],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        cap = self._waveform_cap
         rows, n_eveh, event, complete = [], 0, None, False
+        # How far the read actually got. iter_banks returns silently both when it hits
+        # max_bytes and when the stream just ends, so the caller cannot otherwise tell
+        # "the cap stopped us" (raise it) from "the file is short or corrupt" (do not).
+        end = 0
         try:
-            for off, tag, _ver, payload in iter_banks(proc.stdout,
-                                                      max_bytes=self.waveform_max_bytes):
+            for off, tag, _ver, payload in iter_banks(proc.stdout, max_bytes=cap):
+                end = off + 16 + len(payload)     # 16 = ntof_raw.HDR_SIZE
                 if tag == "EVEH":
                     n_eveh += 1
                     if n_eveh > 1:
@@ -534,7 +576,45 @@ class Stream1SizeMonitor:
             except Exception:
                 err = ""
             return None, f"no channels decoded ({err.splitlines()[-1] if err else 'empty head'})"
-        return rows, {"run": run, "seq": seq, "event": event, "complete": complete}
+        return rows, {"run": run, "seq": seq, "event": event, "complete": complete,
+                      "bytes_read": end, "cap_bytes": cap,
+                      # The next bank header would not have fitted under the cap, so
+                      # the cap is what ended the read — the one case worth growing it
+                      # for. A short/corrupt stream ends well below it and must not.
+                      "cap_limited": (not complete) and end + 16 > cap}
+
+    def _update_waveform_cap(self, meta):
+        """Keep the read cap comfortably clear of what an event actually costs.
+
+        Growing it is FREE — the decode breaks at the second EVEH, so a healthy file
+        moves one event whatever the cap says — while being under it is what fakes a
+        missing channel. So the cap only ever grows, on both available signals: a
+        complete read measures a real event, an incomplete one proves the cap is
+        already too small. It never shrinks, because the quantity that matters is the
+        LARGEST event, and shrinking back to the median would re-arm the exact failure
+        this exists to prevent."""
+        cap, want = self._waveform_cap, None
+        if meta.get("complete") and meta.get("bytes_read"):
+            self._waveform_event_bytes = max(self._waveform_event_bytes or 0,
+                                             meta["bytes_read"])
+            want = int(self._waveform_event_bytes * WAVEFORM_CAP_HEADROOM)
+        elif meta.get("cap_limited"):
+            # Size unknown — the read stopped before the end of the event — so step up
+            # rather than fit. Doubling reaches the ceiling in a couple of samples.
+            want = cap * 2
+        if want is None or want <= cap:
+            return
+        self._waveform_cap = min(want, WAVEFORM_MAX_BYTES_CEILING)
+        if self._waveform_cap > cap:
+            self.log(f"waveform read cap raised {cap / 1e6:.0f} -> "
+                     f"{self._waveform_cap / 1e6:.0f} MB "
+                     + (f"(event is {meta['bytes_read'] / 1e6:.0f} MB)"
+                        if meta.get("complete")
+                        else f"(read hit the cap at {meta.get('bytes_read', 0) / 1e6:.0f} MB)"))
+        elif want > WAVEFORM_MAX_BYTES_CEILING:
+            self.log(f"waveform read cap pinned at its {WAVEFORM_MAX_BYTES_CEILING / 1e6:.0f} MB "
+                     f"ceiling — an event should never need this much; suspect a "
+                     f"corrupt file rather than a large one")
 
     @staticmethod
     def _by_detector(rows, key):
@@ -555,7 +635,15 @@ class Stream1SizeMonitor:
         """Freeze the per-detector reference from a healthy sample.
 
         Refuses while the walls are down, so neither the auto-seed nor an operator
-        pressing "set nominal" mid-dropout can bless the fault as normal."""
+        pressing "set nominal" mid-dropout can bless the fault as normal. Refuses an
+        incomplete read for the same reason: the nominal is where `n_chan` comes from,
+        so freezing a truncated sample would record the short channel count as correct
+        and permanently disarm the missing-channel check — the failure would be a
+        check that never fires again, which is not a failure anyone notices."""
+        if not meta.get("complete", True):
+            return None, (f"refused: only {len(rows)} channels were read before the "
+                          f"decoder stopped at {meta.get('bytes_read', 0) / 1e6:.0f} MB "
+                          f"— an incomplete event would freeze a short channel count")
         flash = self._by_detector(rows, "flash")
         walls = [v for d, v in flash.items() if d.startswith(NOMINAL_WALL_PREFIX)]
         if walls and min(walls) < NOMINAL_MIN_WALL_FLASH:
@@ -584,7 +672,7 @@ class Stream1SizeMonitor:
         return nominal, None
 
     @staticmethod
-    def _zeroed_channels(rows, nominal):
+    def _zeroed_channels(rows, nominal, complete=True):
         """Walls/liquids/plastics channels that produced no waveform at all.
 
         Two ways a channel can have nothing in it, both reported here:
@@ -597,6 +685,14 @@ class Stream1SizeMonitor:
         Per CHANNEL, never per detector: a wall is 8 channels, so one dead SiPM moves
         the detector-mean RMS by about an eighth (28 -> 24.5) and hides inside the
         healthy spread. The mean is the wrong instrument for this fault.
+
+        `missing` needs `complete` — i.e. the decoder actually reached the end of the
+        event — because it is inferred from ABSENCE, and a read that stopped early is
+        absence for a wholly innocent reason. The channels at the tail of the event
+        are simply the ones that had not arrived yet, and on 2026-07-27 that turned a
+        268.8 MB event under a 260 MB cap into an emergency "PSSD 1/2 missing" for a
+        healthy channel. `flatlined` needs no such gate: those channels were read, and
+        what they contained was nothing.
         """
         flat, missing = [], []
         for r in rows:
@@ -606,6 +702,8 @@ class Stream1SizeMonitor:
                 flat.append({"det": r["det"], "chan": r["chan"], "kind": "flatlined",
                              "rms": r["rms"], "flash": r["flash"],
                              "baseline": r["baseline"], "zs_blocks": r["zs_blocks"]})
+        if not complete:
+            return flat
         # Missing channels need the nominal to know how many there should be. Without
         # one, silence is indistinguishable from a detector that never existed.
         seen = {}
@@ -717,8 +815,20 @@ class Stream1SizeMonitor:
             # of a fault — but a flat channel is a fault whatever the beam is doing,
             # and a beam gap is exactly when a quietly dead front-end would otherwise
             # go unnoticed. Also not gated on `nominal`: flatlined channels are judged
-            # against zero, not against a reference.
-            "zeroed_channels": self._zeroed_channels(rows, nominal),
+            # against zero, not against a reference. It IS gated on a complete read,
+            # but only for its `missing` half — see _zeroed_channels.
+            "zeroed_channels": self._zeroed_channels(rows, nominal, meta["complete"]),
+            # Whether the absence-based half of that check actually ran. Published
+            # rather than left implicit: a disarmed check and a clean one both look
+            # like an empty list, and only this distinguishes them.
+            "missing_check": "ok" if meta["complete"] else "disarmed (incomplete read)",
+            "bytes_read": meta.get("bytes_read"),
+            "cap_bytes": meta.get("cap_bytes"),
+            "cap_limited": meta.get("cap_limited"),
+            "n_chan_total": len(rows),
+            "n_chan_expected": sum(
+                int((ref or {}).get("n_chan") or 0)
+                for ref in ((nominal or {}).get("detectors", {}) or {}).values()) or None,
             "detectors": dets,
             "channels": rows,
         }
@@ -732,6 +842,20 @@ class Stream1SizeMonitor:
             self._waveform_error = str(meta)
             return None
         self._waveform_error = None
+        # Cap first: a truncated read is the one thing that must change the NEXT
+        # sample's behaviour, and it has to happen whether or not grading succeeds.
+        self._update_waveform_cap(meta)
+        if meta["complete"]:
+            self._waveform_incomplete_consec = 0
+        else:
+            self._waveform_incomplete_consec += 1
+            self.log(
+                f"waveform run {run}_{seq}: INCOMPLETE read — {len(rows)} channels in "
+                f"{meta.get('bytes_read', 0) / 1e6:.0f} MB, "
+                + ("stopped by the read cap" if meta.get("cap_limited")
+                   else "stream ended before the next event")
+                + f"; missing-channel detection is disarmed for this sample "
+                  f"({self._waveform_incomplete_consec} in a row)")
         if self._nominal is None and size_grade == "good":
             # Auto-seed from the first file the (independent) size layer calls healthy;
             # adopt_nominal still vetoes if the walls are actually down.
@@ -805,6 +929,10 @@ class Stream1SizeMonitor:
         if rows is None:
             self._nominal_message = f"could not decode run {run}_{seq}: {meta}"
         else:
+            # Same cap feedback as the automatic path: an operator whose "set nominal"
+            # was refused for a short read should find the cap already raised, so
+            # pressing it again is a fix rather than a repeat of the same failure.
+            self._update_waveform_cap(meta)
             nominal, err = self.adopt_nominal(rows, meta, source="operator")
             self._nominal_message = (err if err else
                                      f"nominal set from run {run}_{seq} "
@@ -1261,6 +1389,18 @@ class Stream1SizeMonitor:
             "waveform_enabled": self.waveform_enabled,
             "waveform": self._last_waveform,
             "waveform_error": self._waveform_error,
+            # Health of the DECODER itself, as opposed to of the detectors. Spans
+            # samples, so it cannot live inside the per-sample `waveform` block: the
+            # question "has the missing-channel check been blind for a while?" is not
+            # answerable from the newest sample alone.
+            "waveform_read": {
+                "incomplete_consec": self._waveform_incomplete_consec,
+                "incomplete_consec_alert": WAVEFORM_INCOMPLETE_CONSEC,
+                "cap_bytes": self._waveform_cap,
+                "cap_ceiling_bytes": WAVEFORM_MAX_BYTES_CEILING,
+                "cap_at_ceiling": self._waveform_cap >= WAVEFORM_MAX_BYTES_CEILING,
+                "largest_event_bytes": self._waveform_event_bytes,
+            },
             # Prefix -> why, for the GUI banner. Published unconditionally so the
             # exclusions are visible even before the first sample is decoded.
             "ungraded_prefixes": dict(UNGRADED_PREFIX_REASONS),
@@ -1351,13 +1491,48 @@ class Stream1SizeMonitor:
         except Exception as e:
             self.log(f"CSV log failed: {e}")
 
+    # `complete` is per SAMPLE, not per detector, so it repeats down every row of a
+    # sample. Worth the duplication: without it the only trace of a truncated read in
+    # the history is having to sum n_chan across all 16 detectors and know that the
+    # answer should be 51 — which is how the 2026-07-27 false alarm had to be
+    # diagnosed after the fact.
     WAVEFORM_CSV_FIELDS = ["timestamp", "run", "seq", "event", "det", "flash",
                            "flash_nominal", "flash_ratio", "zs_blocks", "baseline",
-                           "rms", "n_chan", "grade"]
+                           "rms", "n_chan", "grade", "complete"]
 
     def _waveform_csv_path(self, day=None):
         day = day or datetime.now().strftime("%Y-%m-%d")
         return os.path.join(self.log_dir, f"stream1_waveform_{day}.csv")
+
+    def _migrate_waveform_csv(self, path):
+        """Add any newly-introduced columns to a day file written by an older column
+        set, before appending to it.
+
+        Without this, a DictWriter using the new field list appends rows one column
+        wider than the header already in the file, and every reader silently
+        mis-attributes the values from the added column onwards. Only ever ADDS
+        columns — old rows get an empty cell, which is honest: the watcher that wrote
+        them genuinely did not record the value."""
+        try:
+            with open(path, newline="") as f:
+                reader = csv.DictReader(f)
+                if reader.fieldnames == self.WAVEFORM_CSV_FIELDS:
+                    return
+                if not reader.fieldnames or (set(reader.fieldnames)
+                                             - set(self.WAVEFORM_CSV_FIELDS)):
+                    return          # unknown//reordered layout — leave it alone
+                old_rows = list(reader)
+            tmp = path + ".tmp"
+            with open(tmp, "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=self.WAVEFORM_CSV_FIELDS,
+                                   extrasaction="ignore")
+                w.writeheader()
+                w.writerows(old_rows)
+            os.replace(tmp, path)
+            self.log(f"waveform CSV {os.path.basename(path)} migrated to "
+                     f"{len(self.WAVEFORM_CSV_FIELDS)} columns")
+        except Exception as e:
+            self.log(f"waveform CSV migrate failed: {e}")
 
     def _log_waveform(self, wf):
         """One row per detector per sampled file — the series the GUI trends."""
@@ -1365,6 +1540,8 @@ class Stream1SizeMonitor:
             os.makedirs(self.log_dir, exist_ok=True)
             path = self._waveform_csv_path()
             new = not os.path.exists(path)
+            if not new:
+                self._migrate_waveform_csv(path)
             with open(path, "a", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=self.WAVEFORM_CSV_FIELDS,
                                    extrasaction="ignore")
@@ -1373,6 +1550,7 @@ class Stream1SizeMonitor:
                 for det, v in sorted(wf["detectors"].items()):
                     w.writerow({"timestamp": wf["timestamp"], "run": wf["run"],
                                 "seq": wf["seq"], "event": wf["event"], "det": det,
+                                "complete": int(bool(wf.get("complete"))),
                                 **{k: v.get(k) for k in
                                    ("flash", "flash_nominal", "flash_ratio", "zs_blocks",
                                     "baseline", "rms", "n_chan", "grade")}})

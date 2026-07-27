@@ -1033,6 +1033,11 @@
           <!-- Which detectors are deliberately excluded from grading/alerting. Filled
                by s1RenderWaveform; hidden only if nothing is excluded. -->
           <div id="s1-wf-ignored" class="small mt-2" style="color:#8b96a5;display:none;"></div>
+          <!-- Zeroed channels, and whether the decoder actually read a whole event.
+               Both filled by s1RenderZeroed. The second matters because a short read
+               suppresses missing-channel detection, and a suppressed check and a
+               passing one otherwise look exactly the same from here. -->
+          <div id="s1-wf-zeroed" class="small mt-2" style="display:none;"></div>
           <p class="text-muted small mb-0 mt-3">
             Gamma-flash amplitude per detector from the first event of a sampled file,
             against a frozen healthy reference. The flash is in every proton pulse, so
@@ -4247,6 +4252,58 @@ function s1RenderIgnored(d, wf) {
     : "";
 }
 
+// Zeroed channels (the emergency fault), plus the health of the DECODER itself.
+//
+// The second half is not padding. `missing` is inferred from a channel's absence, so
+// it only means anything when the decoder reached the end of the event — a short read
+// suppresses it (2026-07-27: a 268.8 MB event under a 260 MB cap dropped the last bank
+// in the event, PSSD ch 1, and raised an emergency "PSSD 1/2 missing" for a healthy
+// channel). Suppressing it is right, but "check passed" and "check never ran" are both
+// an empty list, so the state has to be said out loud somewhere an operator sees it.
+function s1RenderZeroed(d, wf) {
+  const box = document.getElementById("s1-wf-zeroed");
+  if (!box) return;
+  const read = d.waveform_read || {};
+  const zeroed = (wf && wf.zeroed_channels) || [];
+  const parts = [];
+
+  if (zeroed.length) {
+    const by = {};
+    for (const z of zeroed) (by[z.det] ||= []).push(z);
+    const txt = Object.keys(by).sort().map(det => {
+      const flat = by[det].filter(z => z.kind === "flatlined")
+                          .map(z => z.chan).sort((a, b) => a - b);
+      const gone = by[det].filter(z => z.kind === "missing");
+      const bits = [];
+      if (flat.length) bits.push(`ch ${flat.join(",")} flat`);
+      for (const g of gone) bits.push(`${g.n_missing}/${g.n_expected} missing`);
+      return `${det} ${bits.join(" + ")}`;
+    }).join("; ");
+    parts.push(`<span class="badge bg-danger" style="font-size:0.65rem;">zeroed</span> `
+      + `<span class="font-monospace">${txt}</span> — these channels are recording `
+      + `NOTHING. Check front-end power and cabling.`);
+  }
+
+  // Only worth saying when it is NOT fine; a complete read is the normal case and
+  // does not need a line of its own on a card that is already dense.
+  if (wf && wf.complete === false) {
+    const n = read.incomplete_consec || 1;
+    const mb = wf.bytes_read ? ` at ${(wf.bytes_read / 1e6).toFixed(0)} MB` : "";
+    const cap = read.cap_bytes ? `, cap now ${(read.cap_bytes / 1e6).toFixed(0)} MB` : "";
+    parts.push(`<span class="badge bg-warning text-dark" style="font-size:0.65rem;">`
+      + `incomplete read</span> decoder stopped before the end of the event${mb} `
+      + `(${wf.n_chan_total}${wf.n_chan_expected ? "/" + wf.n_chan_expected : ""} channels`
+      + `${cap}${read.cap_at_ceiling ? ", AT CEILING" : ""}) — <b>missing-channel `
+      + `detection is disarmed for this sample</b>${n > 1 ? `, ${n} in a row` : ""}. `
+      + `Flatlined and gain detection are unaffected; the cap grows itself on the next `
+      + `sample.`);
+  }
+
+  box.style.display = parts.length ? "" : "none";
+  box.style.color = zeroed.length ? "#e06c75" : "#d0a24c";
+  box.innerHTML = parts.join("<br>");
+}
+
 // Per-detector waveform verdict: the "which detector, by how much" table.
 function s1RenderWaveform(d) {
   const verdict = document.getElementById("s1-wf-verdict");
@@ -4259,6 +4316,10 @@ function s1RenderWaveform(d) {
   // "no beam") — an operator must never have to guess whether a detector is being
   // watched. Names come from the last sample when there is one, prefixes otherwise.
   s1RenderIgnored(d, wf);
+  // Same reasoning, and the same "before every early return" placement: zeroed
+  // channels are deliberately not suppressed when the beam is off, so this must not
+  // sit downstream of the no-beam branch.
+  s1RenderZeroed(d, wf);
 
   if (!wf) {
     verdict.textContent = d.waveform_enabled === false ? "disabled"

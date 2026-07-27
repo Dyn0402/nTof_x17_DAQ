@@ -185,6 +185,9 @@ class DaqMonitor:
         "rule_stream1_detector_gain": "n_TOF detector gains are back at nominal.",
         "rule_stream1_zeroed_channels": (
             "n_TOF wall/liquid/plastic channels are producing waveforms again."),
+        "rule_stream1_waveform_incomplete": (
+            "n_TOF waveform decoder is reading complete events again — "
+            "missing-channel detection is re-armed."),
         "rule_gas_flow_starved": "gas flow is back to normal.",
         "rule_ssd_disk_space": "SSD (/) free space is back above the auto-remover's emergency level.",
         "rule_hdd_disk_space": "HDD (/mnt/data) disk space is back to normal.",
@@ -233,6 +236,7 @@ class DaqMonitor:
             "rule_stream1_files_reduced",
             "rule_stream1_detector_gain",
             "rule_stream1_zeroed_channels",
+            "rule_stream1_waveform_incomplete",
         ]),
     ]
 
@@ -1036,6 +1040,62 @@ class DaqMonitor:
             + (f", {n_gone} absent from the event" if n_gone else "")
             + ". This is not a gain loss — these channels are recording NOTHING "
               "and the data is unrecoverable. Check front-end power and cabling.")
+
+    def rule_stream1_waveform_incomplete(self):
+        """WARNING: the waveform decoder keeps stopping before the end of the event,
+        which disarms the missing-channel half of rule_stream1_zeroed_channels.
+
+        This is a monitoring-integrity rule, not a detector rule, and it exists
+        because the failure it covers is SILENT. `missing` is inferred from absence,
+        so it is only trustworthy from a read that reached the end of the event; a
+        short read therefore suppresses it (see _zeroed_channels). That suppression is
+        correct — on 2026-07-27 a 268.8 MB event under a 260 MB cap produced an
+        emergency "PSSD 1/2 missing" for a healthy channel, because PSSD ch 1 is the
+        last bank in the event — but a permanently short read would leave the check
+        quietly switched off, and an empty zeroed-channel list looks identical whether
+        the check passed or never ran.
+
+        The watcher grows its own read cap on every truncated sample, so a single
+        incomplete read is self-correcting and deliberately does NOT alert. A run of
+        them means the growth is not keeping up, or the files are not what the decoder
+        expects, and someone should look.
+
+        Tunable via rule_options.rule_stream1_waveform_incomplete in
+        monitor_config.json:
+          consec   — consecutive incomplete reads before alerting (default: the
+                     watcher's own WAVEFORM_INCOMPLETE_CONSEC, published in the state)
+          severity — default "warning"
+        """
+        opts = self.config.get("rule_options", {}).get(
+            "rule_stream1_waveform_incomplete", {})
+        try:
+            with open(STREAM1_STATE_FILE) as f:
+                st = json.load(f)
+        except Exception:
+            return False, "stream1 state not available (watcher not running)"
+        # Same reasoning as the sibling zeroed rule: this reads decoded samples, not
+        # live EOS listings, so an EOS blip must not disarm it on top of everything.
+        read = st.get("waveform_read")
+        if not read:
+            return False, "watcher predates incomplete-read tracking — restart it"
+        consec = int(read.get("incomplete_consec") or 0)
+        limit = int(opts.get("consec") or read.get("incomplete_consec_alert") or 3)
+        if consec < limit:
+            return False, ("waveform reads are complete — missing-channel detection armed"
+                           if not consec else
+                           f"{consec} incomplete read(s), below the {limit} needed to alert "
+                           f"(the read cap grows itself)")
+        cap = read.get("cap_bytes")
+        return opts.get("severity", "warning"), (
+            f"n_TOF waveform decoder has not read a complete event for {consec} "
+            f"consecutive samples"
+            + (f" (read cap now {cap / 1e6:.0f} MB" if cap else "")
+            + (", AT ITS CEILING" if read.get("cap_at_ceiling") else "")
+            + (")" if cap else "")
+            + ". Missing-channel detection is DISARMED — a channel absent from the "
+              "event would not be reported. Flatlined-channel and gain detection are "
+              "unaffected. Check that stream1 files are well-formed and that the "
+              "decoder is reaching the second event header.")
 
     def rule_gas_flow_starved(self):
         """Alert if a gas channel's measured flow stays far below its setpoint while
