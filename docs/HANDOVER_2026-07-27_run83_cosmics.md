@@ -1,4 +1,4 @@
-# Handover 2026-07-27 — run_83 cosmics live, run_84 beam ready
+# Handover 2026-07-27 — beam↔cosmics changeover is one command
 
 **Supersedes `docs/RESTORE_run79.md`** for the current beam↔cosmics pair. That file describes
 the run_79/run_80 pair at Hwm 2; the operating point has since moved to **Hwm 1 / Lwm 0** on
@@ -6,54 +6,64 @@ the run_82 result (`docs/PLAN_comb_spikiness_2026-07-27.md` §4d).
 
 ---
 
-## What is running now
+## State as of 2026-07-27 15:10
 
-**`run_83` — beam-off cosmic reference**, started 14:21 on 2026-07-27.
+**`run_84` — production beam statistics, LIVE** since 14:37:52. The post-run_82 point:
+RAW, latency 27, 20 smp × 60 ns, IPD 5, **Hwm 1 / Lwm 0**, drift 700 V all four, resist
+A540/B540/C525/D520, plastics 0.90 MIP (`stat090` tag), mesh off, 120 × 1 h open-ended.
+Verified on the applied cfg *and* on all 8 FEUs. `beam_gate.py` is running alongside it.
 
-| | |
-|---|---|
-| config | `run_config_cosmics_optimal_83.json` (from `run_configs/run_config_cosmics_optimal_80.py`, `RUN_NUM=83`) |
-| trigger | UNGATED scint Singles — M4.C plain `or[0]` (veto OPEN), M4.D `or[1]`, PS leg dropped |
-| readout | RAW, latency 27, 20 smp × 60 ns, IPD 5, **Hwm 1 / Lwm 0** |
-| HV | drift 700 V all four, resist A540/B540/C525/D520 — same as the beam point |
-| plastics | **0.50 MIP** (A−65/B−78/C−86/D−83), tag `cosbounce`, re-asserted per sub-run |
-| schedule | 24 × 15 min = 6 h, **stop-anywhere** |
+**`run_83` — beam-off cosmic reference, DONE.** 14:23–14:37, one 15 min sub-run stopped early
+when beam returned: 4.3 GB, 8/8 FEUs, 22 428 events/FEU, 0.0000 % loss, 27.3 Hz (matches the
+25.6 Hz run_72 reference). Marked complete by hand after that verification, so it is eligible
+for the normal backup/cleanup pipeline. Trigger was UNGATED scint Singles (M4.C `or[0]` veto
+OPEN, M4.D `or[1]`, PS leg dropped) with plastics at **0.50 MIP** via the `cosbounce` tag.
 
-Verified on the applied cfg: `Main_Trig_OvrWrnHwm 1 / OvrWrnLwm 0`, `NbOfSamples 20`,
-`InterPacket_Delay 5`, `Dream * 12 0x001B` (= latency 27). FEU pre-flight passed 8/8 + TCM.
+**Why cosmics use 0.50 MIP and beam uses 0.90:** cosmics *are* MIPs (Landau MPV = 1 MIP), so
+the 0.90 MIP beam bar would cut most of them. The tags handle it in both directions —
+`cosbounce` sets 0.50, `stat090` sets 0.90 — so neither changeover needs a manual step.
 
-**Why 0.50 MIP and not the beam run's 0.90:** cosmics *are* MIPs (Landau MPV = 1 MIP), so the
-0.90 MIP beam threshold would cut most of them. The `cosbounce` tag handles this automatically
-and the beam run's `stat090` tag puts 0.90 MIP back — neither needs a manual step.
-
-**Why Hwm 1 here too:** so the cosmic reference differs from the beam run it references in
-*nothing but the trigger*. At ~25 Hz cosmic rate the watermark is completely inert (0.5 % duty
-at 196 µs/event), so this does not affect comparability with run_80, which ran at Hwm 2.
+**Why cosmics also run Hwm 1:** so the cosmic reference differs from the beam run it
+references in *nothing but the trigger*. At ~25 Hz the watermark is inert (0.5 % duty at
+196 µs/event), so this does not break comparability with run_80 at Hwm 2.
 
 ---
 
-## Going back to beam — one command
-
-The beam config is already generated and `switch_mode.py`'s defaults already point at it.
+## Changing mode — ONE COMMAND, nothing to decide
 
 ```bash
-# 1. wait for a REAL pulse — daq_control has no beam-gating of its own
-cat config/beam_state.json          # beam_on: true, recent last_pulse_time
-
-# 2. stop the cosmic run (the operator's action; switch_mode refuses to touch a live run)
-./bash_scripts/stop_run.sh
-
-# 3. one command: re-trigger + verify + launch
-./switch_mode.py beam --start
+./switch_mode.py beam --go        # cosmics -> beam
+./switch_mode.py cosmics --go     # beam -> cosmics
+./switch_mode.py status           # read-only
 ```
 
-That applies `n1081b/trigger_mode.py scint --singles --ps-pickup`, reads the routing back and
-**checks** it (non-zero exit if the hardware did not land right), reports the M4.D in0 PS
-gate&delay, and launches `run_config_stats_optimized_84.json`.
+**That is the entire procedure.** `--go` stops whatever run is live and waits for daq_control
+to exit, allocates the next run number, regenerates the config at the settled operating point
+(Hwm 1 / Lwm 0, IPD 5), applies the routing, reads it back and *checks* it, starts the run,
+starts `beam_gate.py` for beam mode, and asserts the cfg RunCtrl actually received. It exits
+non-zero if any step fails. A warm changeover is ~60 s.
 
-**`run_84` = the new production point:** latency 27, n_samples 20, IPD 5, RAW, **Hwm 1 /
-Lwm 0**, drift 700, resist A540/B540/C525/D520, plastics 0.90 MIP, mesh off, 60 × 1 h
-open-ended.
+**Do not** pick a run number, regenerate a config by hand, or grep the applied cfg afterwards
+— `--go` does all of it, and doing it by hand is what used to make a changeover take 10–15
+minutes of deliberation before anyone hit start.
+
+⚠ **If the operating point ever moves, change it in `MODES` in `switch_mode.py` and nowhere
+else.** Both directions and the post-start verification all read from that one place.
+
+Without `--go`, a live run is still a hard refusal rather than something stopped as a side
+effect — that guard is deliberate. `--force` overrides only the beam/mode sanity check, never
+the live-run or board-lock guards.
+
+### Unattended: start the beam run the moment beam returns
+
+```bash
+nohup .venv/bin/python beam_return_watcher.py > logs/beam_return_watcher.log 2>&1 &
+```
+
+Waits for beam confirmed back (beam_on **and** a pulse fresher than 60 s, on 3 consecutive
+polls — `null`/stale/unreadable all count as *not* back), then runs `switch_mode.py beam --go`.
+It pins whichever run is live when armed and aborts if a different one is live by the time
+beam returns. One-shot; safe to kill.
 
 ### The PS delay does not need restoring
 
@@ -65,10 +75,18 @@ it every time rather than assuming — if it ever reads anything other than 1440
 
 ### If the beam comes back mid-sub-run
 
-A manual stop leaves the in-flight sub-run **without** a `.subrun_complete` marker (that is by
-design — `daq_control.py:364`). For a cosmic run that costs nothing; just be aware the last
-`cosbounce_cos_*` directory is short and unmarked, and it pins run_83 against `space_watcher`
-cleanup until dealt with.
+A manual stop leaves the in-flight sub-run **without** a `.subrun_complete` marker (by design —
+`daq_control.py:364`), and an unmarked sub-run pins the whole run against `space_watcher`
+cleanup. For a cosmic run the data is usually still complete and worth keeping, so **verify it
+and then mark it by hand**:
+
+```bash
+/home/mx17/ana/.venv/bin/python ~/beam_july/analysis/flash_comb/tools/eventid_integrity.py <subrun_dir>
+du -cb <subrun_dir>/raw_daq_data/*datrun*        # count DATRUN bytes, not dir size
+touch <subrun_dir>/.subrun_complete
+```
+
+Done for run_83's `cosbounce_cos_0000` on 2026-07-27 after it came back 0.0000 % clean.
 
 ### Spotty beam
 

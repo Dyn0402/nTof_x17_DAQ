@@ -9,15 +9,14 @@ is genuinely back rather than whenever someone next looks at the screen.
 
 WHAT IT DOES, IN ORDER
   1. Polls `config/beam_state.json` until beam is CONFIRMED back (see below).
-  2. Stops the running cosmic run via `bash_scripts/stop_run.sh`, and WAITS for daq_control
-     to actually exit — `switch_mode.py` refuses to touch the trigger while a run is live,
-     and that guard is the one that matters.
-  3. Runs `./switch_mode.py beam --start`, which re-triggers (scint --singles --ps-pickup),
-     reads the routing back and CHECKS it, reports the M4.D in0 PS delay, and launches the
-     beam config.
-  4. Starts `beam_gate.py` alongside it, so if the beam is flaky the run will not start a
-     sub-run into a gap.
-  5. Exits. It never runs a second time.
+  2. Runs `./switch_mode.py beam --go`, which is the single changeover path: it stops the
+     live run and waits for daq_control to exit, allocates the next run number, regenerates
+     the config at the settled operating point, re-triggers, verifies the routing, starts the
+     run, starts beam_gate.py, and asserts the cfg RunCtrl actually received.
+  3. Exits. It never runs a second time.
+
+  ⚠ There is deliberately only ONE changeover implementation, in switch_mode.py --go. This
+  watcher decides *when*; it does not re-implement *how*.
 
 WHY "CONFIRMED" AND NOT JUST beam_on
   `beam_on` already carries the monitor's own no-pulse debounce, but a single flicker at the
@@ -29,7 +28,10 @@ WHY "CONFIRMED" AND NOT JUST beam_on
 
 SAFETY
   * one-shot: it exits after acting, and refuses to act twice
-  * it will only stop a run whose name matches EXPECT_RUN (default run_83) unless --any-run
+  * it pins the run that is live WHEN IT IS ARMED and will only stop that one. If a
+    different run is live by the time beam returns, someone else changed things while it was
+    waiting, so it aborts rather than stopping a run it was never told about (--any-run
+    overrides). Pin an explicit name with --expect-run.
   * it aborts rather than guessing if daq_control does not exit within STOP_TIMEOUT_S
   * every step is logged to logs/beam_return_watcher.log with a timestamp
   * `--dry-run` walks the whole sequence and prints what it would do, touching nothing
@@ -63,7 +65,6 @@ PULSE_FRESH_S = 60.0     # a pulse older than this is not "running beam"
 STALE_S = 180.0          # beam_state older than this -> monitor down -> treat as not back
 CONFIRM_READS = 3        # consecutive good reads before we act (~60 s)
 STOP_TIMEOUT_S = 420.0   # how long to wait for daq_control to exit after stop_run
-EXPECT_RUN = 'run_83'
 
 
 def log(msg):
@@ -148,53 +149,30 @@ def sh(cmd, dry, what):
     return r.returncode, (r.stdout or '')
 
 
-def do_changeover(dry, any_run):
+def do_changeover(dry, any_run, expect_run):
     run = current_run_name()
     pids = live_run_pids()
     log(f'current run state: {run!r}; daq_control pids: {pids or "none"}')
 
     if pids:
-        if run != EXPECT_RUN and not any_run:
-            log(f'!! ABORT: a run is live but it is {run!r}, not {EXPECT_RUN!r}. '
-                f'Refusing to stop a run I was not told about. Re-run with --any-run to override.')
+        if expect_run is not None and run != expect_run and not any_run:
+            log(f'!! ABORT: a run is live but it is {run!r}, not the {expect_run!r} that was '
+                f'live when I was armed. Someone changed things while I waited — refusing to '
+                f'stop a run I was never told about. Re-run with --any-run to override.')
             return 2
-        log(f'stopping the cosmic run ({run})...')
-        rc, _ = sh(['bash', STOP_RUN], dry, 'stop the run')
-        if rc != 0:
-            log(f'!! ABORT: stop_run.sh exited {rc}')
-            return 3
-        if not dry:
-            t0 = time.time()
-            while live_run_pids() and time.time() - t0 < STOP_TIMEOUT_S:
-                time.sleep(5)
-            if live_run_pids():
-                log(f'!! ABORT: daq_control still running {STOP_TIMEOUT_S:.0f}s after stop_run. '
-                    f'Not touching the trigger while a run is live. Sort it out by hand.')
-                return 4
-            log(f'daq_control exited after {time.time()-t0:.0f}s')
+        log(f'run {run} is live — switch_mode --go will stop it and wait for the exit')
     else:
         log('no run live — nothing to stop, going straight to the changeover')
 
     log('switching trigger to BEAM and launching the production run...')
-    rc, out = sh([PY, SWITCH, 'beam', '--start'], dry, 'switch_mode.py beam --start')
+    rc, out = sh([PY, SWITCH, 'beam', '--go'], dry, 'switch_mode.py beam --go')
     if rc != 0:
         log(f'!! switch_mode.py exited {rc} — the trigger may NOT be in beam state. '
             f'DO NOT assume the run is good; check by hand.')
         return 5
 
-    log('starting beam_gate.py alongside the run (holds .pause_run across beam-off)')
-    if not dry:
-        with open(GATE_LOG, 'a') as gl:
-            p = subprocess.Popen([PY, GATE, '--poll', '10'], cwd=REPO,
-                                 stdout=gl, stderr=subprocess.STDOUT,
-                                 start_new_session=True)
-        with open(os.path.join(REPO, '.beam_gate.pid'), 'w') as f:
-            f.write(str(p.pid) + '\n')
-        log(f'  beam_gate pid {p.pid} (log: logs/beam_gate.log)')
-
-    log('CHANGEOVER COMPLETE — beam run launched. Verify:')
-    log('  tmux capture-pane -p -J -t daq_control | tail -20')
-    log('  grep -H -E "Main_Trig_OvrWrn|InterPacket" ~/july_dream/dream_run/run_84/*/Tcm_Mx17_July.cfg')
+    log('CHANGEOVER COMPLETE — switch_mode --go started the run, started beam_gate, and '
+        'verified the applied cfg (it exits non-zero if any of that failed).')
     return 0
 
 
@@ -204,7 +182,9 @@ def main():
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--status', action='store_true', help='report beam state and exit')
     ap.add_argument('--any-run', action='store_true',
-                    help=f'stop whatever run is live, not just {EXPECT_RUN}')
+                    help='stop whatever run is live, not just the one that was live when armed')
+    ap.add_argument('--expect-run', default=None,
+                    help='pin the run name to stop (default: whichever is live at arm time)')
     ap.add_argument('--now', action='store_true', help='skip the wait, act immediately')
     args = ap.parse_args()
 
@@ -222,11 +202,15 @@ def main():
     log(f'watching for beam return{" [DRY RUN]" if args.dry_run else ""} — '
         f'need beam_on + pulse < {PULSE_FRESH_S:.0f}s on {CONFIRM_READS} consecutive polls '
         f'({args.poll:g}s apart)')
-    log(f'will stop {EXPECT_RUN} and launch the beam config via switch_mode.py')
+    log('will stop the live run and launch the beam config via switch_mode.py --go')
     log(f'beam now: {"BACK" if back else "not back"} ({detail})')
 
+    pinned = args.expect_run or current_run_name()
+    log(f'pinned run to stop: {pinned!r}'
+        + ('' if args.expect_run else '  (whatever was live when armed)'))
+
     if args.now:
-        return do_changeover(args.dry_run, args.any_run)
+        return do_changeover(args.dry_run, args.any_run, pinned)
 
     streak, last_detail = 0, None
     while not stopping['now']:
@@ -238,7 +222,7 @@ def main():
             last_detail = detail
         if streak >= CONFIRM_READS:
             log(f'*** BEAM CONFIRMED BACK ({detail}) — starting changeover ***')
-            return do_changeover(args.dry_run, args.any_run)
+            return do_changeover(args.dry_run, args.any_run, pinned)
         slept = 0.0
         while slept < args.poll and not stopping['now']:
             time.sleep(0.5)
