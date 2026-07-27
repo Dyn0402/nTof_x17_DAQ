@@ -106,6 +106,14 @@ PRE-RUN (beam ON — daq_control has NO beam-gating, wait for a real pulse):
   verify: .venv/bin/python n1081b/trigger_mode.py status         -> C or_veto [0], D [0,1]
           .venv/bin/python n1081b/set_ps_trigger_delay.py --show -> delay 1440
 Launch: ./start_run.sh run_config_stats_optimized.json
+
+PAUSING FOR A BEAM STOP (added 2026-07-27) — see docs/RESTORE_run79.md, which records the
+  as-built board state while this run was live and the exact steps back. In short:
+  `RESUME=1 python run_configs/run_config_stats_optimized.py` writes
+  run_config_stats_optimized_resume.json (resume=True, i.e. sub-runs with a
+  .subrun_complete marker are skipped), and the only board work to come back is
+  `n1081b/trigger_mode.py scint --singles --ps-pickup` — the M4.D1 1440 ns PS delay is NOT
+  disturbed by the cosmic setup script, so the flash framing survives untouched.
 """
 import os
 
@@ -130,6 +138,13 @@ OVR_WRN_LWM = int(os.environ.get('OVR_WRN_LWM', '1'))
 SUBRUN_MIN = float(os.environ.get('SUBRUN_MIN', '60'))
 N_SUBRUNS = int(os.environ.get('N_SUBRUNS', '120'))
 
+# ---- resume (2026-07-27): set RESUME=1 to write a RESUME config that skips every
+#      sub-run already carrying a .subrun_complete marker, so run_79 can be paused for a
+#      beam stop and picked up afterwards without re-taking or overwriting what it has.
+#      Writes to a SEPARATE json so the original fresh-start config is never clobbered.
+#      See docs/RESTORE_run79.md.
+RESUME = os.environ.get('RESUME', '0') == '1'
+
 # ---- operating point (calibrations/mm/statistics_run_config_run67.json), unchanged ----
 DRIFT_V = 700
 DRIFT_D_OFFSET = int(os.environ.get('DRIFT_D_OFFSET', '0'))
@@ -150,7 +165,7 @@ class Config(BeamConfig):
         self.dream_daq_info['data_out_dir'] = f'{self.run_out_dir}'
         self.processor_info['run_dir'] = f'{self.run_out_dir}'
         self.hv_info['run_out_dir'] = self.run_out_dir
-        self.resume = False
+        self.resume = RESUME
         self.n1081b_scan = 'on'
 
         readout_txt = ('ZS' if ZS else 'RAW / full readout (zero_suppress=False)')
@@ -219,14 +234,18 @@ class Config(BeamConfig):
 
 if __name__ == '__main__':
     c = Config()
-    out = 'config/json_run_configs/run_config_stats_optimized.json'
+    out = ('config/json_run_configs/run_config_stats_optimized_resume.json' if RESUME
+           else 'config/json_run_configs/run_config_stats_optimized.json')
     c.write_to_file(out)
 
     buf = (512 - LATENCY) // N_SAMPLES
     cap = buf - 4 if buf > 16 else (buf - 3 if buf > 8 else buf - 2)
     scale = N_SAMPLES / 32
-    print(f'=== {c.run_name} — production statistics run on the MEASURED window ===')
+    print(f'=== {c.run_name} — production statistics run on the MEASURED window'
+          f'{" [RESUME]" if RESUME else ""} ===')
     print(f'wrote        : {out}')
+    print(f'resume       : {RESUME}   '
+          f'({"completed sub-runs are SKIPPED — pause/restart safe" if RESUME else "fresh start"})')
     print(f'latency      : {LATENCY}   (run_77 used 35 -> signal onset was sample 10; '
           f'now sample ~2)')
     print(f'n_samples    : {N_SAMPLES}   (95% of drift charge = 14 smp from onset, +2 lead-in, '
@@ -249,4 +268,7 @@ if __name__ == '__main__':
     print('VERIFY ON SUB-RUN 0000 (see docstring): onset at smp ~2, flash peak ~5, Hwm 2,')
     print('  archived cfg latency 0x%04X / NbOfSamples %d, 1-10 ms CV better than 0.513.' % (LATENCY, N_SAMPLES))
     print('  ⚠ grep the UNCOMMENTED "Feu * Dream * 12" line — two commented ones precede it.')
-    print('Launch: ./start_run.sh run_config_stats_optimized.json')
+    print(f'Launch: ./start_run.sh {out.split("/")[-1]}')
+    if not RESUME:
+        print('        (to PICK UP an interrupted run_79 instead of restarting it, regenerate '
+              'with RESUME=1 — see docs/RESTORE_run79.md)')
