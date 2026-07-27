@@ -11,6 +11,14 @@ recollection of what we intended — it is what the hardware reported.
 
 ---
 
+> **2026-07-27 update — use `switch_mode.py` instead of the manual steps below.**
+> This document is now mostly a record of *why* the switch is what it is. The changeover
+> itself (guards, routing, read-back verification, launch) is one command:
+> `./switch_mode.py beam --start` / `./switch_mode.py cosmics --start`.
+> Also note run_79 was **not** resumed in the end — after the midday stop we went to run_80
+> (cosmics) and then a fresh **run_81** at the same operating point. The resume config below
+> still works if you ever do want to pick run_79 back up.
+
 ## TL;DR — coming back
 
 ```bash

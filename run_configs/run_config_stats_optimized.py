@@ -107,6 +107,18 @@ PRE-RUN (beam ON — daq_control has NO beam-gating, wait for a real pulse):
           .venv/bin/python n1081b/set_ps_trigger_delay.py --show -> delay 1440
 Launch: ./start_run.sh run_config_stats_optimized.json
 
+run_81 (2026-07-27) — the SAME operating point, restarted as a fresh run after the midday beam
+  stop. run_79 ran 15 complete 1 h sub-runs (stat090_0000..0014) and was stopped manually part
+  way through 0015, which was therefore NOT marked complete. The stop was followed by run_80
+  (2 h of beam-off cosmics at this same point) and a fresh pedestal set, so run_81 starts on a
+  clean boundary rather than resuming run_79 mid-grid. Nothing about the configuration changed:
+      RUN_NUM=81 .venv/bin/python run_configs/run_config_stats_optimized.py
+      ./start_run.sh run_config_stats_optimized_81.json
+  Board work needed first: the cosmic run left M4.C as a plain OR (veto open) and M4.D on
+  lemo1 only, so `n1081b/trigger_mode.py scint --singles --ps-pickup` must be re-run to put the
+  N93B acceptance gate and the PS leg back. The M4.D1 1440 ns PS delay was never disturbed
+  (verified on hardware 2026-07-27 after the cosmic setup ran) — nothing else to re-apply.
+
 PAUSING FOR A BEAM STOP (added 2026-07-27) — see docs/RESTORE_run79.md, which records the
   as-built board state while this run was live and the exact steps back. In short:
   `RESUME=1 python run_configs/run_config_stats_optimized.py` writes
@@ -121,7 +133,11 @@ import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
-RUN_NUM = 79
+# RUN_NUM env var (added 2026-07-27): the operating point below is measured and settled, so a
+# later production run at the SAME point should re-use this generator rather than fork a copy
+# that can drift. `RUN_NUM=81 python run_configs/run_config_stats_optimized.py` writes
+# run_config_stats_optimized_81.json; the default 79 keeps the original filenames untouched.
+RUN_NUM = int(os.environ.get('RUN_NUM', '79'))
 
 # ---- readout: the run_78 result ----
 LATENCY = int(os.environ.get('LATENCY', '27'))        # onset at sample 2 (was 35)
@@ -234,8 +250,8 @@ class Config(BeamConfig):
 
 if __name__ == '__main__':
     c = Config()
-    out = ('config/json_run_configs/run_config_stats_optimized_resume.json' if RESUME
-           else 'config/json_run_configs/run_config_stats_optimized.json')
+    _stem = 'run_config_stats_optimized' + (f'_{RUN_NUM}' if RUN_NUM != 79 else '')
+    out = f'config/json_run_configs/{_stem}{"_resume" if RESUME else ""}.json'
     c.write_to_file(out)
 
     buf = (512 - LATENCY) // N_SAMPLES
