@@ -76,6 +76,22 @@ EXTRACTED_SCALE_E10 = 1e-10
 # Below this a "FTARGET" cycle carried no real beam.
 SPILL_THRESHOLD_E10 = 50.0
 
+# --- H4 barrier: the T2 TAX that serves the H4 line -------------------------
+# Measured 2026-07-27: this TAX parks near -140 mm with beam going to H4 and
+# drives full stroke to about +141 mm to block it. During the 14:07-15:29 access
+# that day it read +141 while every H4 flux counter sat at exactly zero and the
+# H4 main bends (XBH4.BEND.022.{053,083,117}) were at 0 A, so its position is a
+# direct read-out of "is H4 open".
+# NOTE THE NAME. H4, H6 and H8 have NO `XB<line>.XTAX` variable — only H2, M2
+# and P42 publish their TAX under the line prefix. This standalone motor-control
+# name is the ONLY way to read H4's barrier; globbing `XBH4.%` misses it.
+H4_TAX_VAR = "XTAX_022_023:POSITION_MEAS"
+H4_TAX_OPEN_MAX = -100.0     # below this: parked out, beam can reach H4
+H4_TAX_BLOCK_MIN = 100.0     # above this: parked in, H4 blocked
+# Full stroke takes ~6 min, so anything shorter than this is motion, not an
+# access. The 07-27 access was 82 min.
+H4_TAX_MIN_BLOCK_S = 300.0
+
 POLL_S = 30.0             # matches the beam watcher's cadence (it drives us)
 SCALAR_LOOKBACK_S = 900.0  # window for the per-cycle scalars / CSV
 PROFILE_LOOKBACK_S = 330.0  # window for the (heavy) intra-cycle arrays
@@ -148,6 +164,62 @@ def _derive_rate(stamp_ms, intensity_e10, t_start_ms=None, t_end_ms=None):
     return rate
 
 
+def tax_state(pos):
+    """Classify one H4 TAX position: open / blocked / moving (mid-stroke)."""
+    if pos is None:
+        return None
+    if pos <= H4_TAX_OPEN_MAX:
+        return "open"
+    if pos >= H4_TAX_BLOCK_MIN:
+        return "blocked"
+    return "moving"
+
+
+def tax_blocked_intervals(points, min_s=H4_TAX_MIN_BLOCK_S, merge_s=600.0):
+    """[(unix_ts, position_mm)] -> spans where H4 was NOT open, i.e. candidate
+    accesses.
+
+    Mid-stroke samples count as blocked: the barrier is already cutting the line
+    long before it reaches the far end, so an interval must start when the TAX
+    LEAVES open, not when it arrives. `merge_s` closes over the gap between the
+    two ends of a stroke; `min_s` drops pure motion.
+    """
+    ivs = []
+    cur = None
+    for t, v in sorted(points):
+        if v is None:
+            continue
+        if v > H4_TAX_OPEN_MAX:
+            if cur is None:
+                cur = {"start": t, "end": t, "pos_max": v}
+            else:
+                cur["end"] = t
+                cur["pos_max"] = max(cur["pos_max"], v)
+        elif cur is not None:
+            ivs.append(cur)
+            cur = None
+    if cur is not None:
+        cur["ongoing"] = True
+        ivs.append(cur)
+
+    merged = []
+    for iv in ivs:
+        if merged and iv["start"] - merged[-1]["end"] < merge_s:
+            merged[-1]["end"] = iv["end"]
+            merged[-1]["pos_max"] = max(merged[-1]["pos_max"], iv["pos_max"])
+            merged[-1].pop("ongoing", None)
+            if iv.get("ongoing"):
+                merged[-1]["ongoing"] = True
+        else:
+            merged.append(dict(iv))
+    out = []
+    for iv in merged:
+        iv["seconds"] = iv["end"] - iv["start"]
+        if iv["seconds"] >= min_s:
+            out.append(iv)
+    return out
+
+
 class SpsSpillMonitor:
     """Polls the SPS spill variables using a pytimber handle owned by someone
     else (the beam watcher). Publishes SPS_STATE_PATH + a per-cycle CSV."""
@@ -157,6 +229,8 @@ class SpsSpillMonitor:
         self.log_dir = log_dir
         self._log = logger or (lambda m: None)
         self._last_logged_ts = self._newest_logged_ts()
+        self._last_tax_ts = self._newest_logged_ts(prefix="h4_tax_",
+                                                   field="unix_ts")
 
     def log(self, msg):
         self._log(f"[sps] {msg}")
@@ -271,6 +345,15 @@ class SpsSpillMonitor:
                       for a, b in zip(extracted, extracted[1:]))
         period = round(gaps[len(gaps) // 2], 2) if gaps else None
 
+        # 6) H4 barrier. Wrapped: this is an add-on, and a failure here must
+        #    never cost us the spill state that the rest of the tab is built on.
+        try:
+            h4_tax = self._poll_tax(db, now)
+        except Exception as e:
+            self.log(f"H4 TAX poll failed (spill data unaffected): {e}")
+            h4_tax = {"var": H4_TAX_VAR, "position_mm": None, "state": None,
+                      "error": str(e)}
+
         state = {
             "connected": True,
             "timestamp": now.isoformat(timespec="seconds"),
@@ -295,6 +378,7 @@ class SpsSpillMonitor:
             "timeline": {"t_unix": tl_t, "rate_e10_per_s": tl_r,
                          "span_s": PROFILE_LOOKBACK_S},
             "profile": featured,
+            "h4_tax": h4_tax,
             "csv_path": self._csv_path(),
             "last_error": None,
         }
@@ -320,12 +404,12 @@ class SpsSpillMonitor:
         day = day or datetime.now().strftime("%Y-%m-%d")
         return os.path.join(self.log_dir, f"sps_spill_{day}.csv")
 
-    def _newest_logged_ts(self):
+    def _newest_logged_ts(self, prefix="sps_spill_", field="unix_ts"):
         """Largest unix_ts already logged, so a restart does not re-log the
         lookback window (same trick as the n_TOF beam watcher)."""
         try:
             files = sorted(f for f in os.listdir(self.log_dir)
-                           if f.startswith("sps_spill_") and f.endswith(".csv"))
+                           if f.startswith(prefix) and f.endswith(".csv"))
         except OSError:
             return 0.0
         if not files:
@@ -335,12 +419,93 @@ class SpsSpillMonitor:
             with open(os.path.join(self.log_dir, files[-1]), newline="") as f:
                 for row in csv.DictReader(f):
                     try:
-                        newest = max(newest, float(row["unix_ts"]))
+                        newest = max(newest, float(row[field]))
                     except (KeyError, TypeError, ValueError):
                         pass
         except OSError:
             return 0.0
         return newest
+
+    # ---------------- H4 barrier (TAX) ----------------
+
+    _TAX_CSV_FIELDS = ["timestamp", "unix_ts", "position_mm", "state"]
+
+    def tax_csv_path(self, day=None):
+        day = day or datetime.now().strftime("%Y-%m-%d")
+        return os.path.join(self.log_dir, f"h4_tax_{day}.csv")
+
+    def _log_tax(self, points):
+        """Append new (unix_ts, position_mm) samples, newest-first dedup via
+        _last_tax_ts. ~0.25 Hz, so a day is ~20 k rows / under 1 MB."""
+        rows = [(t, v) for t, v in points if v is not None and t > self._last_tax_ts]
+        if not rows:
+            return
+        try:
+            os.makedirs(self.log_dir, exist_ok=True)
+            by_day = {}
+            for t, v in rows:
+                dt = datetime.fromtimestamp(t)
+                by_day.setdefault(dt.strftime("%Y-%m-%d"), []).append((dt, t, v))
+            for day, day_rows in by_day.items():
+                path = self.tax_csv_path(day)
+                new_file = not os.path.exists(path)
+                with open(path, "a", newline="") as f:
+                    w = csv.DictWriter(f, fieldnames=self._TAX_CSV_FIELDS)
+                    if new_file:
+                        w.writeheader()
+                    for dt, t, v in day_rows:
+                        w.writerow({
+                            "timestamp": dt.isoformat(timespec="milliseconds"),
+                            "unix_ts": round(t, 3),
+                            "position_mm": round(v, 3),
+                            "state": tax_state(v),
+                        })
+            self._last_tax_ts = max(t for t, _ in rows)
+        except Exception as e:
+            self.log(f"TAX CSV log failed: {e}")
+
+    def _poll_tax(self, db, now):
+        """Read the H4 barrier. Wrapped by the caller: a TAX failure must not
+        cost us the spill state."""
+        res = db.get([H4_TAX_VAR], now - timedelta(seconds=SCALAR_LOOKBACK_S), now)
+        ts, vals = res.get(H4_TAX_VAR, ([], []))
+        pts = []
+        for t, v in zip(ts, vals):
+            try:
+                pts.append((float(t), float(v)))
+            except (TypeError, ValueError):
+                continue
+        pts.sort()
+        if not pts:
+            return {"var": H4_TAX_VAR, "position_mm": None, "state": None,
+                    "note": "no TAX samples in the lookback window"}
+        self._log_tax(pts)
+
+        t_last, pos = pts[-1]
+        state = tax_state(pos)
+        # When did it last leave the state it is in now? Only resolvable inside
+        # the lookback window; older than that is reported as ">= window".
+        changed_at = None
+        for t, v in reversed(pts):
+            if tax_state(v) != state:
+                changed_at = t
+                break
+        blocked = tax_blocked_intervals(pts)
+        return {
+            "var": H4_TAX_VAR,
+            "position_mm": round(pos, 2),
+            "state": state,
+            "beam_to_h4": state == "open",
+            "sample_time": datetime.fromtimestamp(t_last).isoformat(timespec="seconds"),
+            "seconds_in_state": (round(t_last - changed_at, 1)
+                                 if changed_at is not None else None),
+            "state_older_than_window": changed_at is None,
+            "open_max_mm": H4_TAX_OPEN_MAX,
+            "block_min_mm": H4_TAX_BLOCK_MIN,
+            "window_s": SCALAR_LOOKBACK_S,
+            "blocked_now": bool(blocked and blocked[-1].get("ongoing")),
+            "csv_path": self.tax_csv_path(),
+        }
 
     def _log_rows(self, rows):
         """Append new per-cycle rows — every SPS cycle, dump cycles included, so
