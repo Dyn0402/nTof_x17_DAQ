@@ -447,12 +447,20 @@
         .ds-chip.empty:hover { border-color: var(--border); }
 
         /* Component columns. .sel marks a column whose chip is active, i.e. bytes
-           that would actually go if the row is ticked. */
+           that would actually go if the row is ticked.
+           Red (.sel) means staged AND verified safe — it will really be deleted.
+           Amber (.sel.unsafe) means staged but the server said ✗: the delete will
+           be REFUSED, so those bytes are NOT coming back to you. One colour for
+           both reads as "all of this goes", which is the opposite of what an ✗
+           means, and it is why the footer total and the highlighted area used to
+           disagree. */
         .ds-cc            { text-align: right; font-family: var(--mono); font-size: 0.8rem;
                             white-space: nowrap; }
         .ds-cc.sel        { background: rgba(239,91,91,0.14); color: var(--bad); font-weight: 600; }
+        .ds-cc.sel.unsafe { background: rgba(240,192,64,0.14); color: var(--warn); }
         .ds-cc.none       { color: #4a5462; }
         .ds-cc .u         { color: var(--muted); font-weight: 400; }
+        .ds-cc.sel.unsafe .u { color: var(--warn); }
 
         .ds-prune-sub > td { background: rgba(0,0,0,0.18); }
         .ds-sub-name      { padding-left: 1.9rem !important; font-size: 0.83rem; color: var(--muted); }

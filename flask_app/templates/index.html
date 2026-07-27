@@ -1392,10 +1392,13 @@
     <div class="panel-body">
       <div id="ds-prune-warn" class="ds-warnbox" style="display:none;"></div>
       <p class="text-muted mb-2" style="font-size:0.8rem;">
-        Ticking a run selects all of its subruns. Click a run name (or the ▸) to open it and
-        pick subruns individually. Highlighted cells are what your chip selection would remove;
-        <b>✓</b> marks a piece verified on EOS, so it can be pulled back with
-        <i>Restore from lxplus</i> later.</p>
+        Ticking a run selects all of its subruns; <b>shift-click</b> to tick (or clear) a whole
+        range. Click a run name (or the ▸) to open it and pick subruns individually.
+        Highlighted cells are what your chip selection would remove —
+        <span style="color:var(--bad);">red</span> will really go,
+        <span style="color:var(--warn);">amber</span> is staged but not backed up, so the
+        server will refuse it and those bytes stay. <b>✓</b> marks a piece verified on EOS, so
+        it can be pulled back with <i>Restore from lxplus</i> later.</p>
       <div class="table-responsive">
         <table class="table table-dark table-sm align-middle mb-0" id="ds-prune-table">
           <thead><tr id="ds-prune-head"></tr></thead>
@@ -5421,8 +5424,36 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   async function loadLocal() {
     if (mode !== "free") return;
     const gen = modeGen;
+    const disk = diskSel.value;
     try {
-      const r = await fetch(`/space/local?disk=${encodeURIComponent(diskSel.value)}`);
+      // Prefer REPLAYING the last EOS check over showing an unverified listing:
+      // a page reload used to throw the verified view away, and the verdicts only
+      // move when the backup watcher pushes. Costs nothing — it never contacts
+      // EOS, it just reads the persisted listing. Falls through to the plain
+      // local listing when there is no check to replay.
+      const rc = await fetch(`/space/scan?disk=${encodeURIComponent(disk)}&cached=1`);
+      const dc = await rc.json();
+      if (stale(gen)) return;
+      if (rc.ok && dc.success !== false && dc.verified && !lastScan) {
+        lastScan = dc;
+        $("ds-results-panel").style.display = "";
+        renderDeleteRows(dc);
+        $("ds-summary").innerHTML =
+          `${dc.n_safe}/${dc.n_runs} safe · would free <b>${dc.safe_bytes_h}</b>` +
+          (dc.active_run ? ` · active: ${dc.active_run}` : "");
+        $("ds-scan-meta").innerHTML =
+          `${dc.n_runs} run(s) verified against EOS &mdash; good as of `
+          + `<b${dc.checked_stale ? ' style="color:var(--warn);"' : ''}>`
+          + `${esc(dc.checked_age_h)} ago</b> (${esc(dc.checked_at)})`
+          + (dc.checked_stale ? ' &mdash; re-check recommended' : '')
+          + `<br><span class="text-muted">A final check runs at delete time; `
+          + `anything that no longer matches is rejected.</span>`;
+        return;
+      }
+    } catch (e) { /* no cached check — fall through to the local listing */ }
+
+    try {
+      const r = await fetch(`/space/local?disk=${encodeURIComponent(disk)}`);
       const d = await r.json();
       if (!r.ok || d.success === false) throw new Error(d.message || "listing failed");
       if (stale(gen)) return;
@@ -5630,6 +5661,15 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   const expanded = new Set();     // run names currently open
   const skey = (run, sub) => run + " " + sub;
 
+  // Shift-click range selection. Anchors are stored as run / subrun NAMES, not
+  // DOM nodes: renderPruneTable() rebuilds the whole tbody on every change, so a
+  // node reference would be stale by the next click. shiftHeld is captured on
+  // 'click' because it fires before 'change', which carries no modifier state of
+  // its own.
+  let shiftHeld = false;
+  let runAnchor = null;           // last plainly-clicked run checkbox
+  let subAnchor = null;           // last plainly-clicked subrun {run, sub}
+
   // Presets are expressed as what to DELETE. The names describe what survives,
   // because that is how you actually think about it at 3am.
   const PRESETS = {
@@ -5669,7 +5709,11 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   // highlighted area IS the deletion set.
   function compCell(v, comp) {
     if (!v) return `<td class="ds-cc none">—</td>`;
-    const sel = compSel.has(comp) ? " sel" : "";
+    // Staged-and-safe is red (it really will be deleted); staged-but-✗ is amber
+    // (the server will refuse it, so those bytes are NOT going anywhere). Only
+    // meaningful once verified — before that there is no ✓/✗ to disagree with.
+    const unsafe = pruneData.verified && !v.safe;
+    const sel = compSel.has(comp) ? (unsafe ? " sel unsafe" : " sel") : "";
     const mark = pruneData.verified ? (v.safe ? " ✓" : ' <span class="u">✗</span>') : "";
     return `<td class="ds-cc${sel}" title="${esc(v.reason || "")}">${v.size_h}${mark}</td>`;
   }
@@ -5687,7 +5731,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     $("ds-prune-head").innerHTML =
       `<th style="width:2.2rem;"></th><th>Run / subrun</th>` +
       order.map(c => `<th class="text-end" style="font-size:0.76rem;">${esc(pruneData.components[c].label)}</th>`).join("") +
-      `<th style="width:30%;">Status</th>`;
+      `<th style="width:34%;">Status</th>`;
 
     const tb = $("ds-prune-tbody");
     tb.innerHTML = "";
@@ -5705,6 +5749,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
             : `<span class="text-muted">not yet verified against EOS</span>`);
       tr.innerHTML =
         `<td><input type="checkbox" class="form-check-input ds-runcb" data-run="${esc(r.run)}"
+             title="Shift-click to select a range of runs"
              ${st === "all" ? "checked" : ""} ${r.guard ? "disabled" : ""}></td>
          <td class="ds-run-name" data-run="${esc(r.run)}">
            <span class="ds-caret${open ? " open" : ""}">▸</span><b>${esc(r.run)}</b>
@@ -5731,6 +5776,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
           : `<span class="text-muted">${s.other_h} kept</span>`;
         str.innerHTML =
           `<td><input type="checkbox" class="form-check-input ds-prunecb"
+               title="Shift-click to select a range of subruns"
                data-run="${esc(r.run)}" data-sub="${esc(s.subrun)}"
                ${pruneSel.has(skey(r.run, s.subrun)) ? "checked" : ""} ${s.guard ? "disabled" : ""}></td>
            <td class="ds-sub-name">${esc(s.subrun)}
@@ -5741,19 +5787,62 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       }
     }
 
-    tb.querySelectorAll(".ds-runcb").forEach(cb => cb.addEventListener("change", () => {
-      const r = pruneData.runs.find(x => x.run === cb.dataset.run);
-      if (!r) return;
+    // One run's whole subrun set. Guarded subruns are never touched — a range
+    // must not quietly tick something the server would refuse anyway.
+    const applyRun = (runName, on) => {
+      const r = pruneData.runs.find(x => x.run === runName);
+      if (!r || r.guard) return;
       for (const s of r.subruns) {
         if (s.guard) continue;
-        if (cb.checked) pruneSel.add(skey(r.run, s.subrun));
+        if (on) pruneSel.add(skey(r.run, s.subrun));
         else pruneSel.delete(skey(r.run, s.subrun));
       }
+    };
+
+    tb.querySelectorAll(".ds-runcb, .ds-prunecb").forEach(cb =>
+      cb.addEventListener("click", e => { shiftHeld = e.shiftKey; }));
+
+    tb.querySelectorAll(".ds-runcb").forEach(cb => cb.addEventListener("change", () => {
+      const on = cb.checked;
+      const runs = [...tb.querySelectorAll(".ds-runcb")].map(x => x.dataset.run);
+      const from = runs.indexOf(runAnchor), to = runs.indexOf(cb.dataset.run);
+      if (shiftHeld && runAnchor !== null && from !== -1 && to !== -1) {
+        // The range takes the state of the box just clicked, so shift-click both
+        // selects and clears — the file-manager convention.
+        const [a, b] = from < to ? [from, to] : [to, from];
+        for (const rn of runs.slice(a, b + 1)) applyRun(rn, on);
+      } else {
+        applyRun(cb.dataset.run, on);
+        runAnchor = cb.dataset.run;   // only a plain click moves the anchor
+      }
+      shiftHeld = false;
       renderPruneTable(); recalcPrune();
     }));
+
     tb.querySelectorAll(".ds-prunecb").forEach(cb => cb.addEventListener("change", () => {
-      const k = skey(cb.dataset.run, cb.dataset.sub);
-      if (cb.checked) pruneSel.add(k); else pruneSel.delete(k);
+      const on = cb.checked;
+      const run = cb.dataset.run;
+      // Ranges stay inside one run: spanning collapsed runs would tick subruns
+      // that are not even on screen, which is the surprise worth avoiding.
+      const sameRun = subAnchor && subAnchor.run === run;
+      const subs = [...tb.querySelectorAll(".ds-prunecb")]
+                     .filter(x => x.dataset.run === run).map(x => x.dataset.sub);
+      const from = sameRun ? subs.indexOf(subAnchor.sub) : -1;
+      const to = subs.indexOf(cb.dataset.sub);
+      if (shiftHeld && from !== -1 && to !== -1) {
+        const [a, b] = from < to ? [from, to] : [to, from];
+        const r = pruneData.runs.find(x => x.run === run);
+        for (const sn of subs.slice(a, b + 1)) {
+          const sub = r && r.subruns.find(x => x.subrun === sn);
+          if (!sub || sub.guard) continue;
+          if (on) pruneSel.add(skey(run, sn)); else pruneSel.delete(skey(run, sn));
+        }
+      } else {
+        const k = skey(run, cb.dataset.sub);
+        if (on) pruneSel.add(k); else pruneSel.delete(k);
+        subAnchor = { run, sub: cb.dataset.sub };
+      }
+      shiftHeld = false;
       renderPruneTable(); recalcPrune();
     }));
     tb.querySelectorAll(".ds-run-name").forEach(td => td.addEventListener("click", () => {
@@ -5844,7 +5933,13 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
         d = await runSpaceJob("/space/job/check", { mode: "prune" }, s => prunePB.tick(s));
         prunePB.finish(true, `verified ${d.n_runs} run(s) against EOS`);
       } else {
-        const r = await fetch("/space/components?verify=0");
+        // "cached": replay the LAST EOS check with its age, rather than
+        // re-listing (~40 s here) or pretending nothing is known. A page reload
+        // used to throw the whole verified view away and show everything as
+        // unverified; the verdicts only move when the backup watcher pushes, so
+        // that was pure loss. A deliberate "Run safety check" click is what
+        // forces a fresh one.
+        const r = await fetch("/space/components?verify=cached");
         d = await r.json();
         if (!r.ok || d.success === false) throw new Error(d.message || "scan failed");
       }
@@ -5862,7 +5957,14 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       $("ds-prune-meta").innerHTML = d.unverifiable
         ? `<span style="color:var(--bad);">Could not reach EOS — nothing can be marked safe</span>`
         : (d.verified
-            ? `Verified ${d.n_runs} run(s) against EOS at ${d.scanned_at}`
+            ? (d.checked_age_s !== null && d.checked_age_s !== undefined && d.checked_age_s > 5
+                ? `${d.n_runs} run(s) verified against EOS &mdash; good as of `
+                  + `<b${d.checked_stale ? ' style="color:var(--warn);"' : ''}>`
+                  + `${esc(d.checked_age_h)} ago</b> (${esc(d.checked_at)})`
+                  + (d.checked_stale ? ' &mdash; re-check recommended' : '')
+                  + `<br><span class="text-muted">A final check runs at delete time; `
+                  + `anything that no longer matches is rejected.</span>`
+                : `Verified ${d.n_runs} run(s) against EOS at ${d.scanned_at}`)
             : `Disk contents as of ${d.scanned_at} (not yet verified)`);
       loadUsage();
     } catch (e) {
