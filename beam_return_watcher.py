@@ -18,13 +18,40 @@ WHAT IT DOES, IN ORDER
   ⚠ There is deliberately only ONE changeover implementation, in switch_mode.py --go. This
   watcher decides *when*; it does not re-implement *how*.
 
-WHY "CONFIRMED" AND NOT JUST beam_on
-  `beam_on` already carries the monitor's own no-pulse debounce, but a single flicker at the
-  start of a fill would still trip it. So we require beam_on true AND a pulse fresher than
-  PULSE_FRESH_S, on CONFIRM_READS consecutive polls. `beam_on: null`, a stale beam_state, or
-  an unreadable file all count as NOT-back (the opposite of beam_gate.py's rule, deliberately:
-  here the failure mode of acting too early is a run full of empty sub-runs that are still
-  marked complete, so ambiguity must block, not proceed).
+DETECTION — ~16 s worst case, off beam_state.json's UNDEBOUNCED pulse fields
+
+  ⚠ Two sources look tempting and are both wrong; this is measured, not assumed.
+
+  * **`beam_on` is useless for detecting RETURN** — it carries an 80 s no-pulse debounce.
+  * **The intensity CSV looks like the fast source and is not.** Its ROWS are 2.4 s apart
+    (max 6.9 s over 24 851 rows today, zero gaps > 20 s) but it is **written in BATCHES**:
+    sampled every 2 s for a minute, the file grew on only 5/29 samples and the newest row was
+    12.8-32.2 s old (median 24 s). Replaying today's three real beam returns through row
+    timestamps says "+4 to +10 s", but that ignores flush latency — real detection off the CSV
+    would be up to ~40 s.
+
+  * **`beam_state.json` IS the fast source.** Measured: it is rewritten every ~14 s and its
+    own timestamp is 0.8-14.8 s old at any moment. Crucially `seconds_since_pulse` and
+    `last_pulse_e10` are direct readings with NO debounce — only `beam_on` is debounced.
+
+  So: beam is back when `last_pulse_e10 > pulse_threshold_e10` AND `seconds_since_pulse` is
+  within PULSE_FRESH_S, on CONFIRM_READS consecutive polls. Worst case = the monitor's ~14 s
+  update + one poll + one confirm ~= **16 s**; typical ~8 s.
+
+  ⚠ Do NOT use `sps_state.json`. Measured 2026-07-27 15:19: `spill_on: true`,
+  `seconds_since_spill: 35` while FTN `beam_on: false`, `seconds_since_pulse: 461`. The SPS
+  was extracting and none of it was reaching n_TOF. SPS spilling is not beam on our target.
+
+  Everything ambiguous counts as NOT back — a stale beam_state (monitor down), an unreadable
+  file, a missing threshold. The failure mode of acting early is a beam run whose empty
+  sub-runs are STILL marked complete, so ambiguity must block rather than proceed.
+
+  ONE FAST PULSE IS ENOUGH BECAUSE THE CHANGEOVER RE-CHECKS. We fire on a single confirmed
+  recent pulse rather than waiting for a second one (which would cost another ~14 s pulse
+  interval). The safety net is that `switch_mode.py --go` stops the cosmic run FIRST and only
+  then re-validates the beam before touching the trigger — by which point ~40 s have passed
+  and several more pulses should have landed. If beam really was a one-off, --go refuses and
+  this watcher restarts cosmics rather than leaving the DAQ idle.
 
 SAFETY
   * one-shot: it exits after acting, and refuses to act twice
@@ -60,10 +87,10 @@ SWITCH = os.path.join(REPO, 'switch_mode.py')
 GATE = os.path.join(REPO, 'beam_gate.py')
 GATE_LOG = os.path.join(REPO, 'logs', 'beam_gate.log')
 
-POLL_S = 20.0
-PULSE_FRESH_S = 60.0     # a pulse older than this is not "running beam"
-STALE_S = 180.0          # beam_state older than this -> monitor down -> treat as not back
-CONFIRM_READS = 3        # consecutive good reads before we act (~60 s)
+POLL_S = 2.0             # beam_state.json is rewritten every ~14 s; poll well inside that
+PULSE_FRESH_S = 25.0     # a pulse this recent means beam is actively running (they come ~11-16 s apart)
+CONFIRM_READS = 2        # consecutive agreeing polls, so one bad read cannot fire it
+STATE_STALE_S = 45.0     # beam_state older than this -> monitor down -> NOT back (measured max age 14.8 s)
 STOP_TIMEOUT_S = 420.0   # how long to wait for daq_control to exit after stop_run
 
 
@@ -72,7 +99,7 @@ def log(msg):
 
 
 def beam_is_back():
-    """-> (bool, detail). Anything ambiguous returns False: acting early is the costly error."""
+    """-> (bool, detail). Anything ambiguous returns False."""
     try:
         with open(BEAM_STATE) as f:
             st = json.load(f)
@@ -85,30 +112,22 @@ def beam_is_back():
     if ts:
         try:
             age = (datetime.now() - datetime.fromisoformat(ts)).total_seconds()
-            if age > STALE_S:
+            if age > STATE_STALE_S:
                 return False, f'beam_state stale by {age:.0f}s (monitor down?)'
         except Exception:
             pass
 
-    on = st.get('beam_on')
-    if on is None:
-        return False, 'beam_on: null (UNKNOWN — not treated as back)'
-    if not on:
-        sp = st.get('seconds_since_pulse')
-        return False, (f'beam off, last pulse {sp:.0f}s ago' if isinstance(sp, (int, float))
-                       else 'beam off')
-
+    thr = st.get('pulse_threshold_e10')
     sp = st.get('seconds_since_pulse')
-    if not isinstance(sp, (int, float)):
-        return False, 'beam_on true but no pulse age reported'
-    if sp > PULSE_FRESH_S:
-        return False, f'beam_on true but last pulse {sp:.0f}s ago (>{PULSE_FRESH_S:.0f})'
-
     e10 = st.get('last_pulse_e10')
-    p10 = st.get('pulses_10min')
-    return True, (f'last pulse {sp:.0f}s ago'
-                  + (f', {e10:.0f}e10' if isinstance(e10, (int, float)) else '')
-                  + (f', {p10} pulses/10min' if p10 is not None else ''))
+    if thr is None or not isinstance(sp, (int, float)) or not isinstance(e10, (int, float)):
+        return False, 'beam_state missing pulse_threshold_e10/seconds_since_pulse/last_pulse_e10'
+
+    if e10 <= thr:
+        return False, f'last pulse only {e10:.1f}e10 (<= {thr:.0f} threshold)'
+    if sp > PULSE_FRESH_S:
+        return False, f'last pulse {sp:.0f}s ago (need <= {PULSE_FRESH_S:.0f}s), {e10:.0f}e10'
+    return True, f'pulse {e10:.0f}e10 {sp:.0f}s ago'
 
 
 def live_run_pids():
@@ -166,6 +185,19 @@ def do_changeover(dry, any_run, expect_run):
 
     log('switching trigger to BEAM and launching the production run...')
     rc, out = sh([PY, SWITCH, 'beam', '--go'], dry, 'switch_mode.py beam --go')
+    if rc == 3:
+        # switch_mode's beam guard refused AFTER the cosmic run was stopped: the pulse that
+        # woke us was a one-off and beam is not actually running. The trigger has NOT been
+        # touched (the guard runs before the apply), so the only damage is an idle DAQ.
+        # Put cosmics back rather than leaving it idle.
+        log('!! beam vanished between detection and the guard — a one-off pulse. The trigger '
+            'was NOT touched. Restarting cosmics so the DAQ is not left idle.')
+        rc2, _ = sh([PY, SWITCH, 'cosmics', '--go'], dry, 'switch_mode.py cosmics --go')
+        if rc2 != 0:
+            log(f'!! could not restart cosmics either (exit {rc2}) — DAQ IS IDLE, fix by hand.')
+            return 6
+        log('cosmics restarted. Re-arm this watcher to try again.')
+        return 3
     if rc != 0:
         log(f'!! switch_mode.py exited {rc} — the trigger may NOT be in beam state. '
             f'DO NOT assume the run is good; check by hand.')
@@ -199,9 +231,10 @@ def main():
     signal.signal(signal.SIGINT, lambda *_: stopping.update(now=True))
     signal.signal(signal.SIGTERM, lambda *_: stopping.update(now=True))
 
-    log(f'watching for beam return{" [DRY RUN]" if args.dry_run else ""} — '
-        f'need beam_on + pulse < {PULSE_FRESH_S:.0f}s on {CONFIRM_READS} consecutive polls '
-        f'({args.poll:g}s apart)')
+    log(f'watching for beam return{" [DRY RUN]" if args.dry_run else ""} — a pulse above '
+        f'threshold within {PULSE_FRESH_S:.0f}s, on {CONFIRM_READS} consecutive polls '
+        f'{args.poll:g}s apart. Source: beam_state.json (updates every ~14 s, undebounced '
+        f'pulse fields) -> detection ~8 s typical, ~16 s worst.')
     log('will stop the live run and launch the beam config via switch_mode.py --go')
     log(f'beam now: {"BACK" if back else "not back"} ({detail})')
 
@@ -212,7 +245,7 @@ def main():
     if args.now:
         return do_changeover(args.dry_run, args.any_run, pinned)
 
-    streak, last_detail = 0, None
+    last_detail, t_arm, streak = None, time.time(), 0
     while not stopping['now']:
         back, detail = beam_is_back()
         streak = streak + 1 if back else 0
@@ -221,7 +254,8 @@ def main():
                 + (f'  [{streak}/{CONFIRM_READS}]' if back else ''))
             last_detail = detail
         if streak >= CONFIRM_READS:
-            log(f'*** BEAM CONFIRMED BACK ({detail}) — starting changeover ***')
+            log(f'*** BEAM CONFIRMED BACK after {time.time() - t_arm:.0f}s of waiting '
+                f'({detail}) — starting changeover ***')
             return do_changeover(args.dry_run, args.any_run, pinned)
         slept = 0.0
         while slept < args.poll and not stopping['now']:
