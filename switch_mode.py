@@ -257,9 +257,42 @@ def describe(secs):
     return 'does not match either configured mode'
 
 
+RUN_NUM_HIGHWATER = os.path.join(REPO, 'config', 'run_num_highwater.json')
+
+
+def _read_highwater(scan_hi):
+    """Highest run number we have ever handed out, or 0. Never trusted blindly."""
+    try:
+        with open(RUN_NUM_HIGHWATER) as f:
+            hw = int(json.load(f).get('last_allocated', 0))
+    except Exception:  # noqa: BLE001
+        return 0
+    # Sanity: a corrupt or hand-edited file must not launch run_999999. If it is wildly
+    # beyond what the directories suggest, distrust it and fall back to the scan.
+    if hw < 0 or hw > scan_hi + 1000:
+        print(f'[runnum] ⚠ ignoring implausible high-water mark {hw} '
+              f'(directories top out at {scan_hi})')
+        return 0
+    return hw
+
+
 def next_run_num():
-    """Highest existing run_N across both run trees, + 1. No decision to make."""
-    hi = 0
+    """Next free run number = max(both run trees, high-water mark) + 1.
+
+    The directory scan alone is NOT sufficient, and the gap is not theoretical.
+    `space_watcher` drops its `keep_recent_runs` reserve below `emergency_gb` (50 GB) and
+    will then delete "any EOS-verified run ... newest included". If it reclaims the newest
+    runs from both local trees, a pure scan hands back a number that STILL EXISTS ON EOS —
+    and the new run's backup would be written into a directory holding a different run's
+    data. That is a silent data-integrity failure, and it is most likely exactly when
+    mode_watcher is doing unattended changeovers on a filling disk.
+
+    So we also keep a local high-water mark and never go below it. Failure direction is
+    deliberate: a lost or corrupt file falls back to the scan (skip a number at worst),
+    and the mark is written when the number is ALLOCATED rather than when the run
+    succeeds, so an aborted changeover burns a number instead of re-using one.
+    """
+    scan_hi = 0
     for root in (RUNS_DIR, DREAM_RUN_DIR):
         try:
             names = os.listdir(root)
@@ -268,8 +301,20 @@ def next_run_num():
         for n in names:
             m = re.fullmatch(r'run_(\d+)', n)
             if m:
-                hi = max(hi, int(m.group(1)))
-    return hi + 1
+                scan_hi = max(scan_hi, int(m.group(1)))
+
+    nxt = max(scan_hi, _read_highwater(scan_hi)) + 1
+    try:
+        os.makedirs(os.path.dirname(RUN_NUM_HIGHWATER), exist_ok=True)
+        with open(RUN_NUM_HIGHWATER, 'w') as f:
+            json.dump({'last_allocated': nxt,
+                       'at': time.strftime('%Y-%m-%d %H:%M:%S'),
+                       'scan_max': scan_hi}, f, indent=1)
+    except Exception as e:  # noqa: BLE001
+        # Not fatal: without the file we simply degrade to the old scan-only behaviour.
+        print(f'[runnum] ⚠ could not persist high-water mark ({e}) — '
+              f'scan-only allocation this time')
+    return nxt
 
 
 def generate_config(spec, run_num):

@@ -304,3 +304,4 @@ config/mode_watcher_state.json
 # watcher pid files (runtime)
 .beam_gate.pid
 .beam_return_watcher.pid
+config/run_num_highwater.json
