@@ -1944,49 +1944,48 @@ document.getElementById("rerun-qa").addEventListener("click", async () => {
 // Processor / QA / Backup watchers use single toggle buttons (Start when stopped,
 // Stop when running); wiring + state tracking lives with WATCHER_TOGGLES below.
 
+// Start Run. The run number is allocated ONCE, server-side, and the config is generated
+// at that number before we ask for confirmation — so the name in the dialog is the name
+// that starts. The old flow allocated in one request, read the name back in another, and
+// regenerated in a third, which could (and did) show one run and start another.
 async function startRun() {
 
-  // ----- STEP 1: Update run config -----
-  const updateRes = await fetch("/update_run_config_py", {
+  // ----- STEP 1: allocate the number AND generate the config, atomically -----
+  const prepRes = await fetch("/run/prepare", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    {#body: JSON.stringify({ banco_position: bancoInput }),#}
+    body: JSON.stringify({}),
   });
-
-  const updateData = await updateRes.json();
-  if (!updateData.success) {
-    await daqAlert(updateData.message, {title: "Could not update the run number", danger: true});
+  const prep = await prepRes.json();
+  if (!prep.success) {
+    await daqAlert(prep.message, {title: "Could not prepare the run", danger: true});
     return;
   }
 
-  console.log(updateData.message);
+  const runName = prep.run_name;
 
-  // ----- STEP 2: Fetch updated config -----
-  const configRes = await fetch("/get_config_py", { method: "GET" });
-  const configData = await configRes.json();
-
-  if (!configData.success) {
-    await daqAlert(configData.message, {title: "Could not load the run config", danger: true});
-    return;
-  }
-
-  const runName = configData.run_name;
-
-  // ----- STEP 3: Ask user for confirmation -----
-  const confirmRun = await daqConfirm(`Run name:  ${runName}`,
-                                      {title: "Start run?", okText: "Start run"});
+  // ----- STEP 2: confirm the run that will actually start -----
+  const confirmRun = await daqConfirm(
+    `Run name:  ${runName}\n\nThis number is already reserved — cancelling skips it `
+    + `rather than reusing it.`,
+    {title: "Start run?", okText: "Start run"});
   if (!confirmRun) return;
 
-  // ----- STEP 4: Start the run -----
-  const res = await fetch("/run_config_py", { method: "POST" });
+  // ----- STEP 3: start exactly the config we just generated -----
+  const res = await fetch("/start_run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config: prep.config }),
+  });
   const data = await res.json();
+  const ok = res.ok && data.success !== false;
 
-  // ----- STEP 5: Popup status -----
-  showPopup(data.message, data.success ? "#28a745" : "#dc3545");
+  // ----- STEP 4: popup status -----
+  showPopup(data.message, ok ? "#28a745" : "#dc3545");
 
-  // ----- STEP 6: Update displayed info -----
-  if (data.success) {
-    document.getElementById("run-display").textContent = data.run_name;
+  // ----- STEP 5: update displayed info -----
+  if (ok) {
+    document.getElementById("run-display").textContent = runName;
 
     await loadRuns();
 

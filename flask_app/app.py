@@ -483,9 +483,16 @@ def start_run():
     )
 
     if result.returncode == 0:
-        return jsonify({"message": f"Run started with {config_file}"})
+        # Seed "Current run" immediately, as the retired /run_config_py path used to.
+        # Without this the GUI shows the previous run until daq_control's log catches up.
+        try:
+            with open(config_path) as f:
+                _save_current_run(json.load(f).get("run_name", "Unknown"))
+        except Exception:  # noqa: BLE001
+            pass
+        return jsonify({"success": True, "message": f"Run started with {config_file}"})
     else:
-        return jsonify({"message": f"Error: {result.stderr}"}), 500
+        return jsonify({"success": False, "message": f"Error: {result.stderr}"}), 500
 
 @app.route("/stop_sub_run", methods=["POST"])
 def stop_sub_run():
@@ -558,16 +565,85 @@ def restart_flask():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/run/prepare", methods=["POST"])
+def run_prepare():
+    """Allocate the next run number, regenerate the config AT that number, report the name.
+
+    This is one atomic step on purpose. The old flow was three requests —
+    /update_run_config_py fired `iterate_run_num.py` with Popen + sleep(0.2), /get_config_py
+    read the name back, /run_config_py regenerated and started — so the number could change
+    between the popup and the launch, and the confirmation could name a run that never ran.
+    Worse, iterate_run_num.py achieved the increment by REWRITING the `self.run_name` line
+    in the tracked run_config_beam.py source, which only ever worked for the base config
+    (every run_configs/ generator overrides run_name) and left the repo dirty every start.
+
+    Now: run_num.allocate() picks the number (the same allocator switch_mode --go uses), and
+    the generator is run with RUN_NUM in its environment, so no source file is touched. The
+    caller gets back the run name that WILL be used and the exact config to launch.
+
+    ⚠ Allocation is eager — cancelling the confirmation burns a run number. That is the
+    safe direction: a gap costs nothing, a reused number can put two runs in one EOS
+    directory. See run_num.py.
+    """
+    try:
+        sys.path.insert(0, BASE_DIR)
+        import run_num as _rn
+        import importlib
+        _rn = importlib.reload(_rn)
+
+        n = _rn.allocate()
+        env = {**os.environ, "RUN_NUM": str(n)}
+        gen = subprocess.run([VENV_PY, f"{BASE_DIR}/run_config_beam.py"],
+                             cwd=BASE_DIR, env=env, capture_output=True, text=True,
+                             timeout=180)
+        cfg_file = "run_config_beam.json"
+        cfg_path = os.path.join(CONFIG_RUN_DIR, cfg_file)
+        if gen.returncode != 0 or not os.path.exists(cfg_path):
+            return jsonify({"success": False,
+                            "message": f"Config generation failed for run_{n}: "
+                                       f"{(gen.stderr or gen.stdout or '')[-400:]}"}), 500
+
+        # Trust the generated file, not our own arithmetic.
+        with open(cfg_path) as f:
+            written = json.load(f).get("run_name")
+        if written != _rn.run_name(n):
+            return jsonify({"success": False,
+                            "message": f"Generated config says {written!r} but we "
+                                       f"allocated {_rn.run_name(n)!r} — refusing."}), 500
+
+        log_event("RUN_PREPARE", "run_control", run_name=written, remote_addr=_client_ip())
+        return jsonify({"success": True, "run_name": written, "config": cfg_file,
+                        "message": f"Prepared {written}"})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/run/next_num")
+def run_next_num():
+    """What the next run number would be, without claiming it. Read-only, for display."""
+    try:
+        sys.path.insert(0, BASE_DIR)
+        import run_num as _rn
+        import importlib
+        _rn = importlib.reload(_rn)
+        return jsonify({"success": True, "run_num": _rn.peek(),
+                        "run_name": _rn.run_name(_rn.peek())})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 @app.route("/update_run_config_py", methods=['POST'])
 def update_run_config_py():
-    try:
-        subprocess.Popen(["python", f"{BASE_DIR}/iterate_run_num.py"])
-        time.sleep(0.2)  # Give it a moment to complete
+    """DEPRECATED — superseded by /run/prepare.
 
-        return jsonify({"success": True, "message": f"Run number iterated"})
-
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+    It used to shell out to iterate_run_num.py, which rewrote the run_name line in the
+    tracked run_config_beam.py source. That is gone: nothing should mutate a source file to
+    pick a run number. Kept only so a stale browser tab gets a clear error instead of
+    silently starting a run with the wrong number.
+    """
+    return jsonify({"success": False,
+                    "message": "This endpoint is retired — reload the page. Run numbers "
+                               "are now allocated by /run/prepare (run_num.py)."}), 410
 
 @app.route("/run_config_py", methods=['POST'])
 def run_config_py():
@@ -2894,11 +2970,20 @@ def space_components():
     verify=0 skips EOS entirely (instant, works offline) so the tab can paint the
     breakdown immediately; verify=1 issues ONE recursive EOS listing for the whole
     tree and marks each component safe/unsafe from it.
+
+    verify=cached is what a page reload should use: it replays the LAST listing at
+    whatever age it has, without touching EOS, and returns checked_age_h so the tab
+    can say "good as of 2 minutes ago". A fresh listing costs tens of seconds and
+    the verdicts only move when the backup watcher pushes, so paying that on every
+    reload buys nothing. Deletion is unaffected — it always re-lists and re-verifies.
     """
-    verify = request.args.get("verify", "1") not in ("0", "false", "no")
+    v = request.args.get("verify", "1")
+    allow_stale = v in ("cached", "stale")
+    verify = allow_stale or v not in ("0", "false", "no")
     force = request.args.get("force", "0") in ("1", "true", "yes")
     try:
-        return jsonify(space_manager.component_scan(verify=verify, force=force))
+        return jsonify(space_manager.component_scan(
+            verify=verify, force=force, allow_stale=allow_stale))
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

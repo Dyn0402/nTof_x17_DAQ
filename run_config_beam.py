@@ -8,7 +8,17 @@ Created as Cosmic_Bench_DAQ_Control/run_config_template.py
 @author: Dylan Neff, Dylan
 """
 
+import os as _os
+
 from run_config_base import RunConfigBase
+
+# RUN_NUM env override (2026-07-27). Lets a caller pick the run number WITHOUT rewriting
+# `self.run_name` in this tracked source file, which is what the old iterate_run_num.py did
+# on every GUI start. The generators in run_configs/ already work this way; this makes the
+# base config behave the same, so the GUI Start Run path can allocate a number up front and
+# show the operator the run name that will actually be used.
+# Unset -> the hardcoded run_name below is kept, so nothing changes for existing callers.
+_ENV_RUN_NUM = _os.environ.get('RUN_NUM')
 
 # ---------------------------------------------------------------------------
 # Site configuration — edit here to change the data location
@@ -148,7 +158,12 @@ class Config(RunConfigBase):
         super().__init__(config_path)
 
     def _set_defaults(self, config_path=None):
-        self.run_name = 'run_57'  # RANDOM pulser + gamma-flash trigger (flash_random, Mode 2) + SINGLE-PASS resist HV scan A/B/C 580->520 V (-2 V, 31 pts), det D 10 V lower (570->510), drift 800 V B/C/D + 600 V det A, Ar/Iso 90/10, no Pb filter, 5 min sub-runs, manual stop
+        # RUN_NUM in the environment wins (see the note at the top of this file). Every
+        # path below — run_out_dir, dream run_directory, processor run_dir, hv run_out_dir —
+        # derives from this one line, so setting it here is enough.
+        # ⚠ Subclasses in run_configs/ set their own run_name AFTER calling super(), and
+        # they read RUN_NUM themselves; this only governs the base config used standalone.
+        self.run_name = f'run_{_ENV_RUN_NUM}' if _ENV_RUN_NUM else 'run_57'  # RANDOM pulser + gamma-flash trigger (flash_random, Mode 2) + SINGLE-PASS resist HV scan A/B/C 580->520 V (-2 V, 31 pts), det D 10 V lower (570->510), drift 800 V B/C/D + 600 V det A, Ar/Iso 90/10, no Pb filter, 5 min sub-runs, manual stop
         self.base_out_dir = BASE_DATA_DIR
         self.data_out_dir = f'{self.base_out_dir}runs/'
         self.run_out_dir = f'{self.data_out_dir}{self.run_name}/'
