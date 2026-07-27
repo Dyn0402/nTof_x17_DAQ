@@ -796,7 +796,12 @@
     // block just keeps the UI honest: disable control buttons for viewers and
     // block any stray non-GET fetch, plus wire the unlock/lock controls.
     window.AUTHORIZED = {{ 'true' if authorized else 'false' }};
-    window.AUTH_VIA   = {{ ('"' + auth_via + '"') if auth_via else 'null' }};
+    {# tojson, NOT string concatenation: autoescape turns the quotes of a
+       hand-built '"' + x + '"' into &#34; INSIDE this <script>, which is a JS
+       SyntaxError that kills this entire block — every control button then stays
+       enabled for viewers. tojson emits a properly quoted literal (and `null`
+       for None) and is escape-safe. #}
+    window.AUTH_VIA   = {{ auth_via | tojson }};
 
     // Buttons that trigger a control (POST) action. View-only buttons (reload,
     // refresh, load images, run/subrun/detector selectors) are NOT listed so
