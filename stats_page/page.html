@@ -10,7 +10,7 @@
     --plane:#f9f9f7; --surface:#fcfcfb;
     --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
     --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
-    --series-1:#2a78d6; --series-track:#cde2fb;
+    --series-1:#2a78d6; --series-3:#1baf7a; --series-track:#cde2fb;
     --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
   }
   @media (prefers-color-scheme: dark) {
@@ -19,7 +19,7 @@
       --plane:#0d0d0d; --surface:#1a1a19;
       --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
       --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
-      --series-1:#3987e5; --series-track:#184f95;
+      --series-1:#3987e5; --series-3:#199e70; --series-track:#184f95;
     }
   }
   :root[data-theme="dark"] {
@@ -27,7 +27,7 @@
     --plane:#0d0d0d; --surface:#1a1a19;
     --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
     --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
-    --series-1:#3987e5; --series-track:#184f95;
+    --series-1:#3987e5; --series-3:#199e70; --series-track:#184f95;
   }
 
   *, *::before, *::after { box-sizing: border-box; }
@@ -127,13 +127,14 @@
 
   <div class="card hero">
     <div>
-      <div class="label">Events this run</div>
-      <div class="value" id="events-run">—</div>
-      <div class="sub" id="events-sub">&nbsp;</div>
+      <div class="label">Beam triggers recorded</div>
+      <div class="value" id="stat-beam">—</div>
+      <div class="sub" id="stat-beam-note">&nbsp;</div>
+      <div class="meter"><i id="stat-meter"></i></div>
     </div>
     <div class="runid">
-      Current run<b id="run-name">—</b>
-      <span id="run-status">—</span>
+      Projected total<b id="stat-projected">—</b>
+      <span id="stat-projected-note">—</span>
     </div>
   </div>
 
@@ -146,38 +147,16 @@
     </div>
 
     <div class="card tile">
-      <div class="label">Sub-run progress</div>
-      <div class="value" id="subrun">—</div>
-      <div class="meter"><i id="subrun-meter"></i></div>
-      <div class="note" id="subrun-note">&nbsp;</div>
-    </div>
-
-    <div class="card tile">
-      <div class="label">Beam</div>
-      <div class="value" id="beam">—</div>
+      <div class="label">Beam intensity</div>
+      <div class="value"><span id="beam-int">—</span><span class="unit">e10 / pulse</span></div>
+      <svg class="spark" id="beam-spark" preserveAspectRatio="none" aria-hidden="true"></svg>
       <div class="note" id="beam-note">&nbsp;</div>
     </div>
 
     <div class="card tile">
-      <div class="label">Tracks</div>
-      <div class="value" id="tracks">—</div>
-      <div class="note pending" id="tracks-note">not wired up yet</div>
-    </div>
-  </div>
-
-  <h2>Statistics vs projection</h2>
-  <div class="grid" id="stats-grid">
-    <div class="card tile">
-      <div class="label">Beam triggers recorded</div>
-      <div class="value" id="stat-beam">—</div>
-      <div class="meter"><i id="stat-meter"></i></div>
-      <div class="note" id="stat-beam-note">&nbsp;</div>
-    </div>
-
-    <div class="card tile">
-      <div class="label">Projected total</div>
-      <div class="value" id="stat-projected">—</div>
-      <div class="note" id="stat-projected-note">&nbsp;</div>
+      <div class="label">Current run</div>
+      <div class="value" id="run-name">—</div>
+      <div class="note" id="run-note">&nbsp;</div>
     </div>
 
     <div class="card tile">
@@ -190,6 +169,12 @@
       <div class="label">Cosmics</div>
       <div class="value" id="stat-cosmics">—</div>
       <div class="note" id="stat-cosmics-note">counted separately</div>
+    </div>
+
+    <div class="card tile">
+      <div class="label">Tracks</div>
+      <div class="value" id="tracks">—</div>
+      <div class="note pending" id="tracks-note">not wired up yet</div>
     </div>
   </div>
 
@@ -254,20 +239,28 @@
     el.querySelector("span:last-child").textContent = text;
   }
 
-  function sparkline(svg, pts) {
+  function sparkline(svg, pts, colour, fromZero) {
+    colour = colour || "var(--series-1)";
     while (svg.firstChild) svg.removeChild(svg.firstChild);
     var vals = pts.filter(function (v) { return typeof v === "number" && !isNaN(v); });
     if (vals.length < 2) return;
     var W = 100, H = 38, pad = 3;
     svg.setAttribute("viewBox", "0 0 " + W + " " + H);
     var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
-    // Floor the domain at 5% of the mean. Auto-scaling to the raw range would
-    // render 25.35–25.40 Hz — pure counting noise on a steady run — as a mountain
-    // range. A steady rate has to look steady; real excursions still scale fine.
-    var mean = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
-    var span = Math.max(hi - lo, Math.abs(mean) * 0.05, 1e-9);
-    var mid = (hi + lo) / 2;
-    lo = mid - span / 2; hi = mid + span / 2;
+    if (fromZero) {
+      // Beam intensity: anchor at zero so a stop reads as a fall to the floor in
+      // proportion, rather than as a jump to the bottom of a zoomed window.
+      lo = 0;
+      hi = Math.max(hi, 1e-9);
+    } else {
+      // Floor the domain at 5% of the mean. Auto-scaling to the raw range would
+      // render 25.35–25.40 Hz — pure counting noise on a steady run — as a mountain
+      // range. A steady rate has to look steady; real excursions still scale fine.
+      var mean = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+      var span = Math.max(hi - lo, Math.abs(mean) * 0.05, 1e-9);
+      var mid = (hi + lo) / 2;
+      lo = mid - span / 2; hi = mid + span / 2;
+    }
     var x = function (i) { return (i / (vals.length - 1)) * W; };
     var y = function (v) { return H - pad - ((v - lo) / (hi - lo)) * (H - 2 * pad); };
     var d = vals.map(function (v, i) { return (i ? "L" : "M") + x(i).toFixed(2) + " " + y(v).toFixed(2); }).join(" ");
@@ -276,7 +269,7 @@
     var path = document.createElementNS(ns, "path");
     path.setAttribute("d", d);
     path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "var(--series-1)");
+    path.setAttribute("stroke", colour);
     path.setAttribute("stroke-width", "2");
     path.setAttribute("stroke-linecap", "round");
     path.setAttribute("stroke-linejoin", "round");
@@ -287,7 +280,7 @@
     last.setAttribute("cx", x(vals.length - 1).toFixed(2));
     last.setAttribute("cy", y(vals[vals.length - 1]).toFixed(2));
     last.setAttribute("r", "2.6");
-    last.setAttribute("fill", "var(--series-1)");
+    last.setAttribute("fill", colour);
     last.setAttribute("stroke", "var(--surface)");
     last.setAttribute("stroke-width", "1.5");
     svg.appendChild(last);
@@ -303,13 +296,13 @@
   }
 
   function renderStats(s) {
-    var grid = $("stats-grid"), plot = $("plot-card");
+    var plot = $("plot-card");
     if (!s) {                       // projection block absent (disabled or failed)
-      grid.style.display = "none";
       plot.style.display = "none";
+      $("stat-beam").textContent = "—";
+      $("stat-beam-note").textContent = "statistics unavailable";
       return;
     }
-    grid.style.display = "";
     plot.style.display = "";
 
     var p = s.projection;
@@ -325,7 +318,7 @@
     }
     $("stat-beam").textContent = compact(s.beam_events);
     $("stat-beam-note").textContent =
-      s.n_beam_subruns + " sub-runs since " + (s.first_run || "start")
+      s.n_beam_subruns + " sub-runs, " + (s.first_run || "all runs")
       + (s.events_per_pulse ? " · " + s.events_per_pulse + " events/pulse" : "");
 
     $("stat-cosmics").textContent = compact(s.cosmic_events);
@@ -393,34 +386,35 @@
       b.className = "banner";
     }
 
-    $("events-run").textContent = compact(trg.events_run);
-    $("events-sub").textContent = trg.events_subrun !== null && trg.events_subrun !== undefined
-      ? compact(trg.events_subrun) + " in the current sub-run" : " ";
+    // Current run is a plain tile now — the headline number is the cumulative total.
     $("run-name").textContent = run.name || "—";
-    $("run-status").textContent = run.status || "—";
+    var runBits = [run.status || "—"];
+    if (trg.events_run !== null && trg.events_run !== undefined)
+      runBits.push(compact(trg.events_run) + " events");
+    if (run.subrun) runBits.push(run.subrun);
+    $("run-note").textContent = runBits.join(" · ");
 
     $("rate").textContent = (typeof trg.rate_hz === "number") ? trg.rate_hz.toFixed(1) : "—";
     $("rate-note").textContent = history.length > 1
-      ? "last " + history.length + " samples" : " ";
-    sparkline($("spark"), history.map(function (h) { return h.rate; }));
-
-    if (run.subrun_idx && run.subrun_total) {
-      $("subrun").textContent = run.subrun_idx + " / " + run.subrun_total;
-      $("subrun-meter").style.width = (100 * run.subrun_idx / run.subrun_total) + "%";
-    } else {
-      $("subrun").textContent = run.subrun_total ? "– / " + run.subrun_total : "—";
-      $("subrun-meter").style.width = "0";
-    }
-    $("subrun-note").textContent = run.progress || run.subrun || " ";
+      ? "last " + history.length + " samples" : " ";
+    sparkline($("spark"), history.map(function (h) { return h.rate; }), "var(--series-1)");
 
     // beam.on === null means UNKNOWN (watcher transient), which is not the same as OFF.
+    var bh = d.beam_history || [];
+    var live = bh.filter(function (b) { return b.pulses > 0; });
+    var latest = live.length ? live[live.length - 1].e10 : beam.last_pulse_e10;
+    $("beam-int").textContent = (typeof latest === "number")
+      ? Math.round(latest).toLocaleString("en-US") : "—";
+    // Empty buckets carry 0, so a beam stop reads as a drop to the floor instead of
+    // being compressed out of the trace. Floor the domain at 0 for the same reason.
+    sparkline($("beam-spark"), bh.map(function (b) { return b.e10; }),
+             "var(--series-3)", true);
+
     var bs = beam.on;
-    $("beam").textContent = bs === true ? "On" : bs === false ? "Off" : "Unknown";
-    var bits = [];
+    var bits = [bs === true ? "beam on" : bs === false ? "beam off" : "beam unknown"];
     if (typeof beam.pulses_10min === "number") bits.push(beam.pulses_10min + " pulses/10 min");
-    if (typeof beam.seconds_since_pulse === "number") bits.push("last " + dur(beam.seconds_since_pulse) + " ago");
     if (typeof sps.spills_10min === "number") bits.push(sps.spills_10min + " SPS spills/10 min");
-    $("beam-note").textContent = bits.join(" · ") || " ";
+    $("beam-note").textContent = bits.join(" · ");
 
     if (d.tracks && typeof d.tracks.count === "number") {
       $("tracks").textContent = compact(d.tracks.count);

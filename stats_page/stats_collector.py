@@ -40,6 +40,7 @@ REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(REPO_DIR, "config", "stats_page_config.json")
 HISTORY_PATH = os.path.join(REPO_DIR, "config", "stats_page_history.json")
 BEAM_STATE = os.path.join(REPO_DIR, "config", "beam_state.json")
+BEAM_CSV_DIR = "/home/mx17/beam_july/slow_control/beam_intensity"
 SPS_STATE = os.path.join(REPO_DIR, "config", "sps_state.json")
 PAGE_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 
@@ -68,7 +69,14 @@ DEFAULTS = {
     # disk. This must stay consistent with what the frozen projection was anchored
     # on, or the "against projection" tile compares two different totals.
     "projection_first_run": None,
+    # Beam-intensity trace for its own card. The daily CSV is ~1.3 MB and grows all
+    # day, so it is tail-read and recomputed on its own slower cadence.
+    "beam_history_hours": 6.0,
+    "beam_history_bucket_min": 10.0,
+    "beam_history_interval_s": 300,
 }
+
+_beam_history_cache = {"t": 0.0, "data": None}
 
 # {"t": last computed, "data": block, "png": path if freshly rendered}
 _projection_cache = {"t": 0.0, "data": None, "png": None}
@@ -190,6 +198,71 @@ def projection_block(cfg, force=False):
     return data, png
 
 
+def _tail_lines(path, max_bytes):
+    """Last ~max_bytes of a text file as complete lines.
+
+    The beam CSV is one row per poll and reaches ~1.3 MB by end of day. Seeking to
+    the tail keeps this O(window) instead of O(day), so the cost does not creep up
+    as the day goes on."""
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(max(0, size - max_bytes))
+        chunk = f.read()
+    text = chunk.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    return lines[1:] if size > max_bytes else lines[1:]   # drop partial/header line
+
+
+def beam_history(cfg):
+    """[{t, e10}] — mean beam-pulse intensity per bucket over the recent window.
+
+    Buckets with no pulses report 0 rather than being omitted, so a beam stop reads
+    as a drop to the floor instead of being silently compressed out of the trace."""
+    now = time.time()
+    c = _beam_history_cache
+    if c["data"] is not None and now - c["t"] < float(cfg["beam_history_interval_s"]):
+        return c["data"]
+
+    hours = float(cfg["beam_history_hours"])
+    bucket_s = float(cfg["beam_history_bucket_min"]) * 60.0
+    t0 = now - hours * 3600.0
+    threshold = _read_json(BEAM_STATE).get("pulse_threshold_e10") or 50.0
+
+    sums, counts = {}, {}
+    try:
+        # Two days, so a window spanning local midnight is not cut in half.
+        for day_offset in (1, 0):
+            day = datetime.fromtimestamp(now - day_offset * 86400).strftime("%Y-%m-%d")
+            path = os.path.join(BEAM_CSV_DIR, f"beam_intensity_{day}.csv")
+            if not os.path.exists(path):
+                continue
+            for line in _tail_lines(path, 4_000_000):
+                parts = line.split(",")
+                if len(parts) < 3:
+                    continue
+                try:
+                    ts, e10 = float(parts[1]), float(parts[2])
+                except ValueError:
+                    continue
+                if ts < t0 or e10 <= threshold:
+                    continue
+                b = int((ts - t0) // bucket_s)
+                sums[b] = sums.get(b, 0.0) + e10
+                counts[b] = counts.get(b, 0) + 1
+    except Exception as e:
+        print(f"[stats_page] Beam history failed: {e}", file=sys.stderr)
+        return c["data"]
+
+    n_buckets = max(1, int(round(hours * 3600.0 / bucket_s)))
+    out = [{"t": round(t0 + (b + 0.5) * bucket_s),
+            "e10": round(sums[b] / counts[b], 1) if counts.get(b) else 0.0,
+            "pulses": counts.get(b, 0)}
+           for b in range(n_buckets)]
+    c.update(t=now, data=out)
+    return out
+
+
 def collect(cfg):
     """Build the payload. Every source is optional — a missing or broken one costs
     its own fields, never the whole push."""
@@ -265,6 +338,7 @@ def collect(cfg):
         "supercycle_period_s": sps.get("supercycle_period_s"),
     }
 
+    payload["beam_history"] = beam_history(cfg)
     payload["stats"], _ = projection_block(cfg)
 
     return payload

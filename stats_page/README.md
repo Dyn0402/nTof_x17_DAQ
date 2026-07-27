@@ -49,9 +49,24 @@ The page also carries cumulative statistics and the frozen projection from
 behind the projection we are, a separate cosmics counter, and the cumulative plot
 as `progress.png`.
 
-That block is on its own cadence, because it is much more expensive than the live
-status (it imports pandas and walks every run directory) and much slower moving
-(it only changes when a sub-run completes):
+### What updates when
+
+Three cadences, because the three things move at completely different speeds:
+
+| | every | why |
+|---|---|---|
+| live status (run, rate, services) | **60 s** push | cheap — one HTTP GET plus two small JSON reads |
+| beam-intensity trace | **300 s** | tail-reads the ~1.3 MB daily beam CSV |
+| statistics + projection numbers | **600 s** | imports pandas, walks the run dirs, syncs the ledger (~2 s) |
+| **cumulative plot** | **only when a sub-run completes** | a 200 kB matplotlib render; nothing about it changes until then |
+
+The plot is gated on `(last_subrun_end, projection created)`, so an unchanged PNG is
+never re-rendered and never re-uploaded — that matters because EOS versions every
+overwrite. The browser reloads the image on the same stamp rather than on a timer.
+
+The rest of that block is on its own cadence because it is much more expensive than
+the live status (it imports pandas and walks every run directory) and much slower
+moving (it only changes when a sub-run completes):
 
 - recomputed every `projection_interval_s` (default 600 s), not every push;
 - the **plot** is re-rendered and re-uploaded only when its inputs actually change
