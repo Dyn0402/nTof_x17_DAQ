@@ -92,6 +92,7 @@
   .tile .value.ahead { color:var(--good); }
   .tile .value.behind { color:var(--serious); }
 
+  .caption { margin:0 0 10px; font-size:13px; color:var(--ink-2); max-width:78ch; }
   .plot { margin-top:14px; padding:12px; }
   .plot img { display:block; width:100%; height:auto; border-radius:6px; }
   /* The plot is rendered on a light surface; keep it legible in dark mode without
@@ -194,6 +195,17 @@
 
   <div class="card plot" id="plot-card">
     <img id="progress-plot" src="progress.png" alt="Cumulative beam triggers against the frozen projection">
+  </div>
+
+  <h2>IPC yield vs time since the gamma flash</h2>
+  <p class="caption">
+    Expected IPC arrival from the Geant4 thermal capture campaign, over the trigger
+    yield measured in run_79 in 50 µs bins, flash-anchored. The banded totals are each
+    region's share of the recorded triggers, scaled to the projection above.
+  </p>
+  <div class="card plot">
+    <img id="ipc-plot" src="ipc_yield.png" loading="lazy"
+         alt="Expected IPC arrival and measured run_79 trigger yield versus time since the gamma flash">
   </div>
 
   <h2>Services</h2>

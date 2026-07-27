@@ -81,6 +81,55 @@ of data taking at 85%.**
    bar each, because a sub-run's rate is an average over it, not a sample.
 3. **Cosmics**, recorded and projected.
 
+## IPC yield vs time since flash
+
+```bash
+/usr/bin/python3 ipc_yield.py            # plot from cache
+/usr/bin/python3 ipc_yield.py --refresh  # re-extract from the ROOT files (~6 min)
+```
+
+**Note the interpreter.** This one needs `uproot`, which lives in the system python,
+while the rest of `projections/` needs `pandas`, which lives in `.venv`. The two
+dependency sets are disjoint and deliberately kept that way — `ipc_yield.py` reads
+the frozen projection straight from its JSON rather than importing `live.py`, so
+neither environment has to grow the other's dependencies.
+
+Two panels sharing an x axis, not one overlay: the curves are ~1e-6 IPC pairs/pulse/ms
+and ~2 triggers/spill/ms. A twin y-axis would put two unrelated scales in one frame
+and invite reading a crossing point that means nothing. Both axes are log — the
+arrival density goes as 1/t, and log x also spreads the five regions to roughly even
+widths so their labels don't collide and the 25–80 ms band stops occupying two thirds
+of the frame while contributing a third of the triggers.
+
+**Expected IPC** — Geant4 thermal campaign
+(`MX17_Full_Geant/docs/report/thermal_captures_subkev_full.json`), per-decade
+radiative capture from `rad_per_pulse_npxbr` × `ALPHA_IPC`, mapped to arrival time by
+neutron TOF over 19.5 m EAR2, `t[ms] = 1.41/√E[eV]`, spread within each decade as
+dN/dt ~ 1/t. It steps at decade boundaries because the model is piecewise — that is
+not noise. It **stops at 44.6 ms**, the TOF of the campaign's lowest energy (1 meV);
+past that the panel is greyed, because that is absence of simulation, not absence of
+IPC. The 25–80 ms region is therefore only half covered by the expectation.
+
+**Measured yield** — run_79, FEU 01 only (every FEU reads every event, so one FEU is
+the whole event list at ⅛ the I/O). Anchored on the **gamma flash itself**, tagged by
+ADC saturation, not on the first recorded event: run_79's flash capture is ~99%
+overall but dips to ~97% in some sub-runs, and in those spills the first recorded
+event is the 1 ms gate opening rather than the flash — anchoring on it would smear
+the axis by a millisecond. Spills with no captured flash are dropped (17,037 of
+17,167 kept).
+
+Region totals scale each region's measured share to the frozen projection, so
+**re-run this after freezing a new projection** or the `→ xM` figures will still
+refer to the old one.
+
+| region | share | /spill | → by Aug 10 |
+|---|---|---|---|
+| 1–3 ms | 8.7% | 8.9 | 2.59M |
+| 3–8 ms | 16.3% | 16.7 | 4.86M |
+| 8–15 ms | 21.7% | 22.2 | 6.45M |
+| 15–25 ms | 19.9% | 20.3 | 5.91M |
+| 25–80 ms | 33.5% | 34.3 | 9.97M |
+
 ## Cosmics during beam-off
 
 Cosmic triggers are projected to accumulate through the scheduled downtime, at the
