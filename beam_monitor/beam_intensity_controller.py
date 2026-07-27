@@ -70,10 +70,36 @@ BEAM_UNIT = "1e10 protons"
 # Points below this are empty/parasitic-noise cycles, not real beam pulses.
 PULSE_THRESHOLD_E10 = 50.0
 
-POLL_S = 30.0            # NXCALS query cadence
+POLL_S = 12.0            # NXCALS query cadence. The query itself is ~0.3 s, so
+                         # this only sets how stale the published state can be;
+                         # NXCALS's own ingestion latency (11-23 s measured) is the
+                         # real floor, and it also sets how fast beam-BACK-ON shows.
 LOOKBACK_S = 600.0       # stats window (pulses / protons in the last 10 min)
-BEAM_OFF_GAP_S = 180.0   # no pulse for this long -> beam considered OFF
-                         # (must exceed NXCALS latency + normal supercycle gaps)
+RATE_WINDOW_S = 120.0    # SHORT window for the live protons/min figure. Measured
+                         # 2026-07-27 on a 3 h beam-on stretch: the window-to-window
+                         # scatter of the rate is 7.1 % at 600 s, 8.4 % at 120 s,
+                         # 11 % at 60 s and 24 % at 15 s (~19 pulses/min, so a 15 s
+                         # window can hold zero pulses). 120 s is therefore 5x faster
+                         # than the old 10 min at essentially the same steadiness.
+BEAM_OFF_GAP_S = 80.0    # no pulse for this long -> beam considered OFF.
+                         # MEASURED 2026-07-27 over 134 h / 117472 pulses (07-22..27):
+                         # the pulse-gap distribution has a CLEAN EMPTY BAND between
+                         # 38.4 s and 86.4 s. Longest gap with the beam demonstrably
+                         # running (70-105 pulses in the 5 min either side) = 38.4 s
+                         # (36 such gaps, 0.27/h); shortest genuine stop = 86.4 s
+                         # (29 events); NOTHING in 45-75 s. This value is on the
+                         # WALL-CLOCK axis, so it also has to cover the delay before
+                         # a pulse is visible to us (NXCALS ingestion + poll phase,
+                         # measured over 58 polls: 11.3 s min / 16.4 s median /
+                         # 23.5 s max): 38.4 + 23.5 = 61.9 s is the worst reading a
+                         # HEALTHY beam can produce, so 80 s clears it by 18 s and
+                         # still flags every real stop. Do not go below ~65 s.
+                         # Validated on a real stop 07-27 13:55: OFF at 86 s, no
+                         # false OFF (max reading while correctly ON = 73.6 s).
+SPS_POLL_EVERY = 2       # run the (heavier) SPS spill poll every Nth beam poll, so
+                         # speeding up the beam loop does not multiply SPS load.
+                         # 2 x 12 s + its own ~6-10 s query lands the SPS tab back on
+                         # the ~30-40 s cadence it had when the loop ran at 30 s.
 KRB_RENEW_S = 4 * 3600.0  # try `kinit -R` this often to keep the ticket alive
 
 
@@ -102,6 +128,7 @@ class BeamIntensityMonitor:
         # To remove: delete this attribute, the _poll_sps() call in
         # run_blocking(), and the sps_monitor package.
         self._sps = None
+        self._sps_tick = 0
         try:
             from sps_monitor.sps_spill_controller import SpsSpillMonitor
             self._sps = SpsSpillMonitor(logger=self.log)
@@ -195,8 +222,25 @@ class BeamIntensityMonitor:
 
         pulses = [(t, v) for t, v in points if v >= PULSE_THRESHOLD_E10]
         now = time.time()
+        # Fast delivery rate: protons over the SHORT trailing window, expressed
+        # per minute. Summed over ALL cycles in the window (empty ones count as
+        # zero) so it is duty-cycle aware and collapses within RATE_WINDOW_S of a
+        # beam stop, unlike the 10-min figures kept below for continuity.
+        rate_cut = now - RATE_WINDOW_S
+        rate_pts = [(t, v) for t, v in points if t >= rate_cut]
+        rate_pulses = [(t, v) for t, v in rate_pts if v >= PULSE_THRESHOLD_E10]
+        protons_per_min = (sum(v for _, v in rate_pts) / (RATE_WINDOW_S / 60.0)
+                           if rate_pts else None)
         since_pulse = now - self._last_pulse[0] if self._last_pulse else None
         since_point = now - self._last_point[0] if self._last_point else None
+        # The gap as the DATA sees it: last logged cycle minus last real pulse, with
+        # no wall-clock term, so it carries none of the ingestion delay. Diagnostic
+        # only — beam_on stays on the wall-clock gap, because during a genuine stop
+        # the point stream can also dry up (TOF out of the supercycle), which would
+        # freeze this figure. Published so BEAM_OFF_GAP_S can be re-derived from the
+        # live state instead of re-measured from the CSVs.
+        observed_gap = (max(0.0, self._last_point[0] - self._last_pulse[0])
+                        if (self._last_point and self._last_pulse) else None)
         krb_exp = self._krb_expiry()
 
         state = {
@@ -210,9 +254,15 @@ class BeamIntensityMonitor:
             "last_pulse_e10": round(self._last_pulse[1], 2) if self._last_pulse else None,
             "seconds_since_pulse": round(since_pulse, 1) if since_pulse is not None else None,
             "seconds_since_point": round(since_point, 1) if since_point is not None else None,
+            "observed_gap_s": round(observed_gap, 1) if observed_gap is not None else None,
             "pulses_10min": len(pulses),
             "protons_10min_e10": round(sum(v for _, v in pulses), 1),
             "avg_pulse_e10": round(sum(v for _, v in pulses) / len(pulses), 1) if pulses else None,
+            # Short-window live rate (see RATE_WINDOW_S). The *_10min fields above
+            # stay as they are: scan scripts and the public stats page key off them.
+            "rate_window_s": RATE_WINDOW_S,
+            "rate_window_pulses": len(rate_pulses),
+            "protons_per_min_e10": round(protons_per_min, 1) if protons_per_min is not None else None,
             "pulse_threshold_e10": PULSE_THRESHOLD_E10,
             "beam_off_gap_s": BEAM_OFF_GAP_S,
             "poll_s": self.poll_s,
@@ -313,6 +363,12 @@ class BeamIntensityMonitor:
         is a bolted-on test monitor and must not be able to break n_TOF logging
         or the reconnect logic. Delete along with self._sps to remove."""
         if self._sps is None:
+            return
+        # Decimated: the SPS pass pulls intra-cycle arrays (~1800 floats/cycle) and
+        # is far heavier than the n_TOF query, so it keeps its own ~30 s cadence
+        # (about one SPS supercycle) no matter how fast the beam loop runs.
+        self._sps_tick += 1
+        if self._sps_tick % SPS_POLL_EVERY:
             return
         try:
             self._sps.poll(self.db)

@@ -23,6 +23,7 @@ import os
 import json
 import shutil
 import threading
+import time
 from datetime import datetime
 
 import requests
@@ -296,6 +297,23 @@ class DaqMonitor:
         return self.config.get("check_interval_seconds", 60)
 
     @property
+    def fast_check_interval(self):
+        """Cadence of the FAST lane (see fast_rules). None/0 disables it."""
+        return self.config.get("fast_check_interval_seconds") or None
+
+    @property
+    def fast_rules(self):
+        """Rules cheap enough to run between full passes — file reads only, no
+        pinging and no tmux sweeps. A full pass costs ~10 s (rule_feu_unreachable
+        alone pings 9 boards serially), which is why the whole set cannot simply be
+        run more often; the beam rules read one JSON file and cost ~0 ms."""
+        if not self.fast_check_interval:
+            return []
+        names = self.config.get("fast_rules", ["rule_beam_off"])
+        known = set(self._rule_names())
+        return [n for n in names if n in known]
+
+    @property
     def default_resend_minutes(self):
         """Raw resend_interval_minutes config value (None means repeats are
         disabled by default)."""
@@ -472,14 +490,25 @@ class DaqMonitor:
     # ---------------------------------------------------------------
 
     def _monitor_loop(self):
+        # Two cadences: every rule on check_interval, plus the cheap fast_rules on
+        # fast_check_interval in between (a full pass is too expensive to run at the
+        # fast rate — see the fast_rules docstring). The first pass is always full.
+        next_full = 0.0
         while not self._stop_event.is_set():
+            fast = self.fast_rules
+            due_full = time.monotonic() >= next_full
             try:
-                self._check_all_rules()
+                self._check_all_rules(only=None if due_full else fast)
             except Exception as e:
                 print(f"[monitor] Unhandled error in check loop: {e}")
-            self._stop_event.wait(self.check_interval)
+            if due_full:
+                next_full = time.monotonic() + self.check_interval
+            wait = self.fast_check_interval if fast else self.check_interval
+            self._stop_event.wait(max(1.0, wait))
 
-    def _check_all_rules(self):
+    def _check_all_rules(self, only=None):
+        """Run the rule set. `only` restricts it to those rule names (the fast lane);
+        None runs everything."""
         self.last_check_time = datetime.now()
 
         rules = {
@@ -489,6 +518,8 @@ class DaqMonitor:
         }
 
         for name, fn in rules.items():
+            if only is not None and name not in only:
+                continue
             if not self._is_rule_enabled(name):
                 continue
             try:
@@ -687,12 +718,20 @@ class DaqMonitor:
 
         Tunable via rule_options.rule_beam_off in monitor_config.json:
           thresholds — {severity: off_minutes} gradient, e.g.
-                       {"warning": 1, "alert": 10}. The highest severity whose
+                       {"warning": 1.5, "alert": 10}. The highest severity whose
                        minute threshold has been reached wins. Default: {"warning":
                        10} (must be comfortably above normal supercycle gaps and
                        NXCALS latency).
           off_minutes — legacy single-level form (used only if "thresholds" is
                         absent): pulse gap that counts as "beam down" at "warning".
+
+        Do NOT set the first threshold below ~1.25 min. seconds_since_pulse is a
+        WALL-CLOCK gap, so it carries the delay before a pulse becomes visible to us
+        (NXCALS ingestion + poll phase, 11-23 s measured) on top of the real gap; with
+        the longest healthy in-beam gap at 38.4 s (134 h sample, 2026-07-27) a running
+        beam can legitimately read ~62 s. The old 1 min setting sat right on that edge:
+        no false alarm was ever observed from it, but it was only evaluated once a
+        minute, and the 15 s fast lane samples those peaks four times as often.
         """
         opts = self.config.get("rule_options", {}).get("rule_beam_off", {})
         thresholds = opts.get("thresholds") or {"warning": opts.get("off_minutes", 10)}

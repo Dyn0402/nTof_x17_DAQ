@@ -3604,9 +3604,12 @@ async function beamUpdateStatus() {
   }
 
   // Mirror into the Run Control header (Overview tab): show the duty-cycle-aware
-  // delivery RATE (protons in the last 10 min / 10) rather than a single pulse.
-  const pPerMin = d.protons_10min_e10 != null
-    ? beamFmtP(d.protons_10min_e10 / 10) + "/min" : "—";
+  // delivery RATE rather than a single pulse. Prefer the watcher's short-window
+  // rate (RATE_WINDOW_S, 2 min) so the header tracks the beam within ~2 min;
+  // fall back to the 10-min sum for a watcher that predates that field.
+  const pPerMin = d.protons_per_min_e10 != null
+    ? beamFmtP(d.protons_per_min_e10) + "/min"
+    : (d.protons_10min_e10 != null ? beamFmtP(d.protons_10min_e10 / 10) + "/min" : "—");
   runStat.innerHTML = d.beam_on
     ? `<span style="color:var(--ok);">ON</span> · ${pPerMin}`
     : `<span style="color:var(--bad);">OFF</span> · ${beamFmtAge(d.seconds_since_pulse)}`;
@@ -3670,7 +3673,7 @@ setInterval(() => {
   const vis = document.getElementById("overview").classList.contains("active") ||
               document.getElementById("beam").classList.contains("active");
   if (vis) beamRenderPlot();
-}, 15000);
+}, 10000);
 
 beamUpdateStatus();
 setInterval(beamUpdateStatus, 5000);
