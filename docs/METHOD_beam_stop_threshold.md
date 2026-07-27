@@ -104,9 +104,15 @@ for nothing" decision. That is what the survival curve answers, and it says 5.
 
 ## Result 4 — sub-run length is the other, independent lever
 
-Whether a cosmic stint is *useful* depends on completing at least one sub-run: a
-manually-stopped partial sub-run gets no `.subrun_complete` and pins the run against
-space_watcher cleanup (see `switch-mode-and-manual-stop-marker`).
+Whether a cosmic stint is *useful* depends on completing at least one sub-run.
+
+> **Note added 2026-07-27**, after this analysis: the original justification for this
+> section was that a manually-stopped partial sub-run got no `.subrun_complete` and so
+> pinned the whole run against `space_watcher` cleanup. **That is now fixed** — daq_control
+> marks a short-but-non-empty sub-run complete (`_completion_decision()`). So a partial
+> sub-run is no longer *harmful*, and this lever is weaker than it first looked: it is now
+> only about how much usable cosmic data a short stint yields, not about cleanup. Keep that
+> in mind before shortening sub-runs on the strength of the table below.
 
 Fraction of switches yielding ≥1 **complete** cosmic sub-run:
 

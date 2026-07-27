@@ -39,6 +39,39 @@ PAUSE_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.pause_ru
 MAX_EMPTY_SUBRUNS = 2
 
 
+def _completion_decision(recorded_bytes, stopped_early):
+    """What to do with a sub-run that has just ended -> (mark_complete, count_toward_abort).
+
+    ONLY emptiness blocks the completion marker. Changed 2026-07-27 on operator
+    instruction: a manually stopped sub-run used to be left unmarked so that a resume
+    would re-take it, but in practice we never go back and finish a partial point — we
+    either re-run it deliberately or keep what we have. Leaving it unmarked meant an
+    ordinary Stop Run silently pinned the WHOLE run against space_watcher cleanup
+    ("1 unmarked subrun(s) ... refusing"), which cost us ~500 GB of un-reclaimable run_79.
+
+    So a short-but-real sub-run is now COMPLETE. It is short, not incomplete.
+    ⚠ To re-take one, delete its directory (all three places — HDD run dir, the
+    ~/july_dream/dream_run staging dir, and EOS); `resume` alone will now skip it.
+
+    What did NOT change, because it is load-bearing: a sub-run that recorded ZERO datrun
+    bytes is still never marked. That is the dead-FEU guard — run_75 lost 51 of 60 points
+    to a crate that aborted RunCtrl while every sub-run still looked normal, and only the
+    missing markers let the re-take find them.
+
+    The two conditions are independent, which is why emptiness is tested FIRST:
+      * empty + auto   -> a broken crate. Don't mark; count toward MAX_EMPTY_SUBRUNS.
+      * empty + manual -> the operator stopped it before data arrived. Don't mark, but do
+                          NOT count it: with MAX_EMPTY_SUBRUNS = 2, two quick Stop Sub-Runs
+                          would otherwise abort a perfectly healthy run.
+      * data + either  -> mark complete.
+      * recorded_bytes is None (the checker itself failed) -> treated as data, i.e. fail
+                          OPEN, exactly as before: a checker bug must not discard a run.
+    """
+    if recorded_bytes == 0:
+        return False, not stopped_early
+    return True, False
+
+
 def _remove_flag(path):
     try:
         os.remove(path)
@@ -336,8 +369,10 @@ def main():
                         hv.receive()  # Stopping monitoring
                         hv.receive()  # Finished monitoring
 
-                    # A manual stop (stop_run/stop_sub_run) cuts the sub-run short, so don't mark it
-                    # complete — resume should re-run it. Otherwise mark it so a resume run skips it.
+                    # A manual stop cuts the sub-run short but does NOT make it incomplete:
+                    # it is marked complete anyway so long as it recorded data, and a resume
+                    # will skip it. See _completion_decision() for why, and for the one case
+                    # that still blocks the marker (zero recorded bytes = dead crate).
                     stop_run_req = os.path.exists(STOP_RUN_FLAG)
                     stop_subrun_req = os.path.exists(STOP_SUBRUN_FLAG)
                     if stop_subrun_req:
@@ -361,22 +396,35 @@ def main():
                         print(f'[data] could not verify sub-run output ({e!r}) — '
                               f'assuming it is fine.')
 
-                    if stop_run_req or stop_subrun_req:
-                        print(f'[stop] Sub run {sub_run_name} stopped manually — not marking complete.')
-                    elif recorded_bytes == 0:
-                        empty_subruns += 1
+                    stopped_early = stop_run_req or stop_subrun_req
+                    mark_complete, count_empty = _completion_decision(
+                        recorded_bytes, stopped_early)
+
+                    if not mark_complete:
                         print(f'[data] !! Sub run {sub_run_name} recorded ZERO data bytes '
                               f'— NOT marking it complete (a resume will re-take it). '
                               f'Check the crate: python3 feu_health.py')
-                        if empty_subruns >= MAX_EMPTY_SUBRUNS:
-                            print(f'[data] !! {empty_subruns} consecutive sub-runs recorded '
-                                  f'nothing — ABORTING the run rather than burning the rest '
-                                  f'of the grid on empty points. Fix the DAQ and resume.')
-                            break
+                        if count_empty:
+                            empty_subruns += 1
+                            if empty_subruns >= MAX_EMPTY_SUBRUNS:
+                                print(f'[data] !! {empty_subruns} consecutive sub-runs recorded '
+                                      f'nothing — ABORTING the run rather than burning the rest '
+                                      f'of the grid on empty points. Fix the DAQ and resume.')
+                                break
+                        else:
+                            print(f'[data] (stopped manually before any data arrived — not '
+                                  f'counting it toward the {MAX_EMPTY_SUBRUNS}-empty abort)')
                     else:
                         empty_subruns = 0
+                        gb = (f'{recorded_bytes / 1e9:.1f} GB' if recorded_bytes
+                              else 'size unverified')
                         with open(complete_marker, 'w') as f:
-                            f.write(datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '\n')
+                            f.write(datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                    + (' stopped-early\n' if stopped_early else '\n'))
+                        if stopped_early:
+                            print(f'[stop] Sub run {sub_run_name} stopped manually with {gb} '
+                                  f'recorded — marking it COMPLETE (short, not incomplete). '
+                                  f'A resume will skip it; delete the sub-run dir to re-take.')
 
                     print(f'Finished with sub run {sub_run_name}, waiting 10 seconds before next run')
                     sleep(10)

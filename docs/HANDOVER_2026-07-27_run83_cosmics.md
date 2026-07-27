@@ -68,10 +68,15 @@ it every time rather than assuming — if it ever reads anything other than 1440
 
 ### If the beam comes back mid-sub-run
 
-A manual stop leaves the in-flight sub-run **without** a `.subrun_complete` marker (by design —
-`daq_control.py:364`), and an unmarked sub-run pins the whole run against `space_watcher`
-cleanup. For a cosmic run the data is usually still complete and worth keeping, so **verify it
-and then mark it by hand**:
+> **SUPERSEDED 2026-07-27 — daq_control now does this for you.** A manually stopped sub-run
+> that recorded data is marked `.subrun_complete` automatically (`_completion_decision()`),
+> because we never go back and finish a partial point: we either re-run it deliberately or
+> keep what we have. **No hand-touching is needed any more.** The recipe below is kept only
+> for older runs stopped before that change.
+
+Historically a manual stop left the in-flight sub-run **without** a `.subrun_complete`
+marker, and an unmarked sub-run pins the whole run against `space_watcher` cleanup. For a
+cosmic run the data is usually still fine, so you verified it and marked it by hand:
 
 ```bash
 /home/mx17/ana/.venv/bin/python ~/beam_july/analysis/flash_comb/tools/eventid_integrity.py <subrun_dir>
@@ -80,6 +85,10 @@ touch <subrun_dir>/.subrun_complete
 ```
 
 Done for run_83's `cosbounce_cos_0000` on 2026-07-27 after it came back 0.0000 % clean.
+
+⚠ What did NOT change: a sub-run recording **zero** datrun bytes is still never marked. That
+is the dead-FEU guard. To re-take a short sub-run you must now **delete its directory**
+(HDD run dir + `~/july_dream/dream_run/<run>/<subrun>/` + EOS) — `resume` alone will skip it.
 
 ### Spotty beam
 

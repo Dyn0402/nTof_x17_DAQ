@@ -118,10 +118,17 @@ complete and `0015` was in progress.
 
 ### ⚠ The interrupted sub-run
 
-Whichever sub-run is live when run_79 is stopped will have **no** `.subrun_complete`
-marker, so resume will re-take it — which is what we want. But a re-take does **not**
-clean up on its own. Before relaunching, purge the partial sub-run in **all three**
-places or the re-take collides with its own leftovers:
+> **CHANGED 2026-07-27.** daq_control now marks a manually stopped sub-run complete as
+> long as it recorded data, so resume **skips** it rather than re-taking it. The paragraph
+> below describes the old behaviour and applies only to runs stopped before that change
+> (run_79's `stat090_0015` among them — it was marked by hand on 07-27). To re-take a short
+> sub-run now, delete its directory in all three places first; deleting is what makes
+> resume re-take it.
+
+Historically, whichever sub-run was live when a run was stopped had **no**
+`.subrun_complete` marker, so resume re-took it. Either way a re-take does **not** clean up
+on its own — purge the partial sub-run in **all three** places or it collides with its own
+leftovers:
 
 ```bash
 SUB=stat090_0015      # <-- set to whichever sub-run was interrupted
@@ -134,9 +141,9 @@ xrdfs root://eospublic.cern.ch ls -u \
   /eos/experiment/ntof/data/x17/july_beam/runs/run_79/$SUB
 ```
 
-(Look at the directory before deleting it. If the interrupted sub-run ran nearly its
-full hour and you would rather keep it, just `touch` its `.subrun_complete` instead and
-let resume skip it.)
+(Look at the directory before deleting it. If the interrupted sub-run ran nearly its full
+hour and you would rather keep it, do nothing — since 2026-07-27 daq_control has already
+marked it complete and resume will skip it.)
 
 ### ⚠ Do not start run_79 with the beam still off
 
