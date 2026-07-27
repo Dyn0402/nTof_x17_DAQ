@@ -591,6 +591,22 @@ def run_prepare():
         import importlib
         _rn = importlib.reload(_rn)
 
+        # Don't prepare a run while something else is already starting one. The allocator
+        # itself is race-safe, so this is not about the NUMBER — it is about two runs being
+        # launched at once. switch_mode --go stops the live run and starts a new one; a
+        # Start Run landing in that window would fight it.
+        try:
+            mw = _mode_mod()
+            if mw.sm.read_changeover_lock():
+                return jsonify({"success": False,
+                                "message": "A beam/cosmics changeover is in progress — "
+                                           "wait for it to finish."}), 409
+            if mw.sm.live_run_pids():
+                return jsonify({"success": False,
+                                "message": "A run is already running. Stop it first."}), 409
+        except Exception:  # noqa: BLE001
+            pass  # advisory only — never block a start because the check itself broke
+
         n = _rn.allocate()
         env = {**os.environ, "RUN_NUM": str(n)}
         gen = subprocess.run([VENV_PY, f"{BASE_DIR}/run_config_beam.py"],
@@ -615,6 +631,8 @@ def run_prepare():
         return jsonify({"success": True, "run_name": written, "config": cfg_file,
                         "message": f"Prepared {written}"})
     except Exception as e:  # noqa: BLE001
+        # AllocationBusy lands here: the lock was held too long. Failing to start is
+        # recoverable; a duplicate run number is not.
         return jsonify({"success": False, "message": str(e)}), 500
 
 
@@ -2827,11 +2845,19 @@ def space_local():
 
 @app.route("/space/scan")
 def space_scan():
+    """Per-run EOS verdicts for a disk.
+
+    cached=1 replays the LAST EOS listing at whatever age it has instead of
+    re-listing, so a page reload can restore the verified view (with its age)
+    rather than discarding it. `unverifiable` comes back True when there is no
+    listing to replay, and the caller should fall back to /space/local.
+    """
     disk = request.args.get("disk", "hdd")
+    cached = request.args.get("cached", "0") in ("1", "true", "yes")
     if disk not in space_manager.DISKS:
         return jsonify({"success": False, "message": f"unknown disk {disk}"}), 400
     try:
-        return jsonify(space_manager.scan(disk))
+        return jsonify(space_manager.scan(disk, force=not cached, allow_stale=cached))
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

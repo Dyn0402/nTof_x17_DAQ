@@ -44,6 +44,8 @@ FAILURE DIRECTIONS ARE ALL "SKIP", NEVER "REUSE"
   Gaps in the run numbering are harmless; a reused number silently corrupts a backup.
 """
 import argparse
+import errno
+import fcntl
 import json
 import os
 import re
@@ -74,11 +76,10 @@ def scan_max(roots=(RUNS_DIR, DREAM_RUN_DIR)):
     return hi
 
 
-def read_highwater(scan_hi, path=HIGHWATER, quiet=False):
-    """Highest number ever handed out, or 0. Never trusted blindly."""
+def _parse_highwater(raw, scan_hi, quiet=False):
+    """Pure: high-water value from file text, 0 if absent/corrupt/implausible."""
     try:
-        with open(path) as f:
-            hw = int(json.load(f).get('last_allocated', 0))
+        hw = int(json.loads(raw).get('last_allocated', 0))
     except Exception:  # noqa: BLE001
         return 0
     if hw < 0 or hw > scan_hi + IMPLAUSIBLE_AHEAD:
@@ -89,14 +90,42 @@ def read_highwater(scan_hi, path=HIGHWATER, quiet=False):
     return hw
 
 
+def read_highwater(scan_hi, path=HIGHWATER, quiet=False):
+    """Highest number ever handed out, or 0. Never trusted blindly."""
+    try:
+        with open(path) as f:
+            raw = f.read()
+    except Exception:  # noqa: BLE001
+        return 0
+    return _parse_highwater(raw, scan_hi, quiet)
+
+
 def peek(roots=(RUNS_DIR, DREAM_RUN_DIR), path=HIGHWATER):
     """What the next run number WOULD be. No side effects — safe to call for display."""
     hi = scan_max(roots)
     return max(hi, read_highwater(hi, path, quiet=True)) + 1
 
 
-def allocate(roots=(RUNS_DIR, DREAM_RUN_DIR), path=HIGHWATER):
+LOCK_TIMEOUT_S = 20.0
+
+
+class AllocationBusy(RuntimeError):
+    """Could not take the allocation lock. Deliberately fatal — see allocate()."""
+
+
+def allocate(roots=(RUNS_DIR, DREAM_RUN_DIR), path=HIGHWATER, timeout_s=LOCK_TIMEOUT_S):
     """Claim the next run number and record it. Call this ONCE per run start.
+
+    ⚠ ATOMIC. The whole read-modify-write happens while holding an exclusive `flock` on the
+    high-water file, because the callers genuinely can overlap: `/run/prepare` (the GUI
+    Start Run button) does NOT hold switch_mode's changeover lock, so a Start Run racing a
+    `mode_watcher` changeover — or simply a double-clicked button, or two browser tabs —
+    hits this concurrently. Measured before the lock existed: 12 simultaneous calls returned
+    only 4 distinct numbers. Two runs sharing a number means two runs sharing an EOS
+    directory, which is the one outcome worth failing hard to avoid.
+
+    If the lock cannot be taken within `timeout_s` this RAISES rather than guessing.
+    Refusing to start a run is recoverable; silently duplicating a run number is not.
 
     ⚠ Claiming is deliberately eager: if the operator then cancels the confirmation
     dialog, the number is burned. That is the safe direction — a gap costs nothing, while
@@ -104,18 +133,44 @@ def allocate(roots=(RUNS_DIR, DREAM_RUN_DIR), path=HIGHWATER):
     what lets the GUI show the REAL run name before starting, instead of showing one
     number and starting another.
     """
-    hi = scan_max(roots)
-    nxt = max(hi, read_highwater(hi, path)) + 1
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, 'w') as f:
-            json.dump({'last_allocated': nxt,
-                       'at': time.strftime('%Y-%m-%d %H:%M:%S'),
-                       'scan_max': hi}, f, indent=1)
-    except Exception as e:  # noqa: BLE001
-        print(f'[runnum] ⚠ could not persist high-water mark ({e}) — '
-              f'scan-only allocation this time', file=sys.stderr)
-    return nxt
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError as e:
+        # Degraded: no state file possible (read-only mount, bad path). Fall back to a
+        # scan-only allocation so a run can still be started, but say so loudly — this
+        # path has NO cross-process protection.
+        print(f'[runnum] ⚠ cannot open the high-water file ({e}) — scan-only allocation, '
+              f'NOT race-safe', file=sys.stderr)
+        return scan_max(roots) + 1
+
+    with os.fdopen(fd, 'r+') as f:
+        deadline = time.time() + timeout_s
+        while True:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as e:
+                if e.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                if time.time() >= deadline:
+                    raise AllocationBusy(
+                        f'another process has held the run-number lock for '
+                        f'{timeout_s:g}s ({path}). Refusing to allocate rather than risk '
+                        f'handing out a duplicate run number.')
+                time.sleep(0.05)
+
+        f.seek(0)
+        hi = scan_max(roots)
+        nxt = max(hi, _parse_highwater(f.read(), hi)) + 1
+        f.seek(0)
+        f.truncate()
+        json.dump({'last_allocated': nxt,
+                   'at': time.strftime('%Y-%m-%d %H:%M:%S'),
+                   'scan_max': hi}, f, indent=1)
+        f.flush()
+        os.fsync(f.fileno())          # survive a crash between claim and run start
+        return nxt                    # flock released by the close on the way out
 
 
 def run_name(n):
