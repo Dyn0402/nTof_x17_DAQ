@@ -295,3 +295,8 @@ config/stats_page_history.json
 
 # Projection plots are regenerable; frozen projections in saved/ ARE kept.
 projections/plots/
+
+# runtime artifacts of the mode changeover (switch_mode.py / mode_watcher.py)
+config/.switch_mode.lock
+config/.mode_watcher_disarmed
+config/mode_watcher_state.json
