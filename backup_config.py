@@ -29,6 +29,19 @@ CONFIG = {
     # built as f"{xrootd_url}//{absolute_eos_path}" (note the double slash).
     'xrootd_url': XROOTD_URL,
 
+    # EXTRA locations that still count as a backup, for space_manager's
+    # "is this local file safe to delete?" question only. READ-ONLY: the watcher
+    # never writes or deletes here, they are only searched for an existing copy.
+    #
+    # Why this exists: a campaign outlives any single destination — a quota fills,
+    # an allocation moves — and data pushed to the OLD path is still perfectly
+    # good. Verify against eos_dir alone and every historical run reads as "not
+    # backed up", which permanently blocks its local disk from being reclaimed.
+    # List superseded destinations here when eos_dir ever changes.
+    #
+    # Format: [{'xrootd_url': 'root://eosuser.cern.ch', 'eos_dir': '/eos/user/d/dneff/old/'}]
+    'verify_eos_locations': [],
+
     # Subdir of source_dir that gets smart per-subrun sync
     'runs_subdir': 'runs',
 

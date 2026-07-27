@@ -13,6 +13,10 @@ config/backup_loose_state.json
 # How long the last whole-tree EOS listing took — only used to calibrate the Disk
 # Space tab's progress bar, worthless anywhere but this machine.
 logs/space_scan_hint.json
+# The last whole-tree EOS listing itself, replayed so a page reload can show the
+# verified view with its age instead of discarding it. Pure cache (~18 MB here),
+# rebuilt by any safety check, and meaningless on another machine.
+config/space_remote_cache.json
 config/current_run_state.json
 config/gas_state.json
 config/gas_command.json
