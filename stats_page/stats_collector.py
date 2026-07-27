@@ -51,7 +51,8 @@ LIVE_PLOT_PATH = os.path.join(PROJECTIONS_DIR, "plots", "progress_live.png")
 # Static: run_79 is a fixed reference measurement, so these are built by hand
 # (projections/ipc_yield.py) and shipped with the page rather than regenerated.
 IPC_PLOT_PATHS = [os.path.join(PROJECTIONS_DIR, "plots", n)
-                  for n in ("ipc_yield.png", "ipc_yield_linear.png")]
+                  for n in ("ipc_yield.png", "ipc_yield_linear.png",
+                            "run82_comb.png")]
 
 DEFAULTS = {
     "status_url": "http://localhost:5001/status",

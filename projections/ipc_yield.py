@@ -97,57 +97,81 @@ def _subrun_dirs(run=RUN):
             if os.path.isdir(os.path.join(root, d))]
 
 
-def extract(run=RUN, feu=FEU, verbose=True):
-    """Flash-anchored time-since-flash histogram over every sub-run of `run`."""
+def hist_edges(bin_ms=BIN_MS):
+    return np.arange(TMIN, TMAX + bin_ms, bin_ms)
+
+
+def extract_subrun(subrun_dir, feu=FEU, edges=None):
+    """Flash-anchored time-since-flash histogram for ONE sub-run.
+
+    Returns dict(counts, n_spill_total, n_spill_flash, n_events) or None if there
+    is no decoded data. Shared by the run_79 reference and the run_82 comb
+    comparison so both anchor identically — the flash tag is the whole reason those
+    two are comparable at all."""
     import uproot
 
-    edges = np.arange(TMIN, TMAX + BIN_MS, BIN_MS)
+    edges = hist_edges() if edges is None else edges
+    files = sorted(glob.glob(f"{subrun_dir}/decoded_root/*_{feu}.root"))
+    if not files:
+        return None
+
+    ts_all, sat_all = [], []
+    for f in files:
+        try:
+            t = uproot.open(f)["nt"]
+            ts_all.append(t["timestamp"].array(library="np").astype(np.int64))
+            amp = t["amplitude"].array(library="np")
+        except Exception:
+            continue
+        sat_all.append(np.array([int((np.abs(np.asarray(x)) >= SAT).sum())
+                                 for x in amp]))
+    if not ts_all:
+        return None
+
+    ts = np.concatenate(ts_all)
+    sat = np.concatenate(sat_all)
+    o = np.argsort(ts)
+    ts, sat = ts[o], sat[o]
+
+    brk = np.where(np.diff(ts) * TICK_MS > SPILL_GAP_MS)[0]
+    st = np.concatenate([[0], brk + 1])
+    en = np.concatenate([brk + 1, [ts.size]])
+
+    counts = np.zeros(len(edges) - 1, dtype=np.int64)
+    got = 0
+    for s, e in zip(st, en):
+        seg_ts, seg_sat = ts[s:e], sat[s:e]
+        fi = np.where(seg_sat >= MIN_SAT_CELLS)[0]
+        if fi.size == 0:
+            continue                          # flash not recorded — drop the spill
+        got += 1
+        rel = (seg_ts - seg_ts[fi[0]]) * TICK_MS
+        counts += np.histogram(rel, bins=edges)[0]
+
+    return {"counts": counts, "n_spill_total": len(st),
+            "n_spill_flash": got, "n_events": int(ts.size)}
+
+
+def extract(run=RUN, feu=FEU, verbose=True):
+    """Flash-anchored time-since-flash histogram over every sub-run of `run`."""
+    edges = hist_edges()
     counts = np.zeros(len(edges) - 1, dtype=np.int64)
     n_spill_tot = n_spill_flash = 0
     n_events = 0
     subruns = []
 
     for d in _subrun_dirs(run):
-        files = sorted(glob.glob(f"{d}/decoded_root/*_{feu}.root"))
-        if not files:
+        r = extract_subrun(d, feu=feu, edges=edges)
+        if r is None:
             continue
-        ts_all, sat_all = [], []
-        for f in files:
-            try:
-                t = uproot.open(f)["nt"]
-                ts_all.append(t["timestamp"].array(library="np").astype(np.int64))
-                amp = t["amplitude"].array(library="np")
-            except Exception:
-                continue
-            sat_all.append(np.array([int((np.abs(np.asarray(x)) >= SAT).sum())
-                                     for x in amp]))
-        if not ts_all:
-            continue
-        ts = np.concatenate(ts_all)
-        sat = np.concatenate(sat_all)
-        o = np.argsort(ts)
-        ts, sat = ts[o], sat[o]
-        n_events += ts.size
-
-        brk = np.where(np.diff(ts) * TICK_MS > SPILL_GAP_MS)[0]
-        st = np.concatenate([[0], brk + 1])
-        en = np.concatenate([brk + 1, [ts.size]])
-        n_spill_tot += len(st)
-
-        got = 0
-        for s, e in zip(st, en):
-            seg_ts, seg_sat = ts[s:e], sat[s:e]
-            fi = np.where(seg_sat >= MIN_SAT_CELLS)[0]
-            if fi.size == 0:
-                continue                      # flash not recorded — drop the spill
-            got += 1
-            rel = (seg_ts - seg_ts[fi[0]]) * TICK_MS
-            counts += np.histogram(rel, bins=edges)[0]
-        n_spill_flash += got
+        counts += r["counts"]
+        n_spill_tot += r["n_spill_total"]
+        n_spill_flash += r["n_spill_flash"]
+        n_events += r["n_events"]
         subruns.append(os.path.basename(d))
         if verbose:
-            print(f"  {os.path.basename(d):16s} spills {len(st):5d}  "
-                  f"flash {100 * got / max(len(st), 1):5.1f}%")
+            print(f"  {os.path.basename(d):20s} spills {r['n_spill_total']:5d}  "
+                  f"flash {100 * r['n_spill_flash'] / max(r['n_spill_total'], 1):5.1f}%")
 
     return {
         "edges": edges, "counts": counts,

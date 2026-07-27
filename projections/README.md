@@ -156,6 +156,45 @@ The two columns pull in opposite directions, which is the point of overlaying th
 **56% of the IPC lands in 3–8 ms, where only 16% of the triggers are**, while a third
 of all triggers sit in 25–80 ms, where the expectation is essentially nothing.
 
+## run_82 — watermark × inter-packet-delay
+
+```bash
+/usr/bin/python3 run82_comb.py            # needs uproot: system python
+/usr/bin/python3 run82_comb.py --refresh
+```
+
+One panel per (Hwm, IPD) setting, drawn like `ipc_yield.py`. run_82 takes each of the
+four points **twice in interleaved order** (h2i5, h1i2, h2i2, h1i5, h1i5, h2i2, h1i2,
+h2i5) to cancel beam drift, so the repeats are pooled — and their individual CVs are
+printed, because pooling two repeats that disagreed would hide what the interleaving
+was there to expose.
+
+The figure of merit is the CV of the trigger yield across **1–10 ms in 100 µs bins**.
+The bin width is not a free choice: the same band reads CV 0.42 at 0.5 ms bins and
+0.87 at 0.1 ms, so a coarse binning hides the comb entirely.
+
+| setting | spills | trig/spill (1–10 ms) | CV | starved | repeats |
+|---|---|---|---|---|---|
+| Hwm 2 / IPD 5 | 74 | 31.1 | 0.85 | 27% | 0.86, 0.88 |
+| Hwm 2 / IPD 2 | 106 | 33.3 | 0.94 | 41% | 0.96, 0.93 |
+| **Hwm 1 / IPD 5** | 105 | 30.4 | **0.41** | **3%** | 0.48, 0.39 |
+| Hwm 1 / IPD 2 | 104 | 31.4 | 0.55 | 7% | 0.61, 0.52 |
+| run_79 reference | 17,037 | 32.4 | 0.86 | 28% | — |
+
+**Hwm is the lever, not IPD.** Dropping Hwm 2 → 1 halves the CV and takes starved bins
+from 27% to 3%, for about 6% fewer triggers in the band. IPD 5 → 2 makes it slightly
+worse at both watermarks.
+
+Two things that make the result trustworthy: the h2i5 control reproduces the run_79
+production reference (CV 0.85 vs 0.86) on 1/230th the spills, and the two repeats of
+each setting agree.
+
+⚠ `stat090_h2i5_0007` is short — 39 spills at **51.3% flash capture** and 1,772 events
+against ~5,000 for every other sub-run. It looks truncated. That is why Hwm 2 / IPD 5
+pools only 74 spills against ~105 elsewhere. It does not change the conclusion (that
+setting agrees with the high-statistics run_79 reference), but it is worth knowing
+before quoting its numbers on their own.
+
 ## Cosmics during beam-off
 
 Cosmic triggers are projected to accumulate through the scheduled downtime, at the
