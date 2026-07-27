@@ -141,14 +141,14 @@
   <div class="grid">
     <div class="card tile">
       <div class="label">Trigger rate</div>
-      <div class="value"><span id="rate">—</span><span class="unit">Hz</span></div>
+      <div class="value"><span id="rate">—</span><span class="unit" id="rate-unit">triggers / day</span></div>
       <svg class="spark" id="spark" preserveAspectRatio="none" aria-hidden="true"></svg>
       <div class="note" id="rate-note">&nbsp;</div>
     </div>
 
     <div class="card tile">
-      <div class="label">Beam intensity</div>
-      <div class="value"><span id="beam-int">—</span><span class="unit">e10 / pulse</span></div>
+      <div class="label">Beam delivery</div>
+      <div class="value"><span id="beam-int">—</span><span class="unit">protons / day</span></div>
       <svg class="spark" id="beam-spark" preserveAspectRatio="none" aria-hidden="true"></svg>
       <div class="note" id="beam-note">&nbsp;</div>
     </div>
@@ -222,6 +222,17 @@
     if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
     if (n >= 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K";
     return n.toLocaleString("en-US");
+  }
+
+  // Protons/day runs to ~1e17, past where compact() (K/M) stays readable, so give
+  // it a mantissa and a power of ten instead.
+  function sci(n) {
+    if (n === null || n === undefined || isNaN(n) || n <= 0) return "—";
+    var e = Math.floor(Math.log10(n));
+    var m = n / Math.pow(10, e);
+    return m.toFixed(1) + "×10" + String(e).replace(/[0-9]/g, function (d) {
+      return "⁰¹²³⁴⁵⁶⁷⁸⁹"[+d];
+    });
   }
 
   function dur(s) {
@@ -394,7 +405,10 @@
     if (run.subrun) runBits.push(run.subrun);
     $("run-note").textContent = runBits.join(" · ");
 
-    $("rate").textContent = (typeof trg.rate_hz === "number") ? trg.rate_hz.toFixed(1) : "—";
+    var hz = trg.rate_hz;
+    $("rate").textContent = (typeof hz === "number") ? compact(Math.round(hz * 86400)) : "—";
+    $("rate-unit").textContent = (typeof hz === "number")
+      ? "triggers / day (" + hz.toFixed(1) + " Hz)" : "triggers / day";
     $("rate-note").textContent = history.length > 1
       ? "last " + history.length + " samples" : " ";
     sparkline($("spark"), history.map(function (h) { return h.rate; }), "var(--series-1)");
@@ -402,16 +416,16 @@
     // beam.on === null means UNKNOWN (watcher transient), which is not the same as OFF.
     var bh = d.beam_history || [];
     var live = bh.filter(function (b) { return b.pulses > 0; });
-    var latest = live.length ? live[live.length - 1].e10 : beam.last_pulse_e10;
-    $("beam-int").textContent = (typeof latest === "number")
-      ? Math.round(latest).toLocaleString("en-US") : "—";
+    var latest = live.length ? live[live.length - 1] : null;
+    $("beam-int").textContent = latest ? sci(latest.p_day) : "—";
     // Empty buckets carry 0, so a beam stop reads as a drop to the floor instead of
     // being compressed out of the trace. Floor the domain at 0 for the same reason.
-    sparkline($("beam-spark"), bh.map(function (b) { return b.e10; }),
+    sparkline($("beam-spark"), bh.map(function (b) { return b.p_day; }),
              "var(--series-3)", true);
 
     var bs = beam.on;
     var bits = [bs === true ? "beam on" : bs === false ? "beam off" : "beam unknown"];
+    if (latest) bits.push(Math.round(latest.e10_mean) + " e10/pulse");
     if (typeof beam.pulses_10min === "number") bits.push(beam.pulses_10min + " pulses/10 min");
     if (typeof sps.spills_10min === "number") bits.push(sps.spills_10min + " SPS spills/10 min");
     $("beam-note").textContent = bits.join(" · ");

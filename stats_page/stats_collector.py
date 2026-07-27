@@ -215,7 +215,13 @@ def _tail_lines(path, max_bytes):
 
 
 def beam_history(cfg):
-    """[{t, e10}] — mean beam-pulse intensity per bucket over the recent window.
+    """[{t, pulses, e10_mean, p_day}] per bucket over the recent window.
+
+    `p_day` is protons/day: the protons actually delivered in the bucket, scaled to
+    a full day. That is the figure of merit — it folds pulse intensity and pulse
+    rate together, so a machine delivering the same intensity at half the repetition
+    rate correctly reads as half the protons. Mean intensity per pulse alone would
+    look unchanged.
 
     Buckets with no pulses report 0 rather than being omitted, so a beam stop reads
     as a drop to the floor instead of being silently compressed out of the trace."""
@@ -255,9 +261,12 @@ def beam_history(cfg):
         return c["data"]
 
     n_buckets = max(1, int(round(hours * 3600.0 / bucket_s)))
+    per_day = 86400.0 / bucket_s          # bucket -> full day
     out = [{"t": round(t0 + (b + 0.5) * bucket_s),
-            "e10": round(sums[b] / counts[b], 1) if counts.get(b) else 0.0,
-            "pulses": counts.get(b, 0)}
+            "pulses": counts.get(b, 0),
+            "e10_mean": round(sums[b] / counts[b], 1) if counts.get(b) else 0.0,
+            # e10 units in the CSV, so x1e10 to get protons.
+            "p_day": round(sums.get(b, 0.0) * 1e10 * per_day)}
            for b in range(n_buckets)]
     c.update(t=now, data=out)
     return out
