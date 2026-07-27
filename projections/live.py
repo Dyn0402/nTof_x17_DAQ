@@ -66,15 +66,26 @@ def expected_at(projection, when):
     return pts[-1]["events"]
 
 
-def summary(first_run=79, now=None):
-    """Everything the page needs about statistics and the projection."""
+def summary(first_run=None, now=None, rate_first_run=None):
+    """Everything the page needs about statistics and the projection.
+
+    first_run=None counts every run in the ledger, including ones long since deleted
+    from disk. The forward rate is fitted only on the production point named by
+    schedule.json's rate_first_run — a different question, different subset."""
     now = now or datetime.now()
-    stats = run_stats.summarise(first_run=first_run)
+    if rate_first_run is None:
+        try:
+            import schedule as sched_mod
+            rate_first_run = sched_mod.load_schedule().get("rate_first_run")
+        except Exception:
+            rate_first_run = None
+    stats = run_stats.summarise(first_run=first_run, rate_first_run=rate_first_run)
     rate = stats.get("rate") or {}
 
     crate = stats.get("cosmic_rate") or {}
     out = {
-        "first_run": f"run_{first_run}",
+        "first_run": f"run_{first_run}" if first_run else "all recorded runs",
+        "rate_runs": stats.get("rate_runs") or [],
         "beam_events": stats.get("beam_events", 0),
         "cosmic_events": stats.get("cosmic_events", 0),
         "cosmic_hz": round(crate.get("hz", 0), 1) or None,

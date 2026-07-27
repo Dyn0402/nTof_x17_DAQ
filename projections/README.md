@@ -24,6 +24,45 @@ rather than being quietly corrected.
 The frozen file records the rate parameters, the schedule and the anchor it used,
 so a projection that missed can be diagnosed rather than just noted.
 
+## The ledger — statistics that outlive the disk
+
+`stats_ledger.csv` is one committed row per sub-run: run, sub-run, beam type, start
+and end (both as local timestamps **and** stored epochs), live hours, event count and
+where the timestamp came from.
+
+It exists because **runs get deleted**. Once a run is safely on EOS the space manager
+frees it, and run_1 through run_66 are already gone — only run_67+ are still on disk.
+Without a ledger those event counts would vanish and the cumulative total would
+silently shrink.
+
+So every scan is merged in and **rows are never dropped for being absent from disk**.
+Disk wins on conflict, since a re-processed sub-run can legitimately change its count.
+`run_stats.py --no-sync` reads the ledger alone and reproduces the same totals, which
+is the check that it really is self-sufficient.
+
+Two subtleties worth knowing:
+
+- **Timestamps survive cleanup via the RunCtrl log.** The `datrun_...` filenames go
+  with the `.fdf` files, but `RunCtrl_YYMMDD_HHhMM.log` stays behind and carries the
+  same stamp (verified identical on run_79). Without that fallback every cleaned run
+  dates to the moment it was *cleaned* — which stacked runs 67–75 onto one instant and
+  turned the cumulative curve into a cliff. `t_source` records which was used.
+- **Epochs are stored, not re-derived.** Recomputing them from the naive local
+  timestamp strings would shift every historical row when the machine leaves CEST for
+  CET in October, and pandas reads naive strings as UTC anyway.
+
+## Two subsets, two questions
+
+| | set | why |
+|---|---|---|
+| **Cumulative total** | every recorded run | "how much have we recorded" — all of it counts |
+| **Forward rate** | `rate_first_run` only | "what will we record from here" — must be the current production point |
+
+Leaving the rate fit on the whole history would dilute it with the old HV, threshold
+and latency scans, which ran at deliberately bad settings: the full history averages
+**79 events/pulse against production's 88**. Set `rate_first_run` in `schedule.json`
+and bump it when the production configuration changes.
+
 ## What counts
 
 - **Beam data only.** Beam vs cosmics comes from `beam_type` in each run's
@@ -42,20 +81,31 @@ so a projection that missed can be diagnosed rather than just noted.
 
 Deliberately split into two factors, because they fail differently:
 
-| | measured | what it is |
-|---|---|---|
-| events per pulse | **~104** | detector + trigger performance. Flat to ~1% across all 16 hours of run_79 — the trustworthy half |
-| pulses per hour | **~1054** | what the machine delivers. Moves with supercycle and destination sharing — the half to watch |
-| → events per beam hour | **~109k** | the product |
+| | measured | source | what it is |
+|---|---|---|---|
+| events per pulse | **~88** | `rate_first_run` only | detector + trigger performance — the trustworthy half |
+| pulses per hour | **~972** | every beam sub-run in the pulse window | what the machine delivers — the half to watch |
+| → events per beam hour | **~85k** | | the product |
 
-`pulses/hour` is a median over sub-runs that were *fully* beam-on. A sub-run that
-caught the start of a beam stop has a real event count but only partial beam;
-averaging it in would understate the rate we can expect while beam is up, and the
-schedule already accounts for downtime — counting it twice would double-penalise
-the projection.
+**The two factors come from different sets, on purpose.** Events/pulse is a property
+of the detector, so it must come from the current configuration. Pulses/hour is a
+property of the machine and is noisy hour to hour, so it must come from a wide
+window: fitting it on run_86's first hour alone — which happened to catch poor beam,
+605 pulses/h against a normal ~1050 — halved the projection for a reason that had
+nothing to do with the detector.
 
-Sanity check: `events_per_beam_hour` (109.4k) lands within 1% of the directly
-observed `events_per_hour` (110.5k), which is the sign the decomposition is sound.
+`pulses/hour` is a median over sub-runs that were *fully* beam-on, and sub-runs with
+zero pulses are dropped. A sub-run that caught the start of a beam stop has a real
+event count but only partial beam; averaging it in would understate the rate we can
+expect while beam is up, and the schedule already accounts for downtime — counting it
+twice would double-penalise the projection. Dropping zero-pulse sub-runs also excludes
+those from before the beam CSVs begin, which would otherwise contribute events with no
+pulses and inflate events/pulse without bound.
+
+Cross-check on run_79 (Hwm 2), where statistics are ample: 103.8 events/pulse × 1054
+pulses/h = 109.4k/beam-hour against a directly observed 110.5k, within 1%. run_86's
+87.6 events/pulse is 0.84 of that — matching the ~16% fewer triggers per spill measured
+independently from the flash-anchored distribution.
 
 ## The schedule
 

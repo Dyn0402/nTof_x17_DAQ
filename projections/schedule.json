@@ -4,6 +4,9 @@
   "projection_start": "2026-07-27T11:30",
   "run_end": "2026-08-10T08:00",
 
+  "rate_first_run": 86,
+  "_rate_first_run_note": "Fit the FORWARD rate on runs >= this only — the current production point. Cumulative totals still count every run ever recorded. Bump this when the production configuration changes, or the projection will be fitted on a superseded setup (and on the HV/threshold scans mixed in with it).",
+
   "efficiency": 0.85,
   "_efficiency_note": "Overall data-taking efficiency applied to beam-available time: setup, re-takes, DAQ hiccups, sub-run turnaround. This is the pessimism knob.",
 

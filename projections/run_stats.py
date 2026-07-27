@@ -38,6 +38,9 @@ BEAM_CSV_DIR = "/home/mx17/beam_july/slow_control/beam_intensity"
 
 # beam_watcher's own pulse threshold (config/beam_state.json: pulse_threshold_e10)
 PULSE_THRESHOLD_E10 = 50.0
+# How far back to load beam-pulse CSVs. The rate fit only wants recent sub-runs, and
+# the ledger now reaches back past the pulse record.
+PULSE_WINDOW_DAYS = 10
 
 COSMIC_BEAM_TYPES = {"cosmics", "cosmic"}
 
@@ -58,25 +61,42 @@ def _run_config(run_dir, run_name):
         return {}
 
 
+def _stamp(pattern, names):
+    """First YYMMDD_HHhMM stamp matching `pattern` in `names`, as a datetime."""
+    for name in sorted(names):
+        m = re.search(pattern, name)
+        if m:
+            day = datetime.strptime(m.group(1), "%y%m%d")
+            return day.replace(hour=int(m.group(2)), minute=int(m.group(3)))
+    return None
+
+
 def _subrun_start(subrun_path):
-    """Sub-run start time from the datrun filenames the DAQ writes,
-    Mx17_<subrun>_datrun_260726_18H07_000_01.fdf -> 2026-07-26 18:07 (local).
-    Falls back to the raw_daq_data mtime, which is close enough to keep a sub-run
-    on the plot rather than dropping it."""
+    """(start_time, source) for a sub-run, from the most reliable name available.
+
+    Two sources, because the first one disappears: once a run has been backed up to
+    EOS the space manager deletes its .fdf files, so `datrun_...` names are gone from
+    older runs — but `RunCtrl_YYMMDD_HHhMM.log` survives and carries the same stamp
+    (verified identical on run_79). Falling through to the directory mtime would
+    otherwise date every cleaned run to the moment it was CLEANED, which stacks a
+    dozen runs onto one instant and turns the cumulative curve into a cliff.
+    """
     raw = os.path.join(subrun_path, "raw_daq_data")
     try:
         names = os.listdir(raw)
     except OSError:
-        return None
-    for name in sorted(names):
-        m = re.search(r"datrun_(\d{6})_(\d{2})H(\d{2})", name)
-        if m:
-            day = datetime.strptime(m.group(1), "%y%m%d")
-            return day.replace(hour=int(m.group(2)), minute=int(m.group(3)))
+        return None, None
+
+    t = _stamp(r"datrun_(\d{6})_(\d{2})H(\d{2})", names)
+    if t is not None:
+        return t, "datrun"
+    t = _stamp(r"RunCtrl_(\d{6})_(\d{2})H(\d{2})", names)
+    if t is not None:
+        return t, "runctrl"
     try:
-        return datetime.fromtimestamp(os.path.getmtime(raw))
+        return datetime.fromtimestamp(os.path.getmtime(raw)), "mtime"
     except OSError:
-        return None
+        return None, None
 
 
 def scan_runs(run_dir=RUN_DIR, first_run=79, last_run=None):
@@ -101,7 +121,7 @@ def scan_runs(run_dir=RUN_DIR, first_run=79, last_run=None):
             continue
 
         for subrun, events in per_subrun.items():
-            t0 = _subrun_start(os.path.join(run_dir, run_name, subrun))
+            t0, src = _subrun_start(os.path.join(run_dir, run_name, subrun))
             if t0 is None:
                 continue
             minutes = planned.get(subrun, 60.0)
@@ -122,6 +142,7 @@ def scan_runs(run_dir=RUN_DIR, first_run=79, last_run=None):
                 "t_end_unix": t1.timestamp(),
                 "hours": minutes / 60.0,
                 "events": int(events),
+                "t_source": src,
             })
 
     df = pd.DataFrame(rows)
@@ -171,7 +192,7 @@ def cumulative(df):
     return times, totals
 
 
-def measure_rate(beam_df, pulses, min_pulse_fraction=0.8):
+def measure_rate(beam_df, pulses, min_pulse_fraction=0.8, delivery_df=None):
     """Measure the beam data-taking rate.
 
     Decomposed deliberately into two factors, because they fail differently:
@@ -192,14 +213,32 @@ def measure_rate(beam_df, pulses, min_pulse_fraction=0.8):
         return {}
     df = add_pulse_counts(beam_df, pulses)
     df = df[df.hours > 0]
+    # Keep only sub-runs the pulse record actually covers. A sub-run from before the
+    # CSVs start has real events but zero pulses, and dividing one by the other would
+    # inflate events/pulse without bound. A genuinely beam-off sub-run also has zero
+    # pulses and has no business in a beam-rate fit either, so one test covers both.
+    df = df[df.pulses > 0]
+    if not len(df):
+        return {}
 
-    per_hour = df.pulses / df.hours
-    nominal = float(per_hour.median()) if len(per_hour) else 0.0
-    full = df[per_hour >= min_pulse_fraction * nominal] if nominal else df
-
+    # events/pulse comes from `df` — the current production point, because it is a
+    # property of the detector and trigger.
     total_events = int(df.events.sum())
     total_pulses = int(df.pulses.sum())
     ev_per_pulse = total_events / total_pulses if total_pulses else float("nan")
+
+    # pulses/hour comes from `delivery_df` — a WIDER window, because it is a property
+    # of the machine and is noisy hour to hour. Taking it from a single production
+    # sub-run that happened to catch poor beam (run_86's first hour: 605 pulses/h
+    # against a normal ~1050) would halve the projection for a reason that has
+    # nothing to do with the detector.
+    dd = df if delivery_df is None else add_pulse_counts(delivery_df, pulses)
+    dd = dd[(dd.hours > 0) & (dd.pulses > 0)]
+    if not len(dd):
+        dd = df
+    per_hour = dd.pulses / dd.hours
+    nominal = float(per_hour.median()) if len(per_hour) else 0.0
+    full = dd[per_hour >= min_pulse_fraction * nominal] if nominal else dd
     pulses_per_hour = float((full.pulses / full.hours).median()) if len(full) else nominal
 
     return {
@@ -210,6 +249,7 @@ def measure_rate(beam_df, pulses, min_pulse_fraction=0.8):
         # For comparison: raw events/hour including partially-beam-off sub-runs.
         "events_per_hour_observed": total_events / float(df.hours.sum()),
         "n_subruns": int(len(df)),
+        "n_subruns_delivery": int(len(dd)),
         "n_subruns_full_beam": int(len(full)),
         "total_events": total_events,
         "total_pulses": total_pulses,
@@ -217,6 +257,84 @@ def measure_rate(beam_df, pulses, min_pulse_fraction=0.8):
         "window_start": df.t_start.min().isoformat(timespec="minutes"),
         "window_end": df.t_end.max().isoformat(timespec="minutes"),
     }
+
+
+LEDGER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "stats_ledger.csv")
+# The epochs are STORED, not re-derived on load. Re-deriving them from the naive
+# local timestamp strings would silently shift every historical row when the machine
+# leaves CEST for CET in October — and pandas would read those naive strings as UTC
+# anyway. Persisting the number computed at scan time makes the ledger self-contained.
+LEDGER_COLS = ["run", "subrun", "beam_type", "is_cosmic", "t_start", "t_end",
+               "t_start_unix", "t_end_unix", "hours", "events", "t_source"]
+
+
+def load_ledger(path=LEDGER_PATH):
+    """The persistent per-sub-run record. Empty frame if there isn't one yet."""
+    if not os.path.exists(path):
+        return pd.DataFrame(columns=LEDGER_COLS)
+    df = pd.read_csv(path, parse_dates=["t_start", "t_end"])
+    df["is_cosmic"] = df["is_cosmic"].astype(bool)
+    return df
+
+
+def sync_ledger(disk_df, path=LEDGER_PATH):
+    """Fold a disk scan into the ledger and write it back.
+
+    The ledger is what makes these statistics survive the disk. Runs get deleted
+    once they are safely on EOS — run_1 through run_66 already are — and their event
+    counts would go with them, silently shrinking the cumulative total. So every
+    scan is merged in and rows are NEVER dropped for being absent from disk: a
+    sub-run that has aged out keeps its recorded numbers forever.
+
+    Disk wins on conflict, since a re-processed sub-run can legitimately change its
+    count. Returns (combined, n_added, n_updated, n_ledger_only)."""
+    ledger = load_ledger(path)
+    disk = disk_df[[c for c in LEDGER_COLS if c in disk_df.columns]].copy()
+
+    key = ["run", "subrun"]
+    if len(ledger):
+        merged = ledger.set_index(key)
+        incoming = disk.set_index(key)
+        n_added = len(incoming.index.difference(merged.index))
+        common = incoming.index.intersection(merged.index)
+        n_updated = int((merged.loc[common, "events"].sort_index().values
+                         != incoming.loc[common, "events"].sort_index().values).sum())
+        n_only = len(merged.index.difference(incoming.index))
+        merged = incoming.combine_first(merged)
+        combined = merged.reset_index()
+    else:
+        combined = disk
+        n_added, n_updated, n_only = len(disk), 0, 0
+
+    combined = combined.sort_values("t_start").reset_index(drop=True)
+    combined.to_csv(path, index=False, columns=LEDGER_COLS)
+    return combined, n_added, n_updated, n_only
+
+
+def load_stats(run_dir=RUN_DIR, first_run=None, sync=True):
+    """Every sub-run we have ever recorded: the ledger, refreshed from disk.
+
+    first_run=None means everything. Rows whose timestamp could only be taken from
+    a directory mtime are kept but flagged in `t_source` — those runs were cleaned
+    before this ledger existed and their times are the cleanup time, not the
+    acquisition time."""
+    df = load_ledger()
+    if sync:
+        try:
+            disk = scan_runs(run_dir, first_run=1)
+            if len(disk):
+                df, added, updated, only = sync_ledger(disk)
+                if added or updated:
+                    print(f"[run_stats] Ledger: +{added} new, {updated} updated, "
+                          f"{only} from deleted runs")
+        except Exception as e:
+            print(f"[run_stats] Disk scan failed, using ledger alone: {e}",
+                  file=sys.stderr)
+    if first_run is not None and len(df):
+        n = df.run.map(run_number)
+        df = df[n.notna() & (n >= first_run)]
+    return df.sort_values("t_start").reset_index(drop=True)
 
 
 def measure_cosmic_rate(cosmic_df):
@@ -239,21 +357,47 @@ def measure_cosmic_rate(cosmic_df):
     }
 
 
-def summarise(run_dir=RUN_DIR, first_run=79):
-    """Everything the projection and the plots need, in one call."""
-    df = scan_runs(run_dir, first_run=first_run)
+def summarise(run_dir=RUN_DIR, first_run=None, sync=True, rate_first_run=None):
+    """Everything the projection and the plots need, in one call.
+
+    Two different questions, two different subsets:
+
+      first_run=None      counts EVERY run we have a record of, on disk or not.
+                          That is the right set for "how much have we recorded".
+
+      rate_first_run=N    fits the forward rate on runs >= N only. That is a
+                          different question — "what will we record from here" — and
+                          the answer must not be diluted by old HV, threshold and
+                          latency scans, which ran at deliberately bad settings. The
+                          whole history averages 79 events/pulse against production's
+                          104, so leaving this unset understates the projection by a
+                          quarter.
+    """
+    df = load_stats(run_dir, first_run=first_run, sync=sync)
     if not len(df):
         return {"subruns": df, "beam": df, "cosmic": df, "rate": {}, "pulses": np.array([])}
     beam = df[~df.is_cosmic].reset_index(drop=True)
     cosmic = df[df.is_cosmic].reset_index(drop=True)
-    pulses = load_beam_pulses(df.t_start.min().to_pydatetime(),
-                              df.t_end.max().to_pydatetime())
+    # Pulse CSVs only exist for the last few weeks and are only needed for the rate
+    # fit, which uses recent sub-runs — so window the lookup rather than trying to
+    # load a month of beam history for runs whose files are long gone.
+    t_hi = df.t_end.max().to_pydatetime()
+    t_lo = max(df.t_start.min().to_pydatetime(), t_hi - timedelta(days=PULSE_WINDOW_DAYS))
+    pulses = load_beam_pulses(t_lo, t_hi)
+
+    rate_beam = beam
+    if rate_first_run is not None and len(beam):
+        n = beam.run.map(run_number)
+        rate_beam = beam[n.notna() & (n >= rate_first_run)]
+
     return {
         "subruns": df,
         "beam": beam,
         "cosmic": cosmic,
         "pulses": pulses,
-        "rate": measure_rate(beam, pulses),
+        "rate": measure_rate(rate_beam, pulses, delivery_df=beam),
+        "rate_first_run": rate_first_run,
+        "rate_runs": sorted(rate_beam.run.unique().tolist()) if len(rate_beam) else [],
         "cosmic_rate": measure_cosmic_rate(cosmic),
         "beam_events": int(beam.events.sum()),
         "cosmic_events": int(cosmic.events.sum()),
@@ -261,17 +405,26 @@ def summarise(run_dir=RUN_DIR, first_run=79):
 
 
 def main():
-    s = summarise()
+    import argparse
+    ap = argparse.ArgumentParser(description="Recorded statistics, ledger-backed.")
+    ap.add_argument("--rate-first-run", type=int, default=86)
+    ap.add_argument("--no-sync", action="store_true", help="ledger only, skip the disk scan")
+    args = ap.parse_args()
+
+    s = summarise(rate_first_run=args.rate_first_run, sync=not args.no_sync)
     beam, cosmic, rate = s["beam"], s["cosmic"], s["rate"]
     print(f"Beam sub-runs   : {len(beam):>4}   events {s['beam_events']:>12,}")
     print(f"Cosmic sub-runs : {len(cosmic):>4}   events {s['cosmic_events']:>12,}")
     if rate:
-        print(f"\nWindow {rate['window_start']} -> {rate['window_end']}")
+        print(f"\nForward rate fitted on {', '.join(s['rate_runs'])}")
+        print(f"Window {rate['window_start']} -> {rate['window_end']}")
         print(f"  events/pulse       {rate['events_per_pulse']:.1f}")
         print(f"  pulses/hour        {rate['pulses_per_hour']:.0f}")
         print(f"  events/beam hour   {rate['events_per_beam_hour']:,.0f}")
         print(f"  observed events/h  {rate['events_per_hour_observed']:,.0f}"
-              f"  ({rate['n_subruns_full_beam']}/{rate['n_subruns']} sub-runs fully beam-on)")
+              f"  (over {rate['n_subruns']} production sub-run(s))")
+        print(f"  delivery window    {rate['n_subruns_full_beam']}/"
+              f"{rate['n_subruns_delivery']} sub-runs fully beam-on")
 
 
 if __name__ == "__main__":

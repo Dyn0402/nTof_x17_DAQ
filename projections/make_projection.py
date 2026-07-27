@@ -101,11 +101,13 @@ def main():
     ap = argparse.ArgumentParser(description="Freeze a statistics projection.")
     ap.add_argument("--label", help="suffix for the saved filename (default: today's date)")
     ap.add_argument("--dry-run", action="store_true", help="print, don't save")
-    ap.add_argument("--first-run", type=int, default=79, help="first run to count (default 79)")
+    ap.add_argument("--first-run", type=int, default=None,
+                    help="first run to count (default: every run in the ledger)")
     args = ap.parse_args()
 
     sched = sched_mod.load_schedule()
-    stats = run_stats.summarise(first_run=args.first_run)
+    stats = run_stats.summarise(first_run=args.first_run,
+                                rate_first_run=sched.get("rate_first_run"))
     rate = stats["rate"]
     if not rate:
         raise SystemExit("No completed beam sub-runs found — nothing to project from.")
@@ -117,9 +119,12 @@ def main():
                  cosmic_rate=stats.get("cosmic_rate"), anchor_cosmics=anchor_cos)
 
     s = sched_mod.summary(sched)
-    print(f"Measured from run_{args.first_run}+ : {rate['window_start']} -> {rate['window_end']}")
-    print(f"  events/pulse         {rate['events_per_pulse']:>12.1f}")
-    print(f"  pulses/hour          {rate['pulses_per_hour']:>12.0f}")
+    counted = f"run_{args.first_run}+" if args.first_run else "every recorded run"
+    fitted = ", ".join(stats.get("rate_runs") or []) or "?"
+    print(f"Counting {counted}; forward rate fitted on {fitted} "
+          f"({rate['window_start']} -> {rate['window_end']})")
+    print(f"  events/pulse         {rate['events_per_pulse']:>12.1f}   (production point)")
+    print(f"  pulses/hour          {rate['pulses_per_hour']:>12.0f}   (machine, wider window)")
     print(f"  events/beam hour     {rate['events_per_beam_hour']:>12,.0f}")
     print()
     print(f"Schedule {s['start']:%a %d %b %H:%M} -> {s['end']:%a %d %b %H:%M}")

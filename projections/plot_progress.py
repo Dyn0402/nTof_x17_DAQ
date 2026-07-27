@@ -90,14 +90,15 @@ def main():
     ap = argparse.ArgumentParser(description="Plot statistics progress vs projections.")
     ap.add_argument("--out", help="output PNG path")
     ap.add_argument("--show", action="store_true")
-    ap.add_argument("--first-run", type=int, default=79)
+    ap.add_argument("--first-run", type=int, default=None)
     args = ap.parse_args()
 
     if not args.show:
         matplotlib.use("Agg")
 
     sched = sched_mod.load_schedule()
-    stats = run_stats.summarise(first_run=args.first_run)
+    stats = run_stats.summarise(first_run=args.first_run,
+                                rate_first_run=sched.get("rate_first_run"))
     beam, cosmic = stats["beam"], stats["cosmic"]
     if not len(beam):
         raise SystemExit("No completed beam sub-runs to plot.")
@@ -145,10 +146,13 @@ def main():
     rate = stats["rate"]
     ax.set_title("nTOF x17 — cumulative beam triggers vs projection",
                  color=INK, fontsize=14, fontweight="bold", loc="left", pad=32)
+    counted = f"run_{args.first_run}+" if args.first_run else "all recorded runs"
+    fitted = ", ".join(stats.get("rate_runs") or []) or "?"
     ax.text(0, 1.012,
-            f"from run_{args.first_run} · {rate['events_per_pulse']:.0f} events/pulse · "
-            f"{rate['pulses_per_hour']:.0f} pulses/h · "
-            f"{rate['events_per_beam_hour'] / 1000:.0f}k events per beam hour",
+            f"counting {counted} · forward rate from {fitted}: "
+            f"{rate['events_per_pulse']:.0f} events/pulse × "
+            f"{rate['pulses_per_hour']:.0f} pulses/h = "
+            f"{rate['events_per_beam_hour'] / 1000:.0f}k per beam hour",
             transform=ax.transAxes, color=MUTED, fontsize=9.5, va="bottom")
     ax.set_ylabel("Cumulative triggers (millions)", color=INK2, fontsize=10)
     ax.set_xlim(t_lo, t_end)

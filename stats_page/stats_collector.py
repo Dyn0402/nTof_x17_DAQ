@@ -64,7 +64,10 @@ DEFAULTS = {
     # its own long cadence rather than every push.
     "projection_enabled": True,
     "projection_interval_s": 600,
-    "projection_first_run": 79,
+    # null = count every run in the ledger, including ones already deleted from
+    # disk. This must stay consistent with what the frozen projection was anchored
+    # on, or the "against projection" tile compares two different totals.
+    "projection_first_run": None,
 }
 
 # {"t": last computed, "data": block, "png": path if freshly rendered}
@@ -154,7 +157,8 @@ def projection_block(cfg, force=False):
         if PROJECTIONS_DIR not in sys.path:
             sys.path.insert(0, PROJECTIONS_DIR)
         import live as projection_live
-        data = projection_live.summary(first_run=int(cfg["projection_first_run"]))
+        fr = cfg.get("projection_first_run")
+        data = projection_live.summary(first_run=int(fr) if fr else None)
     except Exception as e:
         print(f"[stats_page] Projection summary failed: {e}", file=sys.stderr)
         return _projection_cache["data"], None
@@ -168,10 +172,11 @@ def projection_block(cfg, force=False):
     if stamp != _projection_cache.get("stamp") or not os.path.exists(LIVE_PLOT_PATH):
         try:
             os.makedirs(os.path.dirname(LIVE_PLOT_PATH), exist_ok=True)
-            r = subprocess.run(
-                [sys.executable, "plot_progress.py", "--out", LIVE_PLOT_PATH,
-                 "--first-run", str(cfg["projection_first_run"])],
-                cwd=PROJECTIONS_DIR, capture_output=True, text=True, timeout=180)
+            cmd = [sys.executable, "plot_progress.py", "--out", LIVE_PLOT_PATH]
+            if cfg.get("projection_first_run"):
+                cmd += ["--first-run", str(cfg["projection_first_run"])]
+            r = subprocess.run(cmd, cwd=PROJECTIONS_DIR, capture_output=True,
+                               text=True, timeout=180)
             if r.returncode == 0 and os.path.exists(LIVE_PLOT_PATH):
                 png = LIVE_PLOT_PATH
                 _projection_cache["stamp"] = stamp
