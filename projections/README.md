@@ -101,16 +101,11 @@ and its ticks are colour-matched to its curve, and the regions are what is actua
 being compared. IPC is the light-blue field behind; the measured triggers are the
 darker red line in front.
 
-**Two files, one per x scale:**
-
-| file | axis | good for |
-|---|---|---|
-| `ipc_yield.png` | log | comparing the regions — they come out roughly even width, labels fit inline, thermal peak stays legible |
-| `ipc_yield_linear.png` | linear | the true spacing — which shows how compressed the interesting part is |
-
-On the linear axis 1–3 ms is 2.5% of the frame, far too narrow for a label block, so
-that version tags each band with its range only and puts the numbers in one aligned
-table in the space the decaying curves leave free.
+Log x: the regions come out roughly even width so their labels fit inline, and the
+thermal peak stays legible, which a linear axis out to 80 ms would not manage.
+(`make_figure("linear", ...)` still works if you want the true spacing back — it
+switches to a range-only band tag plus one aligned table, since on a linear axis
+1–3 ms is 2.5% of the frame.)
 
 **Expected IPC** — `MX17_Full_Geant/analysis/reweight/ipc_ingate_spectrum.npz`, the
 in-gate production spectrum: the sub-keV thermal campaign reweighted by ENDF/B-VIII.0
@@ -132,13 +127,17 @@ The spectrum **stops at 31.6 ms** (2 meV, its lowest energy). Past that the plot
 greyed — absence of simulation, not absence of IPC — so the 25–80 ms region is only
 partly covered, flagged with `*`.
 
-**Measured yield** — run_79, FEU 01 only (every FEU reads every event, so one FEU is
-the whole event list at ⅛ the I/O). Anchored on the **gamma flash itself**, tagged by
-ADC saturation, not on the first recorded event: run_79's flash capture is ~99%
-overall but dips to ~97% in some sub-runs, and in those spills the first recorded
-event is the 1 ms gate opening rather than the flash — anchoring on it would smear
-the axis by a millisecond. Spills with no captured flash are dropped (17,037 of
-17,167 kept).
+**Measured yield** — set by `RUN` / `SUBRUNS` at the top of the script, currently
+**run_86 / stat090_0000**: the production point after run_82 moved the watermark to
+Hwm 1 / Lwm 0, so it is what the detector actually delivers now. FEU 01 only (every
+FEU reads every event, so one FEU is the whole event list at ⅛ the I/O). Anchored on
+the **gamma flash itself**, tagged by ADC saturation, not on the first recorded
+event: when the flash is missed the first recorded event is the 1 ms gate opening
+instead, and anchoring on it would smear the axis by a millisecond. Spills with no
+captured flash are dropped — run_86 keeps 606 of 606.
+
+Caches are keyed on (run, sub-run selection), so pointing this at a new run cannot
+silently reuse the previous histogram.
 
 Region totals scale each region's measured share to the frozen projection, so
 **re-run this after freezing a new projection** or the `→ xM` figures will still
@@ -146,15 +145,19 @@ refer to the old one.
 
 | region | triggers | /spill | → by Aug 10 | of the IPC |
 |---|---|---|---|---|
-| 1–3 ms | 8.7% | 8.9 | 2.59M | 25% |
-| 3–8 ms | 16.3% | 16.7 | 4.86M | **56%** |
-| 8–15 ms | 21.7% | 22.2 | 6.45M | 17% |
-| 15–25 ms | 19.9% | 20.3 | 5.91M | 2% |
-| 25–80 ms | 33.5% | 34.3 | 9.97M | ~0%* |
+| 1–3 ms | 8.5% | 7.3 | 2.53M | 25% |
+| 3–8 ms | 19.4% | 16.7 | 5.78M | **56%** |
+| 8–15 ms | 22.5% | 19.4 | 6.70M | 17% |
+| 15–25 ms | 17.7% | 15.2 | 5.27M | 2% |
+| 25–80 ms | 31.9% | 27.5 | 9.50M | ~0%* |
 
 The two columns pull in opposite directions, which is the point of overlaying them:
-**56% of the IPC lands in 3–8 ms, where only 16% of the triggers are**, while a third
-of all triggers sit in 25–80 ms, where the expectation is essentially nothing.
+**56% of the IPC lands in 3–8 ms, where 19% of the triggers are**, while a third of
+all triggers sit in 25–80 ms, where the expectation is essentially nothing.
+
+Against run_79 (Hwm 2) the Hwm 1 point trades total rate for placement: 86 triggers
+per spill in 1–80 ms against 102, i.e. ~16% fewer, but the 3–8 ms share rises from
+16.3% to 19.4% — more of what is left lands where the IPC is.
 
 ## run_82 — watermark × inter-packet-delay
 

@@ -7,39 +7,39 @@ Created as nTof_x17_DAQ/projections/ipc_yield.py
 
 @author: Dylan Neff, dylan
 
-Expected IPC arrival vs time since the gamma flash, with the MEASURED run_79 trigger
-yield underneath it in fine bins, and the trigger totals each time region is
-projected to deliver by the end of the run.
+Expected IPC arrival vs time since the gamma flash, with the MEASURED trigger yield
+overlaid in fine bins, and the trigger totals each time region is projected to
+deliver by the end of the run.
 
-Two panels rather than one overlay: the two curves are ~1e-6 IPC pairs/pulse/ms and
-~2 triggers/spill/ms. A twin y-axis would put two unrelated scales on one frame and
-invite reading a crossing point that means nothing, so they share only the x axis —
-the same layout as analysis/flash_comb/tools/make_ipc_comb_ms.py, which this follows.
+A true overlay on twin y axes, matching the house format of
+analysis/flash_comb/tools/ipc_spectrum_vs_runs.py: IPC is the light-blue field
+behind, the measured triggers the darker red line in front. Two scales in one frame
+is normally the wrong call, so each axis, label and tick set is colour-matched to
+its own curve.
 
 IPC expectation
-    Geant4 thermal capture campaign, MX17_Full_Geant/docs/report/
-    thermal_captures_subkev_full.json — per-decade radiative capture rates from
-    `rad_per_pulse_npxbr` (the 7.4e8 (n,p) counts x the measured ng/np branching,
-    far better statistics than the handful of direct (n,g) events), times
-    ALPHA_IPC pairs per capture. Neutron TOF over the 19.5 m EAR2 flight path maps
-    energy to arrival time, t[ms] = 1.41/sqrt(E[eV]). Within a decade the n_TOF flux
-    is ~isolethargic, so dN/dlog(t) is flat and dN/dt ~ 1/t.
+    MX17_Full_Geant/analysis/reweight/ipc_ingate_spectrum.npz — the sub-keV thermal
+    campaign reweighted by ENDF/B-VIII.0 sigma_ng/sigma_np, 4.1e8 effective counts.
+    Taken verbatim so this cannot drift from the flash_comb plots. Do NOT rebuild it
+    from the raw six-decade table: that gives a 1/t staircase and loses the thermal
+    peak at 5.3 ms entirely.
 
 Measured yield
-    run_79, FEU 01 only (every FEU reads every event, so one FEU is the whole event
-    list at 1/8 the I/O). Anchored on the GAMMA FLASH ITSELF, tagged by ADC
-    saturation, not on "the first event we happened to record": run_79's flash
-    capture is ~97%, so in ~3 spills per hundred the first recorded event is the
-    ~1 ms gate opening rather than the flash, and anchoring on it would smear the
-    whole axis by a millisecond. Spills with no captured flash are dropped.
+    RUN / SUBRUNS below — currently run_86, the production point after run_82 moved
+    the watermark to Hwm 1 / Lwm 0. FEU 01 only (every FEU reads every event, so one
+    FEU is the whole event list at 1/8 the I/O). Anchored on the GAMMA FLASH ITSELF,
+    tagged by ADC saturation, not on "the first event we happened to record": when
+    the flash is missed the first recorded event is the ~1 ms gate opening instead,
+    and anchoring on it would smear the whole axis by a millisecond. Spills with no
+    captured flash are dropped.
 
-The extraction is a few minutes, so it is cached. Nothing here changes as data
-accumulates — run_79 is a fixed reference measurement.
+Cached per (run, sub-run selection), so pointing this at a new run does not silently
+reuse the old histogram. Re-run after freezing a new projection too — the per-region
+"-> xM" totals scale to it.
 
 Usage:
-    python ipc_yield.py                 # plot from cache (extracting if absent)
-    python ipc_yield.py --refresh       # re-extract from the ROOT files
-    python ipc_yield.py --out foo.png
+    /usr/bin/python3 ipc_yield.py               # needs uproot: system python
+    /usr/bin/python3 ipc_yield.py --refresh
 """
 
 import argparse
@@ -51,7 +51,7 @@ from datetime import datetime
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CACHE_PATH = os.path.join(HERE, "cache", "run79_tsf.npz")
+CACHE_DIR = os.path.join(HERE, "cache")
 PLOT_DIR = os.path.join(HERE, "plots")
 
 RUNS_ROOT = "/home/mx17/beam_july/runs"
@@ -64,7 +64,11 @@ RUNS_ROOT = "/home/mx17/beam_july/runs"
 IPC_NPZ = ("/home/mx17/CLionProjects/MX17_Full_Geant/analysis/reweight/"
            "ipc_ingate_spectrum.npz")
 
-RUN = "run_79"
+# The measured trigger distribution shown on the page. run_86 is the production
+# point after run_82 moved the watermark to Hwm 1 / Lwm 0 (IPD 5), so it — not
+# run_79's Hwm 2 — is what the detector actually delivers now.
+RUN = "run_86"
+SUBRUNS = ("stat090_0000",)     # None = every sub-run of the run
 FEU = "01"
 TICK_MS = 1e-5
 SPILL_GAP_MS = 200.0
@@ -91,10 +95,20 @@ def tof_ms(E_eV):
 
 
 # ------------------------------------------------------------------ measured
-def _subrun_dirs(run=RUN):
+def _subrun_dirs(run=RUN, subruns=None):
     root = os.path.join(RUNS_ROOT, run)
-    return [os.path.join(root, d) for d in sorted(os.listdir(root))
-            if os.path.isdir(os.path.join(root, d))]
+    names = sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)))
+    if subruns:
+        wanted = set(subruns)
+        names = [n for n in names if n in wanted]
+    return [os.path.join(root, n) for n in names]
+
+
+def cache_path(run=RUN, subruns=None):
+    """One cache per (run, sub-run selection) so switching the measured source
+    never silently reuses the previous run's histogram."""
+    tag = run if not subruns else f"{run}_{'_'.join(sorted(subruns))}"
+    return os.path.join(CACHE_DIR, f"{tag}_tsf.npz")
 
 
 def hist_edges(bin_ms=BIN_MS):
@@ -152,15 +166,15 @@ def extract_subrun(subrun_dir, feu=FEU, edges=None):
             "n_spill_flash": got, "n_events": int(ts.size)}
 
 
-def extract(run=RUN, feu=FEU, verbose=True):
-    """Flash-anchored time-since-flash histogram over every sub-run of `run`."""
+def extract(run=RUN, feu=FEU, subruns=None, verbose=True):
+    """Flash-anchored time-since-flash histogram over the selected sub-runs."""
     edges = hist_edges()
     counts = np.zeros(len(edges) - 1, dtype=np.int64)
     n_spill_tot = n_spill_flash = 0
     n_events = 0
-    subruns = []
+    used = []
 
-    for d in _subrun_dirs(run):
+    for d in _subrun_dirs(run, subruns):
         r = extract_subrun(d, feu=feu, edges=edges)
         if r is None:
             continue
@@ -168,7 +182,7 @@ def extract(run=RUN, feu=FEU, verbose=True):
         n_spill_tot += r["n_spill_total"]
         n_spill_flash += r["n_spill_flash"]
         n_events += r["n_events"]
-        subruns.append(os.path.basename(d))
+        used.append(os.path.basename(d))
         if verbose:
             print(f"  {os.path.basename(d):20s} spills {r['n_spill_total']:5d}  "
                   f"flash {100 * r['n_spill_flash'] / max(r['n_spill_total'], 1):5.1f}%")
@@ -177,32 +191,35 @@ def extract(run=RUN, feu=FEU, verbose=True):
         "edges": edges, "counts": counts,
         "n_spill_total": n_spill_tot, "n_spill_flash": n_spill_flash,
         "n_events": n_events, "run": run, "feu": feu,
-        "subruns": np.array(subruns),
+        "subruns": np.array(used),
         "created": datetime.now().isoformat(timespec="seconds"),
     }
 
 
-def save_cache(data, path=CACHE_PATH):
+def save_cache(data, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     np.savez_compressed(path, **data)
     return path
 
 
-def load_cache(path=CACHE_PATH):
+def load_cache(path=None):
+    path = path or cache_path()
     if not os.path.exists(path):
         return None
     z = np.load(path, allow_pickle=True)
     return {k: z[k] for k in z.files}
 
 
-def get_measured(refresh=False):
+def get_measured(refresh=False, run=RUN, subruns=SUBRUNS):
+    path = cache_path(run, subruns)
     if not refresh:
-        d = load_cache()
+        d = load_cache(path)
         if d is not None:
             return d
-    print(f"Extracting flash-anchored times from {RUN} (FEU {FEU}) — a few minutes...")
-    d = extract()
-    print(f"Cached -> {save_cache(d)}")
+    sel = ", ".join(subruns) if subruns else "all sub-runs"
+    print(f"Extracting flash-anchored times from {run} ({sel}, FEU {FEU})...")
+    d = extract(run=run, subruns=subruns)
+    print(f"Cached -> {save_cache(d, path)}")
     return d
 
 
@@ -286,7 +303,7 @@ def region_table(meas, projected_total=None, ipc_t=None, ipc_d=None):
     return rows, total_in_gate
 
 def main():
-    ap = argparse.ArgumentParser(description="IPC expectation vs measured run_79 yield.")
+    ap = argparse.ArgumentParser(description="IPC expectation vs the measured yield.")
     ap.add_argument("--refresh", action="store_true", help="re-extract from ROOT files")
     ap.add_argument("--outdir", default=PLOT_DIR, help="where the PNGs go")
     ap.add_argument("--show", action="store_true")
@@ -315,6 +332,8 @@ def main():
     # IPC sits behind as a light-blue field; the data reads in front in a darker red.
     IPC_LINE, IPC_FILL = "#5598e7", "#9ec5f4"
     DATA = "#c0392b"
+
+    run_label = str(meas["run"])
 
     # Thermal peak: search above THERMAL_SEARCH_MS (see the constant).
     m_th = ipc_t > THERMAL_SEARCH_MS
@@ -354,11 +373,12 @@ def main():
         # --- measured triggers: in front, darker red ---
         axr.step(centres, per_spill_per_ms, where="mid", color=DATA,
                  linewidth=1.0, zorder=5,
-                 label=f"run_79 recorded triggers ({BIN_MS * 1000:.0f} $\\mu$s bins)")
+                 label=f"{run_label} recorded triggers ({BIN_MS * 1000:.0f} $\\mu$s bins)")
         gate = centres >= TPLOT_MIN
         gate_max = float(per_spill_per_ms[gate].max())
         axr.set_ylim(0, gate_max * 1.75)
-        axr.set_ylabel("run_79 recorded triggers / spill / ms", color=DATA, fontsize=10)
+        axr.set_ylabel(f"{run_label} recorded triggers / spill / ms",
+                       color=DATA, fontsize=10)
         axr.tick_params(axis="y", colors=DATA, labelsize=9, length=3)
 
         ax.annotate(f"thermal peak {t_pk:.1f} ms\n(E $\\approx$ {E_pk * 1e3:.0f} meV)",
@@ -446,12 +466,11 @@ def main():
         for t in leg.get_texts():
             t.set_color(INK2)
 
-        ax.set_title(f"In-gate IPC spectrum vs run_79's recorded triggers"
-                     f"   —   {'log' if xscale == 'log' else 'linear'} time axis",
+        ax.set_title(f"In-gate IPC spectrum vs {run_label}'s recorded triggers",
                      color=INK, fontsize=14, fontweight="bold", loc="left", pad=34)
         sub = (f"$\\int$ = {ipc_meta['ipc_per_pulse']:.2e} IPC/pulse = "
                f"{ipc_meta['ipc_per_day']:.2f} IPC/day  ·  "
-               f"run_79 {int(meas['n_spill_flash']):,} flash-anchored spills of "
+               f"{run_label} {int(meas['n_spill_flash']):,} flash-anchored spills of "
                f"{int(meas['n_spill_total']):,} · FEU {str(meas['feu'])}")
         if projected_total:
             sub += f"  ·  → scaled to the {projected_total / 1e6:.1f}M projection"
@@ -472,7 +491,6 @@ def main():
         return fig
 
     make_figure("log", os.path.join(args.outdir, "ipc_yield.png"))
-    make_figure("linear", os.path.join(args.outdir, "ipc_yield_linear.png"))
 
     print(f"\n{'region':>12}  {'triggers':>12}  {'/spill':>8}  {'share':>7}"
           f"  {'projected':>12}  {'IPC':>6}")

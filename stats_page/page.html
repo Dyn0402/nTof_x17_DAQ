@@ -200,38 +200,16 @@
   <h2>IPC yield vs time since the gamma flash</h2>
   <p class="caption">
     In-gate IPC production (reweighted Geant4, light blue) under the trigger yield
-    measured in run_79 in 50 µs bins, flash-anchored (dark red). Each band shows its
-    share of the recorded triggers, that share scaled to the projection above, and its
-    share of the expected IPC — which is where the two disagree: 56% of the IPC lands
-    in 3–8 ms, where only 16% of the triggers are.
+    measured in run_86 in 50 µs bins, flash-anchored (dark red) — the production point
+    since the watermark moved to Hwm 1 / Lwm 0. Each band shows its share of the
+    recorded triggers, that share scaled to the projection above, and its share of the
+    expected IPC — which is where the two disagree: 56% of the IPC lands in 3–8 ms,
+    where 19% of the triggers are.
   </p>
   <div class="card plot">
     <img id="ipc-plot" src="ipc_yield.png" loading="lazy"
          alt="In-gate IPC spectrum and measured run_79 trigger yield versus time since the gamma flash, log time axis">
   </div>
-  <p class="caption">
-    The same thing on a linear time axis, for the true spacing — most of the IPC and
-    all of the comb structure live inside the first 15 ms.
-  </p>
-  <div class="card plot">
-    <img id="ipc-plot-linear" src="ipc_yield_linear.png" loading="lazy"
-         alt="In-gate IPC spectrum and measured run_79 trigger yield versus time since the gamma flash, linear time axis">
-  </div>
-
-  <h2>run_82 — flattening the trigger distribution</h2>
-  <p class="caption">
-    A watermark × inter-packet-delay 2×2, each setting taken twice in interleaved
-    order to cancel beam drift and pooled here. The figure of merit is the spread of
-    the trigger yield across 1–10 ms in 100 µs bins — coarser bins hide the comb
-    entirely. <strong>Hwm 1 / IPD 5 halves it</strong>: CV 0.41 against 0.85 at the
-    production point, with starved bins falling from 27% to 3%, for about 6% fewer
-    triggers in the band.
-  </p>
-  <div class="card plot">
-    <img id="run82-plot" src="run82_comb.png" loading="lazy"
-         alt="run_82 watermark and inter-packet-delay scan, one panel per setting, trigger yield versus time since the gamma flash">
-  </div>
-
   <h2>Services</h2>
   <div class="services" id="services"></div>
 
