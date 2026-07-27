@@ -70,6 +70,8 @@
   .hero .sub { font-size:13px; color:var(--ink-2); margin-top:6px; }
   .hero .runid { text-align:right; font-size:13px; color:var(--ink-2); }
   .hero .runid b { display:block; font-size:20px; font-weight:600; color:var(--ink); }
+  .hero .runid .pill { margin-bottom:10px; }
+  .hero .runid .heroproj { display:block; }
 
   .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(228px, 1fr)); }
   .tile .label { font-size:13px; color:var(--muted); }
@@ -77,6 +79,17 @@
   .tile .value .unit { font-size:15px; font-weight:500; color:var(--ink-2); margin-left:3px; }
   .tile .note { font-size:12.5px; color:var(--ink-2); margin-top:6px; }
   .tile .note.pending { color:var(--muted); font-style:italic; }
+  /* Grade against the best achieved. Colour never carries it alone — the percentage
+     and the "of best" wording say the same thing in text. */
+  .tile .grade { font-size:12.5px; margin-top:5px; color:var(--ink-2); }
+  .tile .grade b { font-weight:600; }
+  .tile .grade.good b { color:var(--good); }
+  .tile .grade.fair b { color:var(--warning); }
+  .tile .grade.low  b { color:var(--serious); }
+  /* Secondary units sit on their own baseline, right-aligned against the caption. */
+  .tile .foot { display:flex; justify-content:space-between; gap:10px;
+                font-size:12.5px; color:var(--muted); margin-top:5px; }
+  .tile .foot .alt { color:var(--ink-2); font-variant-numeric:tabular-nums; }
   .spark { display:block; width:100%; height:38px; margin-top:10px; overflow:visible; }
 
   /* Meter: fill carries progress, track is a lighter step of the same ramp. */
@@ -133,7 +146,8 @@
       <div class="meter"><i id="stat-meter"></i></div>
     </div>
     <div class="runid">
-      Projected total<b id="stat-projected">—</b>
+      <span class="pill" id="hero-kind"><span class="dot"></span><span></span></span>
+      <span class="heroproj">Projected total</span><b id="stat-projected">—</b>
       <span id="stat-projected-note">—</span>
     </div>
   </div>
@@ -141,21 +155,24 @@
   <div class="grid">
     <div class="card tile">
       <div class="label">Trigger rate</div>
-      <div class="value"><span id="rate">—</span><span class="unit" id="rate-unit">triggers / day</span></div>
+      <div class="value"><span id="rate">—</span><span class="unit">triggers / day</span></div>
       <svg class="spark" id="spark" preserveAspectRatio="none" aria-hidden="true"></svg>
-      <div class="note" id="rate-note">&nbsp;</div>
+      <div class="grade" id="rate-grade">&nbsp;</div>
+      <div class="foot"><span id="rate-note">&nbsp;</span><span class="alt" id="rate-hz"></span></div>
     </div>
 
     <div class="card tile">
       <div class="label">Beam delivery</div>
       <div class="value"><span id="beam-int">—</span><span class="unit">protons / day</span></div>
       <svg class="spark" id="beam-spark" preserveAspectRatio="none" aria-hidden="true"></svg>
-      <div class="note" id="beam-note">&nbsp;</div>
+      <div class="grade" id="beam-grade">&nbsp;</div>
+      <div class="foot"><span id="beam-note">&nbsp;</span><span class="alt" id="beam-alt"></span></div>
     </div>
 
     <div class="card tile">
       <div class="label">Current run</div>
       <div class="value" id="run-name">—</div>
+      <div style="margin-top:8px"><span class="pill" id="run-kind"><span class="dot"></span><span></span></span></div>
       <div class="note" id="run-note">&nbsp;</div>
     </div>
 
@@ -248,6 +265,21 @@
   function pill(el, cls, text) {
     el.className = "pill " + (cls || "");
     el.querySelector("span:last-child").textContent = text;
+  }
+
+  // Grade a live value against the best achieved so far. The reference is a p99
+  // over the whole history (see projections/reference_maxima.py), so 100% is a
+  // genuinely reachable ceiling rather than a one-off peak.
+  function grade(el, value, best, fmt) {
+    if (typeof value !== "number" || typeof best !== "number" || best <= 0) {
+      el.className = "grade";
+      el.innerHTML = "&nbsp;";
+      return;
+    }
+    var pct = 100 * value / best;
+    var cls = pct >= 85 ? "good" : pct >= 60 ? "fair" : "low";
+    el.className = "grade " + cls;
+    el.innerHTML = "<b>" + pct.toFixed(0) + "% of best</b> · " + fmt(best);
   }
 
   function sparkline(svg, pts, colour, fromZero) {
@@ -399,18 +431,22 @@
 
     // Current run is a plain tile now — the headline number is the cumulative total.
     $("run-name").textContent = run.name || "—";
+    pill($("run-kind"), run.kind_level || "", run.kind || "OTHER");
+    pill($("hero-kind"), run.kind_level || "", run.kind || "OTHER");
     var runBits = [run.status || "—"];
     if (trg.events_run !== null && trg.events_run !== undefined)
       runBits.push(compact(trg.events_run) + " events");
     if (run.subrun) runBits.push(run.subrun);
     $("run-note").textContent = runBits.join(" · ");
 
+    var ref = d.reference || {};
     var hz = trg.rate_hz;
     $("rate").textContent = (typeof hz === "number") ? compact(Math.round(hz * 86400)) : "—";
-    $("rate-unit").textContent = (typeof hz === "number")
-      ? "triggers / day (" + hz.toFixed(1) + " Hz)" : "triggers / day";
+    $("rate-hz").textContent = (typeof hz === "number") ? hz.toFixed(1) + " Hz" : "";
     $("rate-note").textContent = history.length > 1
       ? "last " + history.length + " samples" : " ";
+    grade($("rate-grade"), hz, (ref.trigger || {}).hz_p99,
+          function (v) { return compact(Math.round(v * 86400)) + "/day"; });
     sparkline($("spark"), history.map(function (h) { return h.rate; }), "var(--series-1)");
 
     // beam.on === null means UNKNOWN (watcher transient), which is not the same as OFF.
@@ -423,12 +459,14 @@
     sparkline($("beam-spark"), bh.map(function (b) { return b.p_day; }),
              "var(--series-3)", true);
 
+    grade($("beam-grade"), latest ? latest.p_day : null,
+          (ref.beam || {}).protons_per_day_p99, sci);
+
     var bs = beam.on;
     var bits = [bs === true ? "beam on" : bs === false ? "beam off" : "beam unknown"];
-    if (latest) bits.push(Math.round(latest.e10_mean) + " e10/pulse");
     if (typeof beam.pulses_10min === "number") bits.push(beam.pulses_10min + " pulses/10 min");
-    if (typeof sps.spills_10min === "number") bits.push(sps.spills_10min + " SPS spills/10 min");
     $("beam-note").textContent = bits.join(" · ");
+    $("beam-alt").textContent = latest ? Math.round(latest.e10_mean) + " e10/pulse" : "";
 
     if (d.tracks && typeof d.tracks.count === "number") {
       $("tracks").textContent = compact(d.tracks.count);

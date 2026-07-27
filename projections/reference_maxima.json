@@ -1,0 +1,19 @@
+{
+ "computed": "2026-07-27T18:19:11",
+ "percentile": 99,
+ "trigger": {
+  "hz_p99": 32.36498333333332,
+  "hz_max": 33.10194444444444,
+  "hz_median": 19.82,
+  "n_subruns": 299,
+  "best_subrun": "run_79/stat090_0010"
+ },
+ "beam": {
+  "protons_per_day_p99": 1.858164208848e+17,
+  "protons_per_day_max": 1.8821051712e+17,
+  "protons_per_day_median": 1.6706194848e+17,
+  "n_buckets": 3050,
+  "n_days": 27,
+  "bucket_s": 600.0
+ }
+}

@@ -77,6 +77,37 @@ DEFAULTS = {
 }
 
 _beam_history_cache = {"t": 0.0, "data": None}
+_run_kind_cache = {"run": None, "beam_type": None}
+
+RUNS_ROOT = "/home/mx17/beam_july/runs"
+REFERENCE_PATH = os.path.join(REPO_DIR, "projections", "reference_maxima.json")
+
+# beam_type in run_config.json -> (kind shown on the page, status level)
+RUN_KINDS = {
+    "neutrons": ("BEAM", "good"),
+    "cosmics": ("COSMICS", "serious"),
+}
+
+
+def run_kind(run_name, running):
+    """(label, status level) for the current run.
+
+    Reads beam_type from the run's own config — the same field the statistics split
+    on, so the page can never disagree with the ledger about what a run was. Cached
+    per run name; it is one small file but this is called every push."""
+    if not running:
+        return "NOT RUNNING", "critical"
+    if not run_name:
+        return "OTHER", ""
+    if _run_kind_cache["run"] != run_name:
+        bt = None
+        try:
+            with open(os.path.join(RUNS_ROOT, run_name, "run_config.json")) as f:
+                bt = (json.load(f).get("beam_type") or "").lower()
+        except Exception:
+            pass
+        _run_kind_cache.update(run=run_name, beam_type=bt)
+    return RUN_KINDS.get(_run_kind_cache["beam_type"], ("OTHER", ""))
 
 # {"t": last computed, "data": block, "png": path if freshly rendered}
 _projection_cache = {"t": 0.0, "data": None, "png": None}
@@ -304,9 +335,14 @@ def collect(cfg):
         a, _, b = subrun.partition("/")
         subrun_idx, subrun_total = _num(a, int), _num(b, int)
 
+    run_name = _field(daq, "Run")
+    kind, kind_level = run_kind(run_name, dream.get("status") == "RUNNING")
     payload["run"] = {
-        "name": _field(daq, "Run"),
+        "name": run_name,
         "status": dream.get("status"),
+        "beam_type": _run_kind_cache.get("beam_type"),
+        "kind": kind,
+        "kind_level": kind_level,
         "subrun": _field(daq, "Subrun"),
         "subrun_idx": subrun_idx,
         "subrun_total": subrun_total,
@@ -348,6 +384,9 @@ def collect(cfg):
     }
 
     payload["beam_history"] = beam_history(cfg)
+    # Best-achieved references the page grades against. Regenerate with
+    # projections/reference_maxima.py; they only ever ratchet upward.
+    payload["reference"] = _read_json(REFERENCE_PATH) or None
     payload["stats"], _ = projection_block(cfg)
 
     return payload
