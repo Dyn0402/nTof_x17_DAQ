@@ -167,6 +167,27 @@ def read_changeover_lock():
             probe.close()
 
 
+def existing_subruns(cfg_path):
+    """How many sub-run dirs already exist in this config's run dir (0 if resume=True).
+
+    A config with resume=True is meant to reuse its directory, so it is never flagged.
+    Anything unreadable returns 0 — this is a safety hint, not a gate we want throwing.
+    """
+    try:
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+        if cfg.get('resume'):
+            return 0
+        out = cfg.get('run_out_dir')
+        names = {s.get('sub_run_name') for s in cfg.get('sub_runs', [])}
+        if not out or not os.path.isdir(out):
+            return 0
+        return sum(1 for d in os.listdir(out)
+                   if d in names and os.path.isdir(os.path.join(out, d)))
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def _run(cmd, **kw):
     return subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, **kw)
 
@@ -542,6 +563,20 @@ def main():
         if not os.path.exists(cfg_path):
             print(f'!! run config not found: {cfg_path}')
             return 6
+        # ⚠ Guard the --start path against launching INTO AN EXISTING RUN.
+        # --go allocates a fresh run number so it is immune, but --start falls back to the
+        # hardcoded default in MODES, which goes stale the moment --go bumps the run number.
+        # On 2026-07-27 those defaults still said run_84/run_83 while the live run was 86,
+        # so a bare `--start` would have written new sub-runs into a run that already held
+        # 9.4 GB. A config with resume=True is explicitly ALLOWED to reuse its directory.
+        if not args.go:
+            occupied = existing_subruns(cfg_path)
+            if occupied:
+                print(f'!! REFUSING: {cfg} targets a run directory that already holds '
+                      f'{occupied} sub-run(s), and the config does not set resume. '
+                      f'Its default is stale — use --go (it allocates the next run number), '
+                      f'or pass --config explicitly.')
+                return 8
         print(f'[start] {os.path.basename(START_RUN)} {cfg}')
         subprocess.run(['bash', START_RUN, cfg], cwd=REPO, check=False)
         print(f'[start] sent to the daq_control tmux pane.')
