@@ -1,0 +1,24 @@
+{
+  "_comment": "Beam availability schedule for the statistics projection. Local time (CEST). Edit this, then re-run make_projection.py to freeze a new projection.",
+
+  "projection_start": "2026-07-27T11:30",
+  "run_end": "2026-08-10T08:00",
+
+  "efficiency": 0.85,
+  "_efficiency_note": "Overall data-taking efficiency applied to beam-available time: setup, re-takes, DAQ hiccups, sub-run turnaround. This is the pessimism knob.",
+
+  "downtimes": [
+    {"start": "2026-07-27T14:00", "end": "2026-07-27T15:00", "label": "beam down"},
+    {"start": "2026-07-28T05:00", "end": "2026-07-28T14:00", "label": "beam off"},
+    {"start": "2026-07-30T10:00", "end": "2026-07-30T12:00", "label": "access"},
+    {"start": "2026-08-03T10:00", "end": "2026-08-03T11:00", "label": "access"},
+    {"start": "2026-08-04T10:00", "end": "2026-08-04T18:00", "label": "long access"}
+  ],
+
+  "generic_daily_downtime": {
+    "_note": "Accesses past the last explicit entry are unknown, so budget a nominal one per day.",
+    "from_date": "2026-08-05",
+    "hours_per_day": 2.0,
+    "start_hour": 10
+  }
+}

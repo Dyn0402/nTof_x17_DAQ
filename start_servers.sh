@@ -119,6 +119,14 @@ fi
 if [ -f "$PWD/config/space_config.json" ]; then
     bash_scripts/start_tmux.sh space_watcher "$VENV_PY $PWD/space_watcher.py $PWD/config/space_config.json" 5000
 fi
+# Public statistics page publisher: xrdcp's a small JSON summary + the projection
+# plot into the EOS directory behind https://dylan-neff.web.cern.ch/x17/ every 60 s.
+# Push-only and read-only — opens no port, owns no hardware, commands nothing, so it
+# is safe to start at boot and to kill at any time. Needs the same Kerberos ticket as
+# the EOS backup, so it must come after the kinit above. If config/stats_page_config.json
+# is missing it falls back to the built-in defaults, which are already correct for
+# this machine. See stats_page/README.md.
+bash_scripts/start_tmux.sh stats_page_watcher "python stats_page_watcher.py" 5000
 # NOT auto-started: pedestal_watcher (config/pedestal_qa_config.json). It is a
 # per-pedestal-run tool driven from the GUI, not a standing service, and an empty
 # 0-byte pedestal FDF deadlocks it — add a start_watcher_with_config line here if you

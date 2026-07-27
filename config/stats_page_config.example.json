@@ -1,0 +1,7 @@
+{
+  "eos_url": "root://eosuser.cern.ch",
+  "eos_www_dir": "/eos/user/d/dneff/www/x17",
+  "interval_s": 60,
+  "status_url": "http://localhost:5001/status",
+  "timeout_s": 10
+}

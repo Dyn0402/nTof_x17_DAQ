@@ -288,3 +288,10 @@ n1081b/logs/
 # Ad-hoc pre-release backups of live configs (processor_config.py.bak_predrelease
 # and friends) — local snapshots taken before a config edit, not source.
 *.bak_predrelease
+
+# Public stats page: local config holds the Cloudflare ingest token.
+config/stats_page_config.json
+config/stats_page_history.json
+
+# Projection plots are regenerable; frozen projections in saved/ ARE kept.
+projections/plots/

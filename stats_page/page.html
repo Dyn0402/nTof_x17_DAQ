@@ -1,0 +1,466 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>nTOF x17 — live DAQ statistics</title>
+<style>
+  /* Palette: dataviz reference instance. Single series (blue slot 1) + the fixed
+     status palette — no new categorical set, so no re-validation needed. */
+  :root {
+    color-scheme: light;
+    --plane:#f9f9f7; --surface:#fcfcfb;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
+    --series-1:#2a78d6; --series-track:#cde2fb;
+    --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --plane:#0d0d0d; --surface:#1a1a19;
+      --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+      --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
+      --series-1:#3987e5; --series-track:#184f95;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane:#0d0d0d; --surface:#1a1a19;
+    --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
+    --series-1:#3987e5; --series-track:#184f95;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin:0; padding:24px 20px 40px;
+    background:var(--plane); color:var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size:15px; line-height:1.45;
+  }
+  .wrap { max-width:1080px; margin:0 auto; }
+
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:baseline;
+           justify-content:space-between; margin-bottom:20px; }
+  h1 { font-size:19px; font-weight:600; margin:0; letter-spacing:-0.01em; }
+  h1 small { display:block; font-size:13px; font-weight:400; color:var(--muted);
+             letter-spacing:0; margin-top:2px; }
+
+  /* Status pill — always icon + label, never colour alone. */
+  .pill { display:inline-flex; align-items:center; gap:7px; padding:5px 11px;
+          border-radius:999px; border:1px solid var(--ring); background:var(--surface);
+          font-size:13px; font-weight:500; color:var(--ink-2); white-space:nowrap; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; background:var(--muted); }
+  .pill.good .dot{background:var(--good)} .pill.warning .dot{background:var(--warning)}
+  .pill.serious .dot{background:var(--serious)} .pill.critical .dot{background:var(--critical)}
+
+  .banner { display:none; margin:0 0 18px; padding:11px 14px; border-radius:10px;
+            border:1px solid var(--ring); background:var(--surface);
+            font-size:14px; color:var(--ink-2); }
+  .banner.show { display:block; }
+  .banner b { color:var(--ink); }
+
+  .card { background:var(--surface); border:1px solid var(--ring);
+          border-radius:12px; padding:16px 18px; }
+
+  /* Hero — exactly one per view. */
+  .hero { margin-bottom:14px; display:flex; flex-wrap:wrap; gap:18px 40px;
+          align-items:flex-end; justify-content:space-between; }
+  .hero .label { font-size:13px; color:var(--muted); margin-bottom:2px; }
+  .hero .value { font-size:56px; font-weight:600; line-height:1.02; letter-spacing:-0.02em; }
+  .hero .sub { font-size:13px; color:var(--ink-2); margin-top:6px; }
+  .hero .runid { text-align:right; font-size:13px; color:var(--ink-2); }
+  .hero .runid b { display:block; font-size:20px; font-weight:600; color:var(--ink); }
+
+  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(228px, 1fr)); }
+  .tile .label { font-size:13px; color:var(--muted); }
+  .tile .value { font-size:30px; font-weight:600; letter-spacing:-0.015em; margin-top:2px; }
+  .tile .value .unit { font-size:15px; font-weight:500; color:var(--ink-2); margin-left:3px; }
+  .tile .note { font-size:12.5px; color:var(--ink-2); margin-top:6px; }
+  .tile .note.pending { color:var(--muted); font-style:italic; }
+  .spark { display:block; width:100%; height:38px; margin-top:10px; overflow:visible; }
+
+  /* Meter: fill carries progress, track is a lighter step of the same ramp. */
+  .meter { height:7px; border-radius:999px; background:var(--series-track);
+           margin-top:11px; overflow:hidden; }
+  .meter > i { display:block; height:100%; border-radius:999px;
+               background:var(--series-1); width:0; transition:width .4s ease; }
+
+  h2 { font-size:12px; font-weight:600; text-transform:uppercase;
+       letter-spacing:0.06em; color:var(--muted); margin:26px 0 10px; }
+  .services { display:flex; flex-wrap:wrap; gap:8px; }
+
+  .tile .value.ahead { color:var(--good); }
+  .tile .value.behind { color:var(--serious); }
+
+  .plot { margin-top:14px; padding:12px; }
+  .plot img { display:block; width:100%; height:auto; border-radius:6px; }
+  /* The plot is rendered on a light surface; keep it legible in dark mode without
+     inverting its colours, which would misreport the palette. */
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .plot { background:#f4f3ef; }
+  }
+  :root[data-theme="dark"] .plot { background:#f4f3ef; }
+
+  table { border-collapse:collapse; width:100%; font-size:13.5px;
+          font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--grid); }
+  th { color:var(--muted); font-weight:500; }
+  td.n { text-align:right; }
+  details { margin-top:26px; }
+  summary { cursor:pointer; font-size:13px; color:var(--ink-2); }
+  .scroll { overflow-x:auto; margin-top:10px; }
+
+  footer { margin-top:28px; font-size:12.5px; color:var(--muted); }
+  footer a { color:inherit; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>nTOF x17 — live DAQ statistics
+      <small>Pushed from the DAQ machine at CERN. Read-only mirror; no control path.</small>
+    </h1>
+    <span class="pill" id="freshness"><span class="dot"></span><span id="freshness-text">connecting…</span></span>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="card hero">
+    <div>
+      <div class="label">Events this run</div>
+      <div class="value" id="events-run">—</div>
+      <div class="sub" id="events-sub">&nbsp;</div>
+    </div>
+    <div class="runid">
+      Current run<b id="run-name">—</b>
+      <span id="run-status">—</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card tile">
+      <div class="label">Trigger rate</div>
+      <div class="value"><span id="rate">—</span><span class="unit">Hz</span></div>
+      <svg class="spark" id="spark" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="note" id="rate-note">&nbsp;</div>
+    </div>
+
+    <div class="card tile">
+      <div class="label">Sub-run progress</div>
+      <div class="value" id="subrun">—</div>
+      <div class="meter"><i id="subrun-meter"></i></div>
+      <div class="note" id="subrun-note">&nbsp;</div>
+    </div>
+
+    <div class="card tile">
+      <div class="label">Beam</div>
+      <div class="value" id="beam">—</div>
+      <div class="note" id="beam-note">&nbsp;</div>
+    </div>
+
+    <div class="card tile">
+      <div class="label">Tracks</div>
+      <div class="value" id="tracks">—</div>
+      <div class="note pending" id="tracks-note">not wired up yet</div>
+    </div>
+  </div>
+
+  <h2>Statistics vs projection</h2>
+  <div class="grid" id="stats-grid">
+    <div class="card tile">
+      <div class="label">Beam triggers recorded</div>
+      <div class="value" id="stat-beam">—</div>
+      <div class="meter"><i id="stat-meter"></i></div>
+      <div class="note" id="stat-beam-note">&nbsp;</div>
+    </div>
+
+    <div class="card tile">
+      <div class="label">Projected total</div>
+      <div class="value" id="stat-projected">—</div>
+      <div class="note" id="stat-projected-note">&nbsp;</div>
+    </div>
+
+    <div class="card tile">
+      <div class="label">Against projection</div>
+      <div class="value" id="stat-delta">—</div>
+      <div class="note" id="stat-delta-note">&nbsp;</div>
+    </div>
+
+    <div class="card tile">
+      <div class="label">Cosmics</div>
+      <div class="value" id="stat-cosmics">—</div>
+      <div class="note" id="stat-cosmics-note">counted separately</div>
+    </div>
+  </div>
+
+  <div class="card plot" id="plot-card">
+    <img id="progress-plot" src="progress.png" alt="Cumulative beam triggers against the frozen projection">
+  </div>
+
+  <h2>Services</h2>
+  <div class="services" id="services"></div>
+
+  <details>
+    <summary>Table view — every published field</summary>
+    <div class="scroll"><table id="table"><tbody></tbody></table></div>
+  </details>
+
+  <footer>
+    <span id="stamp">—</span> · page refreshes every 20 s
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var POLL_MS = 20000;
+  var STALE_WARN_S = 120, STALE_CRIT_S = 600;
+
+  function $(id) { return document.getElementById(id); }
+
+  function compact(n) {
+    if (n === null || n === undefined || isNaN(n)) return "—";
+    if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
+    if (n >= 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K";
+    return n.toLocaleString("en-US");
+  }
+
+  function dur(s) {
+    if (s === null || s === undefined || isNaN(s)) return "—";
+    s = Math.round(s);
+    if (s < 60) return s + " s";
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + " min";
+    var h = Math.floor(m / 60);
+    return h + "h" + String(m % 60).padStart(2, "0") + "m";
+  }
+
+  function pill(el, cls, text) {
+    el.className = "pill " + (cls || "");
+    el.querySelector("span:last-child").textContent = text;
+  }
+
+  function sparkline(svg, pts) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var vals = pts.filter(function (v) { return typeof v === "number" && !isNaN(v); });
+    if (vals.length < 2) return;
+    var W = 100, H = 38, pad = 3;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    // Floor the domain at 5% of the mean. Auto-scaling to the raw range would
+    // render 25.35–25.40 Hz — pure counting noise on a steady run — as a mountain
+    // range. A steady rate has to look steady; real excursions still scale fine.
+    var mean = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+    var span = Math.max(hi - lo, Math.abs(mean) * 0.05, 1e-9);
+    var mid = (hi + lo) / 2;
+    lo = mid - span / 2; hi = mid + span / 2;
+    var x = function (i) { return (i / (vals.length - 1)) * W; };
+    var y = function (v) { return H - pad - ((v - lo) / (hi - lo)) * (H - 2 * pad); };
+    var d = vals.map(function (v, i) { return (i ? "L" : "M") + x(i).toFixed(2) + " " + y(v).toFixed(2); }).join(" ");
+
+    var ns = "http://www.w3.org/2000/svg";
+    var path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "var(--series-1)");
+    path.setAttribute("stroke-width", "2");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    path.setAttribute("vector-effect", "non-scaling-stroke");
+    svg.appendChild(path);
+
+    var last = document.createElementNS(ns, "circle");
+    last.setAttribute("cx", x(vals.length - 1).toFixed(2));
+    last.setAttribute("cy", y(vals[vals.length - 1]).toFixed(2));
+    last.setAttribute("r", "2.6");
+    last.setAttribute("fill", "var(--series-1)");
+    last.setAttribute("stroke", "var(--surface)");
+    last.setAttribute("stroke-width", "1.5");
+    svg.appendChild(last);
+  }
+
+  function tableRows(obj, prefix, out) {
+    Object.keys(obj).forEach(function (k) {
+      var v = obj[k], key = prefix ? prefix + "." + k : k;
+      if (v && typeof v === "object" && !Array.isArray(v)) tableRows(v, key, out);
+      else out.push([key, Array.isArray(v) ? v.join(", ") : String(v)]);
+    });
+    return out;
+  }
+
+  function renderStats(s) {
+    var grid = $("stats-grid"), plot = $("plot-card");
+    if (!s) {                       // projection block absent (disabled or failed)
+      grid.style.display = "none";
+      plot.style.display = "none";
+      return;
+    }
+    grid.style.display = "";
+    plot.style.display = "";
+
+    var p = s.projection;
+
+    // Reload the plot only when its inputs actually changed — a new completed
+    // sub-run or a newly frozen projection. Keying the cache-buster on those
+    // instead of the clock avoids re-fetching a ~130 kB PNG every 20 s.
+    var stamp = (s.last_subrun_end || "") + "|" + ((p && p.created) || "");
+    var img = $("progress-plot");
+    if (img.dataset.stamp !== stamp) {
+      img.dataset.stamp = stamp;
+      img.src = "progress.png?_=" + encodeURIComponent(stamp);
+    }
+    $("stat-beam").textContent = compact(s.beam_events);
+    $("stat-beam-note").textContent =
+      s.n_beam_subruns + " sub-runs since " + (s.first_run || "start")
+      + (s.events_per_pulse ? " · " + s.events_per_pulse + " events/pulse" : "");
+
+    $("stat-cosmics").textContent = compact(s.cosmic_events);
+    $("stat-cosmics-note").textContent =
+      (s.cosmic_hz ? s.cosmic_hz + " Hz · " : "")
+      + (p && p.final_cosmics
+          ? compact(p.final_cosmics) + " projected over the scheduled beam-off time"
+          : "counted separately from beam");
+
+    if (!p) {
+      $("stat-projected").textContent = "—";
+      $("stat-projected-note").textContent = "no frozen projection yet";
+      $("stat-delta").textContent = "—";
+      $("stat-delta-note").textContent = " ";
+      $("stat-meter").style.width = "0";
+      return;
+    }
+
+    $("stat-meter").style.width = Math.max(0, Math.min(100, p.pct_complete || 0)) + "%";
+    $("stat-projected").textContent = compact(p.final_events);
+    $("stat-projected-note").textContent =
+      (p.pct_complete !== null ? p.pct_complete + "% there · " : "")
+      + "by " + (p.run_end || "").replace("T", " ")
+      + " at " + Math.round((p.efficiency || 0) * 100) + "% efficiency";
+
+    var el = $("stat-delta");
+    if (p.delta_pct === null || p.delta_pct === undefined) {
+      el.className = "value";
+      el.textContent = "—";
+    } else {
+      var ahead = p.delta >= 0;
+      el.className = "value " + (ahead ? "ahead" : "behind");
+      el.textContent = (ahead ? "+" : "") + p.delta_pct + "%";
+    }
+    // The comparison steps only when a sub-run completes (~hourly), so it swings
+    // by roughly one sub-run's worth between updates. Say so, rather than letting
+    // a routine mid-sub-run dip read as falling behind.
+    $("stat-delta-note").textContent =
+      (p.delta >= 0 ? "+" : "") + compact(p.delta) + " vs projection "
+      + (p.name || "") + " · steps when a sub-run completes";
+  }
+
+  function render(payload, history) {
+    var d = payload || {};
+    var run = d.run || {}, trg = d.triggers || {}, beam = d.beam || {}, sps = d.sps || {};
+
+    // Freshness is the first thing to trust: a stale page must never read as a quiet beam.
+    var age = (Date.now() / 1000) - (d.generated_epoch || 0);
+    var f = $("freshness"), b = $("banner");
+    if (!d.generated_epoch) {
+      pill(f, "critical", "no data received");
+    } else if (age > STALE_CRIT_S) {
+      pill(f, "critical", "stale — " + dur(age) + " old");
+    } else if (age > STALE_WARN_S) {
+      pill(f, "warning", "lagging — " + dur(age) + " old");
+    } else {
+      pill(f, "good", "live — " + dur(age) + " ago");
+    }
+    if (d.generated_epoch && age > STALE_WARN_S) {
+      b.className = "banner show";
+      b.innerHTML = "<b>These numbers are " + dur(age) + " old.</b> The DAQ machine has "
+                  + "stopped pushing — the run may have ended, or the publisher/network is down. "
+                  + "Do not read this as a beam or trigger measurement.";
+    } else {
+      b.className = "banner";
+    }
+
+    $("events-run").textContent = compact(trg.events_run);
+    $("events-sub").textContent = trg.events_subrun !== null && trg.events_subrun !== undefined
+      ? compact(trg.events_subrun) + " in the current sub-run" : " ";
+    $("run-name").textContent = run.name || "—";
+    $("run-status").textContent = run.status || "—";
+
+    $("rate").textContent = (typeof trg.rate_hz === "number") ? trg.rate_hz.toFixed(1) : "—";
+    $("rate-note").textContent = history.length > 1
+      ? "last " + history.length + " samples" : " ";
+    sparkline($("spark"), history.map(function (h) { return h.rate; }));
+
+    if (run.subrun_idx && run.subrun_total) {
+      $("subrun").textContent = run.subrun_idx + " / " + run.subrun_total;
+      $("subrun-meter").style.width = (100 * run.subrun_idx / run.subrun_total) + "%";
+    } else {
+      $("subrun").textContent = run.subrun_total ? "– / " + run.subrun_total : "—";
+      $("subrun-meter").style.width = "0";
+    }
+    $("subrun-note").textContent = run.progress || run.subrun || " ";
+
+    // beam.on === null means UNKNOWN (watcher transient), which is not the same as OFF.
+    var bs = beam.on;
+    $("beam").textContent = bs === true ? "On" : bs === false ? "Off" : "Unknown";
+    var bits = [];
+    if (typeof beam.pulses_10min === "number") bits.push(beam.pulses_10min + " pulses/10 min");
+    if (typeof beam.seconds_since_pulse === "number") bits.push("last " + dur(beam.seconds_since_pulse) + " ago");
+    if (typeof sps.spills_10min === "number") bits.push(sps.spills_10min + " SPS spills/10 min");
+    $("beam-note").textContent = bits.join(" · ") || " ";
+
+    if (d.tracks && typeof d.tracks.count === "number") {
+      $("tracks").textContent = compact(d.tracks.count);
+      $("tracks-note").className = "note";
+      $("tracks-note").textContent = d.tracks.note || "";
+    } else {
+      $("tracks").textContent = "—";
+      $("tracks-note").className = "note pending";
+      $("tracks-note").textContent = "not wired up yet — needs the per-sub-run track pass";
+    }
+
+    renderStats(d.stats || null);
+
+    var sv = $("services");
+    sv.innerHTML = "";
+    (d.services || []).forEach(function (s) {
+      var el = document.createElement("span");
+      el.className = "pill " + (s.level || "");
+      el.innerHTML = '<span class="dot"></span><span></span>';
+      el.querySelector("span:last-child").textContent = s.name + " · " + s.status;
+      sv.appendChild(el);
+    });
+
+    var tb = $("table").querySelector("tbody");
+    tb.innerHTML = "";
+    tableRows(d, "", []).forEach(function (row) {
+      var tr = document.createElement("tr");
+      var th = document.createElement("th"); th.textContent = row[0];
+      var td = document.createElement("td"); td.className = "n"; td.textContent = row[1];
+      tr.appendChild(th); tr.appendChild(td); tb.appendChild(tr);
+    });
+
+    $("stamp").textContent = d.generated ? "DAQ timestamp " + d.generated + " (CERN local)" : "no timestamp";
+  }
+
+  function poll() {
+    // Cache-bust explicitly: `cache: "no-store"` only binds the browser, and on the
+    // CERN webeos backend the data is a static file behind Apache, so an
+    // intermediate cache would otherwise pin the page to a stale sample.
+    var sep = location.search ? location.search + "&" : "?";
+    fetch("data.json" + sep + "_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (j) { render(j.latest, j.history || []); })
+      .catch(function () {
+        pill($("freshness"), "critical", "cannot reach the stats host");
+      });
+  }
+
+  // Local preview (no web host): the Python previewer inlines a snapshot here.
+  if (window.__PREVIEW__) {
+    render(window.__PREVIEW__.latest, window.__PREVIEW__.history || []);
+  } else {
+    poll();
+    setInterval(poll, POLL_MS);
+  }
+})();
+</script>
