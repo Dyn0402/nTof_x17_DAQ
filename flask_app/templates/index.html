@@ -201,6 +201,17 @@
           </div>
 
           <div class="btn-group-block">
+            <span class="group-label">Run Mode</span>
+            <div id="mode-summary" class="mode-summary">Loading…</div>
+            <div class="d-flex flex-wrap gap-2">
+              <button id="mode-to-beam" class="btn btn-outline-primary btn-sm">Switch to Beam</button>
+              <button id="mode-to-cosmics" class="btn btn-outline-info btn-sm">Switch to Cosmics</button>
+              <button id="mode-watcher-toggle" class="btn btn-info btn-sm">Start Auto-Switch</button>
+              <button id="mode-arm-toggle" class="btn btn-outline-secondary btn-sm d-none">Disarm</button>
+            </div>
+          </div>
+
+          <div class="btn-group-block">
             <span class="group-label">HV</span>
             <div class="d-flex flex-wrap gap-2">
               <button id="hv-off" class="btn btn-outline-danger btn-sm">HV Off (Run Detectors)</button>
@@ -833,6 +844,53 @@
         </div>
         <div class="panel-body">
           <div id="sps-trend-plot" style="width:100%;height:320px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- H4 barrier (T2 TAX) — access candidates on the neighbouring line -->
+    <div class="col-12">
+      <div class="panel h-100">
+        <div class="panel-header">
+          <span class="panel-title">H4 Barrier — T2 TAX
+            <span class="badge bg-warning text-dark ms-2">TEST</span></span>
+          <span class="ms-auto panel-header-note" id="sps-tax-note">…</span>
+        </div>
+        <div class="panel-body">
+          <div class="run-stats mb-2">
+            <div class="stat">
+              <div class="stat-label">H4 line</div>
+              <div class="stat-value" id="sps-tax-state" style="font-size:1.6rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">TAX position</div>
+              <div class="stat-value" id="sps-tax-pos" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">In this state</div>
+              <div class="stat-value" id="sps-tax-since" style="font-size:1.1rem;">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Blocked spans (24 h)</div>
+              <div class="stat-value" id="sps-tax-count" style="font-size:1.1rem;">—</div>
+            </div>
+          </div>
+          <div id="sps-tax-plot" style="width:100%;height:260px;"></div>
+          <div class="table-responsive mt-2" style="max-height:220px;overflow-y:auto;">
+            <table class="table table-sm table-dark mb-0" style="font-size:0.85rem;">
+              <thead><tr><th>Start</th><th>End</th><th>Duration</th><th>Peak (mm)</th></tr></thead>
+              <tbody id="sps-tax-intervals"><tr><td colspan="4" class="text-muted">…</td></tr></tbody>
+            </table>
+          </div>
+          <p class="text-muted small mb-0 mt-2">
+            <span class="font-monospace">XTAX_022_023:POSITION_MEAS</span> — parks near
+            <span class="font-monospace">−140 mm</span> with beam going to H4 and drives to
+            <span class="font-monospace">+141 mm</span> to block it. Spans below are
+            <em>access candidates</em>: the position says the line is blocked, not why —
+            confirm against the H4 flux counters. ⚠ H4/H6/H8 have no
+            <span class="font-monospace">XB&lt;line&gt;.XTAX</span> variable; this standalone
+            motor name is the only read-out of H4's barrier.
+          </p>
         </div>
       </div>
     </div>
@@ -1749,6 +1807,114 @@ document.getElementById("take-pedestals").addEventListener("click", async () => 
   const data = await res.json();
   showPopup(data.message, "#17a2b8");
 });
+
+
+/* ---------------- Run Mode: beam <-> cosmics, manual and automatic ----------------
+   Everything here posts to /mode/*, which delegates to switch_mode.py --go. The card
+   never does any part of a changeover itself. `changeover_in_progress` comes from
+   switch_mode's own lock file, so the buttons disable correctly even when the
+   changeover was started from the command line or by the watcher. */
+let modeBusy = false;
+
+function renderMode(d) {
+  const el = document.getElementById("mode-summary");
+  if (!el) return;
+  const mode = d.mode || "—";
+  const modeTxt = mode === "beam" ? "BEAM" : mode === "cosmics" ? "COSMICS" : "no run live";
+  const cls = mode === "beam" ? "mode-beam" : mode === "cosmics" ? "mode-cosmics" : "mode-none";
+  const beamCls = d.beam === "ON" ? "mode-beam" : d.beam === "OFF" ? "mode-off" : "mode-none";
+
+  let auto;
+  if (!d.watcher_running)      auto = `<span class="mode-none">auto-switch off</span>`;
+  else if (d.disarmed)         auto = `<span class="mode-off">auto-switch DISARMED</span>`;
+  else                         auto = `<span class="mode-beam">auto-switch on</span>`
+      + ` <span class="mode-dim">(→cosmics after ${d.beam_down_min ?? "?"} min no beam; `
+      + `→beam on first pulse)</span>`;
+
+  const busy = d.changeover_in_progress
+    ? `<div class="mode-busy">⟳ changeover in progress…</div>` : "";
+  const last = d.last_changeover_at
+    ? `<div class="mode-dim">last: ${d.last_changeover_at} → ${d.last_target} (${d.last_result})</div>` : "";
+  const pend = (d.would_switch_to && !d.changeover_in_progress)
+    ? `<div class="mode-off">would switch to ${d.would_switch_to.toUpperCase()}</div>` : "";
+
+  el.innerHTML =
+    `<div>Trigger: <span class="${cls}"><b>${modeTxt}</b></span>`
+    + `  ·  Beam: <span class="${beamCls}">${d.beam || "—"}</span>`
+    + `<span class="mode-dim"> ${d.beam_detail ? "(" + d.beam_detail + ")" : ""}</span></div>`
+    + `<div>${auto}</div>`
+    + `<div class="mode-dim">${d.reason || d.message || ""}</div>` + pend + busy + last;
+
+  modeBusy = !!d.changeover_in_progress;
+  const b = document.getElementById("mode-to-beam");
+  const c = document.getElementById("mode-to-cosmics");
+  if (b) { b.disabled = modeBusy || mode === "beam"; }
+  if (c) { c.disabled = modeBusy || mode === "cosmics"; }
+
+  const t = document.getElementById("mode-watcher-toggle");
+  if (t) {
+    t.textContent = d.watcher_running ? "Stop Auto-Switch" : "Start Auto-Switch";
+    t.classList.toggle("btn-info", !d.watcher_running);
+    t.classList.toggle("btn-outline-info", !!d.watcher_running);
+  }
+  const a = document.getElementById("mode-arm-toggle");
+  if (a) {
+    a.classList.toggle("d-none", !d.watcher_running);
+    a.textContent = d.disarmed ? "Re-arm" : "Disarm";
+  }
+}
+
+async function updateModeStatus() {
+  try {
+    const r = await fetch("/mode/status");
+    renderMode(await r.json());
+  } catch (e) { /* transient; next poll retries */ }
+}
+
+async function postMode(url, body, title) {
+  const r = await fetch(url, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  });
+  const d = await r.json();
+  showPopup(d.message, d.success ? "#17a2b8" : "#dc3545");
+  updateModeStatus();
+  return d;
+}
+
+document.getElementById("mode-to-beam").addEventListener("click", async () => {
+  if (!await daqConfirm(
+      "The live run will be STOPPED, the trigger switched to veto-gated singles + PS, "
+      + "and a new beam run started. Takes about a minute.",
+      {title: "Switch to BEAM?", okText: "Switch to beam", warn: true})) return;
+  postMode("/mode/switch", {mode: "beam"}, "Switch to beam");
+});
+
+document.getElementById("mode-to-cosmics").addEventListener("click", async () => {
+  if (!await daqConfirm(
+      "The live run will be STOPPED, the trigger switched to ungated cosmic singles, "
+      + "and a new cosmic run started. Takes about a minute.",
+      {title: "Switch to COSMICS?", okText: "Switch to cosmics", warn: true})) return;
+  postMode("/mode/switch", {mode: "cosmics"}, "Switch to cosmics");
+});
+
+document.getElementById("mode-watcher-toggle").addEventListener("click", async () => {
+  const running = document.getElementById("mode-watcher-toggle").textContent.includes("Stop");
+  if (!running && !await daqConfirm(
+      "While armed, the DAQ will swap itself to cosmics after a sustained beam stop and "
+      + "back to beam as soon as beam returns. Each swap stops the current run and starts "
+      + "a new one.",
+      {title: "Start automatic mode switching?", okText: "Start auto-switch", warn: true})) return;
+  postMode("/mode/watcher", {action: running ? "stop" : "start"}, "Auto-switch");
+});
+
+document.getElementById("mode-arm-toggle").addEventListener("click", async () => {
+  const disarm = document.getElementById("mode-arm-toggle").textContent === "Disarm";
+  postMode("/mode/watcher", {action: disarm ? "disarm" : "arm"}, "Auto-switch");
+});
+
+updateModeStatus();
+setInterval(updateModeStatus, 5000);
 
 
 document.getElementById("rerun-qa").addEventListener("click", async () => {
@@ -3823,7 +3989,80 @@ async function spsRenderTrend() {
   }, SPS_CFG);
 }
 
-function spsRenderAll() { spsRenderTimeline(); spsRenderProfile(); spsRenderTrend(); }
+// H4 barrier. The status file carries the live position; the CSV-backed
+// /sps/tax_history carries the trace and the blocked spans (access candidates).
+function spsUpdateTax() {
+  const t = (spsState && spsState.h4_tax) || null;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const stateEl = document.getElementById("sps-tax-state");
+  if (!stateEl) return;
+  if (!t || t.position_mm == null) {
+    set("sps-tax-state", "—");
+    set("sps-tax-pos", "—");
+    set("sps-tax-since", "—");
+    set("sps-tax-note", t && t.error ? "read failed" : "no data yet");
+    stateEl.className = "stat-value text-muted";
+    return;
+  }
+  const label = { open: "OPEN", blocked: "BLOCKED", moving: "MOVING" }[t.state] || "—";
+  set("sps-tax-state", label);
+  stateEl.className = "stat-value " + (t.state === "open" ? "text-success"
+                       : t.state === "blocked" ? "text-danger" : "text-warning");
+  stateEl.style.fontSize = "1.6rem";
+  set("sps-tax-pos", t.position_mm.toFixed(1) + " mm");
+  // seconds_in_state is only resolvable inside the poll's lookback window
+  set("sps-tax-since", t.state_older_than_window ? "> " + Math.round(t.window_s / 60) + " min"
+      : t.seconds_in_state == null ? "—"
+      : t.seconds_in_state < 90 ? Math.round(t.seconds_in_state) + " s"
+      : (t.seconds_in_state / 60).toFixed(0) + " min");
+  set("sps-tax-note", t.var);
+}
+
+async function spsRenderTax() {
+  if (typeof Plotly === "undefined") return;
+  if (!document.getElementById("sps-tax-plot")) return;
+  let h;
+  try { h = await (await fetch("/sps/tax_history?hours=24")).json(); } catch (e) { return; }
+  if (!h || !h.success) return;
+  const body = document.getElementById("sps-tax-intervals");
+  const ivs = h.intervals || [];
+  const cnt = document.getElementById("sps-tax-count");
+  if (cnt) cnt.textContent = String(ivs.length);
+  if (body) {
+    body.innerHTML = ivs.length
+      ? ivs.slice().reverse().map(iv =>
+          `<tr><td>${iv.start_str}</td><td>${iv.ongoing ? "<em>ongoing</em>" : iv.end_str}</td>` +
+          `<td>${iv.minutes} min</td><td>${iv.pos_max.toFixed(1)}</td></tr>`).join("")
+      : `<tr><td colspan="4" class="text-muted">${h.note || "no blocked spans in this window"}</td></tr>`;
+  }
+  Plotly.react("sps-tax-plot", [
+    { x: h.time, y: h.position_mm, name: "TAX position", mode: "lines",
+      line: { color: "#4dabe8", width: 2 } },
+  ], {
+    ...SPS_BASE_LAYOUT, uirevision: "sps-tax",
+    xaxis: { ...SPS_AXIS },
+    yaxis: { title: { text: "Position (mm)", font: { size: 13, color: "#4dabe8" } }, ...SPS_AXIS },
+    shapes: [
+      { type: "line", xref: "paper", x0: 0, x1: 1, yref: "y",
+        y0: h.open_max_mm, y1: h.open_max_mm,
+        line: { color: "#3fb950", width: 1, dash: "dot" } },
+      { type: "line", xref: "paper", x0: 0, x1: 1, yref: "y",
+        y0: h.block_min_mm, y1: h.block_min_mm,
+        line: { color: "#e5534b", width: 1, dash: "dot" } },
+    ],
+    annotations: [
+      { xref: "paper", x: 0.005, y: h.open_max_mm, yanchor: "bottom", showarrow: false,
+        text: "open ↓", font: { size: 10, color: "#3fb950" } },
+      { xref: "paper", x: 0.005, y: h.block_min_mm, yanchor: "top", showarrow: false,
+        text: "blocked ↑", font: { size: 10, color: "#e5534b" } },
+    ],
+  }, SPS_CFG);
+}
+
+function spsRenderAll() {
+  spsRenderTimeline(); spsRenderProfile(); spsRenderTrend();
+  spsUpdateTax(); spsRenderTax();
+}
 
 // Plotly can't size a plot in a hidden tab (display:none -> 0 width), so draw on show.
 (() => {

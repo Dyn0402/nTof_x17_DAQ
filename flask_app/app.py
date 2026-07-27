@@ -54,7 +54,9 @@ from beam_monitor.beam_intensity_controller import (BEAM_LOG_DIR, BEAM_STATE_PAT
                                                     PULSE_THRESHOLD_E10)
 # TEMPORARY (2026-07-23) — SPS spill test tab. Remove with the sps_monitor package.
 from sps_monitor.sps_spill_controller import (SPS_LOG_DIR, SPS_STATE_PATH, SPS_UNIT,
-                                              EXTRACTED_DEST)
+                                              EXTRACTED_DEST, H4_TAX_VAR,
+                                              H4_TAX_OPEN_MAX, H4_TAX_BLOCK_MIN,
+                                              tax_blocked_intervals)
 from n1081b.timetag_watcher_controller import (N1081B_TT_LOG_DIR, N1081B_TT_STATE_PATH,
                                                N1081B_TT_CONFIG_PATH)
 from stream1_monitor.stream1_size_controller import (STREAM1_LOG_DIR, STREAM1_STATE_PATH,
@@ -1923,6 +1925,55 @@ def sps_history():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/sps/tax_history")
+def sps_tax_history():
+    """H4 barrier position over time, plus the spans where H4 was not open.
+
+    Those spans are ACCESS CANDIDATES, not confirmed accesses: the TAX position
+    says the line is blocked, it does not say why. Confirmation needs the H4
+    flux counters (see docs/H4_ACCESS_INFERENCE.md)."""
+    import glob
+    hours = request.args.get("hours", default=24.0, type=float)
+    max_points = request.args.get("max_points", default=4000, type=int)
+    try:
+        files = sorted(glob.glob(os.path.join(SPS_LOG_DIR, "h4_tax_*.csv")))
+        if not files:
+            return jsonify({"success": True, "time": [], "position_mm": [],
+                            "intervals": [], "var": H4_TAX_VAR,
+                            "open_max_mm": H4_TAX_OPEN_MAX,
+                            "block_min_mm": H4_TAX_BLOCK_MIN,
+                            "note": "no h4_tax CSVs yet — the watcher writes "
+                                    "them once it has polled"})
+        # a day of TAX samples is ~20 k rows; keep enough files to cover `hours`
+        keep = max(2, int(hours // 24) + 2)
+        df = pd.concat([pd.read_csv(f) for f in files[-keep:]], ignore_index=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp", "position_mm"])
+        df = df.sort_values("timestamp").drop_duplicates(subset=["unix_ts"])
+        if hours and hours > 0:
+            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
+        # Derive the intervals from the FULL series, then thin only for plotting
+        # — decimating first can step straight over a stroke and lose a span.
+        ivs = tax_blocked_intervals(list(zip(df["unix_ts"].astype(float),
+                                             df["position_mm"].astype(float))))
+        for iv in ivs:
+            iv["start_str"] = datetime.fromtimestamp(iv["start"]).strftime("%Y-%m-%d %H:%M")
+            iv["end_str"] = datetime.fromtimestamp(iv["end"]).strftime("%Y-%m-%d %H:%M")
+            iv["minutes"] = round(iv["seconds"] / 60.0, 1)
+        plot = df.iloc[:: (len(df) // max_points) + 1] if len(df) > max_points else df
+        return jsonify({
+            "success": True,
+            "var": H4_TAX_VAR,
+            "time": plot["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
+            "position_mm": plot["position_mm"].round(2).tolist(),
+            "intervals": ivs,
+            "open_max_mm": H4_TAX_OPEN_MAX,
+            "block_min_mm": H4_TAX_BLOCK_MIN,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 # ---------------------------------------------------------------------------
 # n_TOF stream1 raw-file sizes (SiPM-wall dropout proxy)
 # ---------------------------------------------------------------------------
@@ -3123,6 +3174,126 @@ def space_restore():
     out["success"] = out["n_failed"] == 0
     out["usage"] = space_manager.disk_usage().get("hdd", {})
     return jsonify(out)
+
+
+# ------------------------------------------------------------------ Run mode
+# Beam <-> cosmics changeover, and the watcher that does it unattended.
+#
+# ⚠ Everything here delegates to switch_mode.py --go, which is the ONE changeover
+# implementation (it stops the run, allocates the run number, regenerates the config,
+# re-triggers, verifies, starts the run and beam_gate, and asserts the applied cfg).
+# The GUI must never grow a second, subtly-different copy of that sequence.
+MODE_TMUX = "mode_watcher"
+MODE_DISARM_FLAG = f"{BASE_DIR}/config/.mode_watcher_disarmed"
+VENV_PY = f"{BASE_DIR}/.venv/bin/python"
+
+
+def _mode_mod():
+    """Import mode_watcher lazily so a syntax error there cannot take down the GUI."""
+    import importlib
+    import mode_watcher
+    return importlib.reload(mode_watcher)
+
+
+@app.route("/mode/status")
+def mode_status():
+    """Which trigger the DAQ is on, what the beam is doing, and what the watcher would do.
+
+    Read-only and cheap on purpose: it reads /proc and beam_state.json. It deliberately
+    does NOT poll an N1081B board — a GUI polling the boards every few seconds is exactly
+    the traffic pattern that wedges them (n1081b/CLAUDE.md).
+    """
+    out = {"watcher_running": subprocess.run(
+        ["tmux", "has-session", "-t", MODE_TMUX], capture_output=True).returncode == 0,
+        "disarmed": os.path.exists(MODE_DISARM_FLAG)}
+    try:
+        mw = _mode_mod()
+        mode, mdetail = mw.current_mode()
+        beam, since, bdetail = mw.beam_view()
+        target, reason = mw.decide(mode, beam, since, mw.BEAM_DOWN_MIN, mw.COOLDOWN_MIN)
+        st = mw.load_state()
+        out.update({
+            "mode": mode, "mode_detail": mdetail,
+            "beam": beam, "beam_detail": bdetail,
+            "seconds_since_pulse": since,
+            "would_switch_to": target, "reason": reason,
+            "changeover_in_progress": bool(mw.sm.read_changeover_lock()),
+            "changeover_holder": mw.sm.read_changeover_lock(),
+            "beam_down_min": mw.BEAM_DOWN_MIN, "cooldown_min": mw.COOLDOWN_MIN,
+            "last_changeover_at": st.get("last_changeover_at"),
+            "last_target": st.get("last_target"),
+            "last_result": st.get("last_result"),
+        })
+    except Exception as e:  # noqa: BLE001
+        out["message"] = f"mode_watcher unavailable: {e}"
+    return jsonify(out)
+
+
+def _run_changeover(mode):
+    """Background worker: the changeover takes ~60 s, far longer than a request."""
+    try:
+        subprocess.run([VENV_PY, f"{BASE_DIR}/switch_mode.py", mode, "--go"],
+                       cwd=BASE_DIR, capture_output=True, text=True, timeout=900)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@app.route("/mode/switch", methods=["POST"])
+def mode_switch():
+    """Manual changeover. STOPS THE LIVE RUN — auth-gated like every other POST.
+
+    Returns as soon as the changeover is launched; the UI then polls /mode/status, where
+    `changeover_in_progress` is driven by switch_mode's own lock rather than by anything
+    this route remembers.
+    """
+    data = request.get_json(silent=True) or {}
+    mode = str(data.get("mode", ""))
+    if mode not in ("beam", "cosmics"):
+        return jsonify({"success": False, "message": "mode must be 'beam' or 'cosmics'"}), 400
+    try:
+        if _mode_mod().sm.read_changeover_lock():
+            return jsonify({"success": False,
+                            "message": "a changeover is already in progress"}), 409
+    except Exception:  # noqa: BLE001
+        pass
+    log_event("MODE_SWITCH", "run_mode", mode=mode, remote_addr=_client_ip())
+    threading.Thread(target=_run_changeover, args=(mode,), daemon=True).start()
+    return jsonify({"success": True,
+                    "message": f"Switching to {mode} — stopping the run, re-triggering, "
+                               f"and starting the new one. Takes ~1 min; watch this card."})
+
+
+@app.route("/mode/watcher", methods=["POST"])
+def mode_watcher_toggle():
+    """Start/stop the automatic both-ways watcher in its own tmux session."""
+    data = request.get_json(silent=True) or {}
+    action = str(data.get("action", ""))
+    if action == "start":
+        subprocess.run(["tmux", "kill-session", "-t", MODE_TMUX], capture_output=True)
+        subprocess.Popen(["tmux", "new-session", "-d", "-s", MODE_TMUX,
+                          VENV_PY, f"{BASE_DIR}/mode_watcher.py"], cwd=BASE_DIR)
+        log_event("MODE_WATCHER", "run_mode", action="start", remote_addr=_client_ip())
+        return jsonify({"success": True, "message": "Auto mode-switch watcher started"})
+    if action == "stop":
+        subprocess.run(["tmux", "kill-session", "-t", MODE_TMUX], capture_output=True)
+        log_event("MODE_WATCHER", "run_mode", action="stop", remote_addr=_client_ip())
+        return jsonify({"success": True, "message": "Auto mode-switch watcher stopped"})
+    if action in ("arm", "disarm"):
+        # Keeps the watcher running and logging, but stops it acting. Useful during an
+        # intervention when you do not want to lose its state or its log continuity.
+        try:
+            if action == "disarm":
+                open(MODE_DISARM_FLAG, "w").write(
+                    f"disarmed via GUI {datetime.now():%Y-%m-%d %H:%M:%S}\n")
+            else:
+                os.remove(MODE_DISARM_FLAG)
+        except FileNotFoundError:
+            pass
+        except Exception as e:  # noqa: BLE001
+            return jsonify({"success": False, "message": str(e)}), 500
+        log_event("MODE_WATCHER", "run_mode", action=action, remote_addr=_client_ip())
+        return jsonify({"success": True, "message": f"Watcher {action}ed"})
+    return jsonify({"success": False, "message": "action must be start/stop/arm/disarm"}), 400
 
 
 if __name__ == "__main__":

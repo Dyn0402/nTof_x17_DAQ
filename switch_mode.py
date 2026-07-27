@@ -57,6 +57,7 @@ THE ONE THING --go DOES NOT DO
   same changeover unattended.
 """
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -115,6 +116,55 @@ MODES = {
         'gate': False,         # cosmics do not care about beam gaps
     },
 }
+
+
+CHANGEOVER_LOCK = os.path.join(REPO, 'config', '.switch_mode.lock')
+
+
+def acquire_changeover_lock():
+    """Single-flight: only ONE changeover may be in flight at a time, process-wide.
+
+    Added 2026-07-27 alongside mode_watcher.py. There are now several things that can
+    legitimately fire a changeover — the operator on the command line, the Flask Run Mode
+    card, beam_return_watcher, mode_watcher — and two of them overlapping would be genuinely
+    destructive: both would stop runs, both would allocate "the next" run number (the same
+    one, from the same max+1 scan), and both would drive the same N1081B boards. The board
+    flock protects individual calls but nothing previously serialised the whole sequence.
+
+    Returns the held file object (keep it alive — closing it releases the lock), or None if
+    someone else holds it. The lock dies with the process, so a crashed changeover cannot
+    wedge future ones.
+    """
+    os.makedirs(os.path.dirname(CHANGEOVER_LOCK), exist_ok=True)
+    f = open(CHANGEOVER_LOCK, 'w')
+    try:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError):
+        f.close()
+        return None
+    f.write(f'pid {os.getpid()} since {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
+    f.flush()
+    return f
+
+
+def read_changeover_lock():
+    """Best-effort description of whoever holds the changeover lock ('' if free)."""
+    try:
+        with open(CHANGEOVER_LOCK) as f:
+            who = f.read().strip()
+    except Exception:  # noqa: BLE001
+        return ''
+    probe = None
+    try:
+        probe = open(CHANGEOVER_LOCK, 'a')
+        fcntl.flock(probe.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(probe.fileno(), fcntl.LOCK_UN)
+        return ''            # we got it -> nobody holds it
+    except (BlockingIOError, OSError):
+        return who or 'unknown holder'
+    finally:
+        if probe is not None:
+            probe.close()
 
 
 def _run(cmd, **kw):
@@ -372,6 +422,16 @@ def main():
 
     spec = MODES[args.mode]
     print(f'=== switch to {args.mode.upper()}: {spec["blurb"]} ===')
+
+    # ---------- guard 0: only one changeover at a time ----------
+    # Held for the whole of main(); released when this process exits.
+    _lock = acquire_changeover_lock()  # noqa: F841 — the handle IS the lock
+    if _lock is None:
+        print(f'!! REFUSING: another changeover is already in progress '
+              f'({read_changeover_lock()}). Two overlapping changeovers would both stop '
+              f'runs, both claim the same "next" run number, and both drive the same boards.')
+        return 7
+    print('[guard] changeover lock acquired — OK')
 
     # ---------- guard 1: nothing may be running ----------
     # --go stops it for you; without --go this stays a hard refusal, because stopping a
