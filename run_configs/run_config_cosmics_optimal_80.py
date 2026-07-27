@@ -90,7 +90,11 @@ import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from run_config_beam import Config as BeamConfig
 
-RUN_NUM = 80
+# RUN_NUM env var (added 2026-07-27): this operating point is settled, so a later cosmic
+# run at the SAME point re-uses this generator rather than forking a copy that can drift.
+# `RUN_NUM=83 python run_configs/run_config_cosmics_optimal_80.py` writes
+# run_config_cosmics_optimal_83.json; the default 80 keeps the original filenames untouched.
+RUN_NUM = int(os.environ.get('RUN_NUM', '80'))
 
 # ---- readout: identical to run_79 unless overridden ----
 LATENCY = int(os.environ.get('LATENCY', '27'))
@@ -198,7 +202,8 @@ class Config(BeamConfig):
 
 if __name__ == '__main__':
     c = Config()
-    out = 'config/json_run_configs/run_config_cosmics_optimal_80.json'
+    out = ('config/json_run_configs/run_config_cosmics_optimal'
+           f'{"" if RUN_NUM == 80 else f"_{RUN_NUM}"}.json')
     c.write_to_file(out)
 
     buf = (512 - LATENCY) // N_SAMPLES

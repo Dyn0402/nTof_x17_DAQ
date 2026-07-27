@@ -38,8 +38,14 @@ WHAT IT ACTUALLY DOES
 
 CONFIGS — the defaults below are the current production pair. Point elsewhere with
   --config, and bump the beam run number with RUN_NUM when starting a fresh run:
-      RUN_NUM=82 .venv/bin/python run_configs/run_config_stats_optimized.py
-      ./switch_mode.py beam --start --config run_config_stats_optimized_82.json
+      RUN_NUM=85 OVR_WRN_HWM=1 OVR_WRN_LWM=0 .venv/bin/python run_configs/run_config_stats_optimized.py
+      ./switch_mode.py beam --start --config run_config_stats_optimized_85.json
+
+  2026-07-27: the defaults now point at the post-run_82 pair — beam run_84 and cosmic run_83,
+  both at trigger-FIFO **Hwm 1 / Lwm 0**. run_82 measured that setting taking the 1-10 ms
+  starved-bin fraction from 26.7% to 3.3% (8x) for -6.5% in-window triggers; IPD stays at 5
+  because IPD 2 made the comb WORSE at both watermarks. See
+  docs/PLAN_comb_spikiness_2026-07-27.md section 4d.
 """
 import argparse
 import json
@@ -63,14 +69,14 @@ MODES = {
         'blurb': 'veto-gated scint Singles + PS/flash leg (production statistics)',
         'setup': [PY, 'n1081b/trigger_mode.py', 'scint', '--singles', '--ps-pickup'],
         'expect': {'SEC_C': ('or_veto', [0]), 'SEC_D': ('or', [0, 1])},
-        'config': 'run_config_stats_optimized_81.json',
+        'config': 'run_config_stats_optimized_84.json',   # Hwm 1/Lwm 0 — the run_82 result
         'want_beam': True,
     },
     'cosmics': {
         'blurb': 'UNGATED scint Singles, veto open, PS leg dropped (beam-off cosmics)',
         'setup': [PY, 'n1081b/setup_cosmics_singles_ungated.py'],
         'expect': {'SEC_C': ('or', [0]), 'SEC_D': ('or', [1])},
-        'config': 'run_config_cosmics_optimal_80.json',
+        'config': 'run_config_cosmics_optimal_83.json',   # Hwm 1/Lwm 0, 0.50 MIP plastics
         'want_beam': False,
     },
 }

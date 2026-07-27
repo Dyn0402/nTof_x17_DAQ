@@ -116,6 +116,14 @@ triggers/pulse), at a cost of −10% total triggers taken almost entirely out of
 spike. Shortening `n_samples` then repaid that cost with interest (run_79: 104.33 trig/pulse,
 *above* run_77's 88.85).
 
+⚠ **The 0.5 ms-bin CV used above is NOT sufficient on its own — 2026-07-27.** It is wider
+than the dead gap it is supposed to detect, so it averages each comb tooth together with its
+own gap and reports "flat". run_79 reads CV 0.420 at 0.5 ms but **0.584 at 0.25 ms and 0.874
+at 0.1 ms**, with 12 starved gaps (median 0.35 ms) covering 33% of the 1–10 ms band. Always
+report the CV at bins **finer than the drain**, plus the starved-bin fraction. Tool:
+`analysis/flash_comb/tools/flash_time_spikiness.py`. See
+`docs/PLAN_comb_spikiness_2026-07-27.md`.
+
 ⚠ **`docs/FEU_WATERMARKS_2026-07-22.md` reaches the opposite conclusion** ("lowering Hwm
 monotonically hurts"). That scan ran on **ZS + IPD 10, where the comb was already gone**, and
 optimised *total throughput in a band*. Different configuration, different objective, opposite
@@ -134,7 +142,9 @@ running.
    long-lived `dream_daq` server that predated the plumbing; the cfg is not the last word.
 3. **Signal onset** at the intended sample, from the §2 charge profile.
 4. **Flash peak** at the intended sample, from flash events only.
-5. **Evenness** — CV of the 1–10 ms distribution in 0.5 ms bins, against the previous config.
+5. **Evenness** — CV of the 1–10 ms distribution against the previous config, at **0.25 ms
+   and 0.1 ms bins as well as 0.5 ms**, plus the starved-bin fraction. The 0.5 ms number
+   alone is not trustworthy (see the warning in §5).
 
 ## 7. Cost of the measurement
 

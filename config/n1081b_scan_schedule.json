@@ -1,637 +1,709 @@
 {
-  "_comment": "run_30 mesh on/off scan schedule (2026-07-11). Six scans keyed by the leading sub-run-name token. MULTI-BOARD schema: each target may carry its own 'board' (default = top-level board). The watcher toggles INPUT-CHANNEL status (not function lemo enables) to select triggers, drives the M4.D-in0 (PS line) Gate&Delay for the scint scans, and switches the mesh injection by enabling/disabling M6.B's four outputs. Pre-run one-time setup (function types + enables + injection delay 1260): n1081b/setup_run30_trigger.py. Restore mode 'snapshot' returns every touched channel to its found state on exit. Previous (self-trig) schedule: n1081b_scan_schedule.json.selftrig_backup.",
-  "_trigger_map": {
-    "d_in0": ".243 M4.D ch0 = PS/gamma-flash trigger line (delayed +1980 ns ONLY in scint scans so the flash lands in the 32x60ns window at latency 35; flash peak ~smp 15 there)",
-    "d_in1": ".243 M4.D ch1 = M4.C out (scint singles / gated pulser path)",
-    "c_in0": ".243 M4.C ch0 = Singles (M4.A)",
-    "c_in1": ".243 M4.C ch1 = Doubles (M4.B) \u2014 disabled in ALL run_30 scans",
-    "c_in4": ".243 M4.C ch4 = M6.D random pulser (Poisson 667 Hz, gated by the 30 ms veto)",
-    "mesh_b": ".245 M6.B outputs 0-3 = mesh charge-injection (delay knob in0 G&D = 1260 ns, set pre-run)"
+ "_comment": "run_30 mesh on/off scan schedule (2026-07-11). Six scans keyed by the leading sub-run-name token. MULTI-BOARD schema: each target may carry its own 'board' (default = top-level board). The watcher toggles INPUT-CHANNEL status (not function lemo enables) to select triggers, drives the M4.D-in0 (PS line) Gate&Delay for the scint scans, and switches the mesh injection by enabling/disabling M6.B's four outputs. Pre-run one-time setup (function types + enables + injection delay 1260): n1081b/setup_run30_trigger.py. Restore mode 'snapshot' returns every touched channel to its found state on exit. Previous (self-trig) schedule: n1081b_scan_schedule.json.selftrig_backup.",
+ "_trigger_map": {
+  "d_in0": ".243 M4.D ch0 = PS/gamma-flash trigger line (delayed +1980 ns ONLY in scint scans so the flash lands in the 32x60ns window at latency 35; flash peak ~smp 15 there)",
+  "d_in1": ".243 M4.D ch1 = M4.C out (scint singles / gated pulser path)",
+  "c_in0": ".243 M4.C ch0 = Singles (M4.A)",
+  "c_in1": ".243 M4.C ch1 = Doubles (M4.B) \u2014 disabled in ALL run_30 scans",
+  "c_in4": ".243 M4.C ch4 = M6.D random pulser (Poisson 667 Hz, gated by the 30 ms veto)",
+  "mesh_b": ".245 M6.B outputs 0-3 = mesh charge-injection (delay knob in0 G&D = 1260 ns, set pre-run)"
+ },
+ "board": "192.168.10.243",
+ "password": "password",
+ "restore": "snapshot",
+ "targets": {
+  "d_in0": {
+   "section": "SEC_D",
+   "channels": [
+    0
+   ]
   },
-  "board": "192.168.10.243",
-  "password": "password",
-  "restore": "snapshot",
-  "targets": {
-    "d_in0": {
-      "section": "SEC_D",
-      "channels": [
-        0
-      ]
-    },
-    "d_in1": {
-      "section": "SEC_D",
-      "channels": [
-        1
-      ]
-    },
-    "c_in0": {
-      "section": "SEC_C",
-      "channels": [
-        0
-      ]
-    },
-    "c_in1": {
-      "section": "SEC_C",
-      "channels": [
-        1
-      ]
-    },
-    "c_in4": {
-      "section": "SEC_C",
-      "channels": [
-        4
-      ]
-    },
-    "mesh_b": {
-      "board": "192.168.10.245",
-      "section": "SEC_B",
-      "channels": [
-        0,
-        1,
-        2,
-        3
-      ]
-    },
-    "thrA": {
-      "board": "192.168.10.241",
-      "section": "SEC_A",
-      "channels": [
-        0
-      ]
-    },
-    "thrB": {
-      "board": "192.168.10.241",
-      "section": "SEC_B",
-      "channels": [
-        0
-      ]
-    },
-    "thrC": {
-      "board": "192.168.10.241",
-      "section": "SEC_C",
-      "channels": [
-        0
-      ]
-    },
-    "thrD": {
-      "board": "192.168.10.241",
-      "section": "SEC_D",
-      "channels": [
-        0
-      ]
-    },
-    "mesh_ac": {
-      "board": "192.168.10.245",
-      "section": "SEC_B",
-      "channels": [
-        2,
-        3
-      ]
-    }
+  "d_in1": {
+   "section": "SEC_D",
+   "channels": [
+    1
+   ]
   },
-  "scans": {
-    "flashOn": {
-      "d_in1": {
-        "input_status": false
-      },
-      "d_in0": {
-        "input_status": true,
-        "enable_gd": false,
-        "gate": 100,
-        "delay": 0
-      },
-      "mesh_b": {
-        "output_status": true
-      },
-      "_note": "PS trigger only (C path cut at D.in1); mesh injection ON; 400x20ns lat 60"
-    },
-    "flashOff": {
-      "d_in1": {
-        "input_status": false
-      },
-      "d_in0": {
-        "input_status": true,
-        "enable_gd": false,
-        "gate": 100,
-        "delay": 0
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "same, mesh injection OFF (M6.B outputs disabled)"
-    },
-    "randOn": {
-      "d_in1": {
-        "input_status": true
-      },
-      "c_in0": {
-        "input_status": false
-      },
-      "c_in1": {
-        "input_status": false
-      },
-      "c_in4": {
-        "input_status": true
-      },
-      "d_in0": {
-        "input_status": true,
-        "enable_gd": false,
-        "gate": 100,
-        "delay": 0
-      },
-      "mesh_b": {
-        "output_status": true
-      },
-      "_note": "PS + veto-gated pulser; singles/doubles cut at C inputs; mesh ON; 32x60ns lat 5"
-    },
-    "randOff": {
-      "d_in1": {
-        "input_status": true
-      },
-      "c_in0": {
-        "input_status": false
-      },
-      "c_in1": {
-        "input_status": false
-      },
-      "c_in4": {
-        "input_status": true
-      },
-      "d_in0": {
-        "input_status": true,
-        "enable_gd": false,
-        "gate": 100,
-        "delay": 0
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "same, mesh OFF"
-    },
-    "fulltimeOn": {
-      "d_in1": {
-        "input_status": true
-      },
-      "c_in0": {
-        "input_status": false
-      },
-      "c_in1": {
-        "input_status": false
-      },
-      "c_in4": {
-        "input_status": true
-      },
-      "d_in0": {
-        "input_status": true,
-        "enable_gd": false,
-        "gate": 100,
-        "delay": 0
-      },
-      "mesh_b": {
-        "output_status": true
-      },
-      "_note": "run_35 full-temporal-space scan (2026-07-13): PS + UNGATED ~67 Hz Poisson pulser, mesh injection ON. Structurally a mirror of randOn, but the 30 ms VETO IS OFF and the pulser is throttled to 15 ms. NOTE the veto-open is NOT expressed here (the schedule only toggles input channels): it comes from M4.C being a plain FN_OR with only lemo4 enabled, plus the 15 ms pulser period \u2014 both applied ONCE by n1081b/setup_fulltime_trigger.py before the run. Singles/Doubles are cut both at the C inputs (here) AND at the C function level (there). 32x60ns lat 5."
-    },
-    "scintOn": {
-      "d_in1": {
-        "input_status": true
-      },
-      "c_in0": {
-        "input_status": true
-      },
-      "c_in1": {
-        "input_status": false
-      },
-      "c_in4": {
-        "input_status": false
-      },
-      "d_in0": {
-        "input_status": true,
-        "enable_gd": true,
-        "gate": 100,
-        "delay": 1980
-      },
-      "mesh_b": {
-        "output_status": true
-      },
-      "_note": "PS (delayed +1980ns -> flash peak ~smp 15 at lat 35) + Singles; pulser cut; mesh ON; 32x60ns lat 35"
-    },
-    "scintOff": {
-      "d_in1": {
-        "input_status": true
-      },
-      "c_in0": {
-        "input_status": true
-      },
-      "c_in1": {
-        "input_status": false
-      },
-      "c_in4": {
-        "input_status": false
-      },
-      "d_in0": {
-        "input_status": true,
-        "enable_gd": true,
-        "gate": 100,
-        "delay": 1980
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "same, mesh OFF. Watcher snapshot-restore resets d_in0 G&D on exit."
-    },
-    "m05On": {
-      "thrA": {
-        "threshold": -66
-      },
-      "thrB": {
-        "threshold": -77
-      },
-      "thrC": {
-        "threshold": -87
-      },
-      "thrD": {
-        "threshold": -74
-      },
-      "mesh_b": {
-        "output_status": true
-      },
-      "_note": "plastic 0.5 MIP (A-66/B-77/C-87/D-74 mV) + mesh ON; scint+ps routing static (pre-run)"
-    },
-    "m05Off": {
-      "thrA": {
-        "threshold": -66
-      },
-      "thrB": {
-        "threshold": -77
-      },
-      "thrC": {
-        "threshold": -87
-      },
-      "thrD": {
-        "threshold": -74
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "plastic 0.5 MIP (A-66/B-77/C-87/D-74 mV) + mesh OFF; scint+ps routing static (pre-run)"
-    },
-    "m10On": {
-      "thrA": {
-        "threshold": -131
-      },
-      "thrB": {
-        "threshold": -154
-      },
-      "thrC": {
-        "threshold": -174
-      },
-      "thrD": {
-        "threshold": -149
-      },
-      "mesh_b": {
-        "output_status": true
-      },
-      "_note": "plastic 1.0 MIP (A-131/B-154/C-174/D-149 mV) + mesh ON; scint+ps routing static (pre-run)"
-    },
-    "m10Off": {
-      "thrA": {
-        "threshold": -131
-      },
-      "thrB": {
-        "threshold": -154
-      },
-      "thrC": {
-        "threshold": -174
-      },
-      "thrD": {
-        "threshold": -149
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "plastic 1.0 MIP (A-131/B-154/C-174/D-149 mV) + mesh OFF; scint+ps routing static (pre-run)"
-    },
-    "m15On": {
-      "thrA": {
-        "threshold": -196
-      },
-      "thrB": {
-        "threshold": -232
-      },
-      "thrC": {
-        "threshold": -261
-      },
-      "thrD": {
-        "threshold": -224
-      },
-      "mesh_b": {
-        "output_status": true
-      },
-      "_note": "plastic 1.5 MIP (A-196/B-232/C-261/D-224 mV) + mesh ON; scint+ps routing static (pre-run)"
-    },
-    "m15Off": {
-      "thrA": {
-        "threshold": -196
-      },
-      "thrB": {
-        "threshold": -232
-      },
-      "thrC": {
-        "threshold": -261
-      },
-      "thrD": {
-        "threshold": -224
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "plastic 1.5 MIP (A-196/B-232/C-261/D-224 mV) + mesh OFF; scint+ps routing static (pre-run)"
-    },
-    "m20On": {
-      "thrA": {
-        "threshold": -262
-      },
-      "thrB": {
-        "threshold": -309
-      },
-      "thrC": {
-        "threshold": -348
-      },
-      "thrD": {
-        "threshold": -298
-      },
-      "mesh_b": {
-        "output_status": true
-      },
-      "_note": "plastic 2.0 MIP (A-262/B-309/C-348/D-298 mV) + mesh ON; scint+ps routing static (pre-run)"
-    },
-    "m20Off": {
-      "thrA": {
-        "threshold": -262
-      },
-      "thrB": {
-        "threshold": -309
-      },
-      "thrC": {
-        "threshold": -348
-      },
-      "thrD": {
-        "threshold": -298
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "plastic 2.0 MIP (A-262/B-309/C-348/D-298 mV) + mesh OFF; scint+ps routing static (pre-run)"
-    },
-    "m141On": {
-      "thrA": {
-        "threshold": -185
-      },
-      "thrB": {
-        "threshold": -217
-      },
-      "thrC": {
-        "threshold": -245
-      },
-      "thrD": {
-        "threshold": -210
-      },
-      "_note": "run_67: plastic 1.41 MIP (A-185/B-217/C-245/D-210 mV) \u2014 NO mesh target: the M6.B mesh circuit was taken FULLY OFF (all inputs and outputs) on 2026-07-22 via set_m6_secB_full_off.py, so scan_control must NOT re-enable it. scint+ps routing static (pre-run)."
-    },
-    "m141Off": {
-      "thrA": {
-        "threshold": -185
-      },
-      "thrB": {
-        "threshold": -217
-      },
-      "thrC": {
-        "threshold": -245
-      },
-      "thrD": {
-        "threshold": -210
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "run_67: plastic 1.41 MIP (A-185/B-217/C-245/D-210 mV) + mesh OFF; scint+ps routing static (pre-run). GEANT-optimised ladder, optimum (1.41 MIP) and DOWN only \u2014 see MX17_Full_Geant .claude/al_pair_background/PLASTIC_THRESHOLD.md and run_config_hv_mesh_thresh_scan.py."
-    },
-    "m113On": {
-      "thrA": {
-        "threshold": -148
-      },
-      "thrB": {
-        "threshold": -174
-      },
-      "thrC": {
-        "threshold": -196
-      },
-      "thrD": {
-        "threshold": -168
-      },
-      "_note": "run_67: plastic 1.13 MIP (A-148/B-174/C-196/D-168 mV) \u2014 NO mesh target: the M6.B mesh circuit was taken FULLY OFF (all inputs and outputs) on 2026-07-22 via set_m6_secB_full_off.py, so scan_control must NOT re-enable it. scint+ps routing static (pre-run)."
-    },
-    "m113Off": {
-      "thrA": {
-        "threshold": -148
-      },
-      "thrB": {
-        "threshold": -174
-      },
-      "thrC": {
-        "threshold": -196
-      },
-      "thrD": {
-        "threshold": -168
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "run_67: plastic 1.13 MIP (A-148/B-174/C-196/D-168 mV) + mesh OFF; scint+ps routing static (pre-run). GEANT-optimised ladder, optimum (1.41 MIP) and DOWN only \u2014 see MX17_Full_Geant .claude/al_pair_background/PLASTIC_THRESHOLD.md and run_config_hv_mesh_thresh_scan.py."
-    },
-    "m090On": {
-      "thrA": {
-        "threshold": -118
-      },
-      "thrB": {
-        "threshold": -139
-      },
-      "thrC": {
-        "threshold": -157
-      },
-      "thrD": {
-        "threshold": -134
-      },
-      "_note": "run_67: plastic 0.90 MIP (A-118/B-139/C-157/D-134 mV) \u2014 NO mesh target: the M6.B mesh circuit was taken FULLY OFF (all inputs and outputs) on 2026-07-22 via set_m6_secB_full_off.py, so scan_control must NOT re-enable it. scint+ps routing static (pre-run)."
-    },
-    "m090Off": {
-      "thrA": {
-        "threshold": -118
-      },
-      "thrB": {
-        "threshold": -139
-      },
-      "thrC": {
-        "threshold": -157
-      },
-      "thrD": {
-        "threshold": -134
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "run_67: plastic 0.90 MIP (A-118/B-139/C-157/D-134 mV) + mesh OFF; scint+ps routing static (pre-run). GEANT-optimised ladder, optimum (1.41 MIP) and DOWN only \u2014 see MX17_Full_Geant .claude/al_pair_background/PLASTIC_THRESHOLD.md and run_config_hv_mesh_thresh_scan.py."
-    },
-    "mtestOn": {
-      "thrA": {
-        "threshold": -185
-      },
-      "thrB": {
-        "threshold": -217
-      },
-      "thrC": {
-        "threshold": -245
-      },
-      "thrD": {
-        "threshold": -210
-      },
-      "mesh_b": {
-        "output_status": true
-      },
-      "_note": "MESH TOGGLE DIAGNOSTIC (2026-07-22): plastic held at 1.41 MIP (A-185/B-217/C-245/D-210) so the ONLY variable is M6.B outputs ENABLED. Paired with run_config_mesh_toggle_test.py to correlate the DREAM rate and the n_TOF stream wall-flash amplitude against mesh state. Toggles OUTPUTS only (same knob as the historical mesh_b, which produced the 28x effect)."
-    },
-    "mtestOff": {
-      "thrA": {
-        "threshold": -185
-      },
-      "thrB": {
-        "threshold": -217
-      },
-      "thrC": {
-        "threshold": -245
-      },
-      "thrD": {
-        "threshold": -210
-      },
-      "mesh_b": {
-        "output_status": false
-      },
-      "_note": "MESH TOGGLE DIAGNOSTIC (2026-07-22): plastic held at 1.41 MIP (A-185/B-217/C-245/D-210) so the ONLY variable is M6.B outputs DISABLED. Paired with run_config_mesh_toggle_test.py to correlate the DREAM rate and the n_TOF stream wall-flash amplitude against mesh state. Toggles OUTPUTS only (same knob as the historical mesh_b, which produced the 28x effect)."
-    },
-    "m200On": {
-      "thrA": {
-        "threshold": -262
-      },
-      "thrB": {
-        "threshold": -309
-      },
-      "thrC": {
-        "threshold": -348
-      },
-      "thrD": {
-        "threshold": -298
-      },
-      "_note": "run_70 plastic-threshold PLATEAU scan (2026-07-23): plastic 2.00 MIP (A-262/B-309/C-348/D-298 mV). NO mesh target on purpose \u2014 after the 2026-07-23 M6 re-cable the mesh sits on SEC_B out2/out3 and SEC_B/C enables are aliased, so scan_control must not touch M6 in this run. scint+ps routing static (pre-run)."
-    },
-    "m070On": {
-      "thrA": {
-        "threshold": -92
-      },
-      "thrB": {
-        "threshold": -108
-      },
-      "thrC": {
-        "threshold": -122
-      },
-      "thrD": {
-        "threshold": -104
-      },
-      "_note": "run_70 plastic-threshold PLATEAU scan (2026-07-23): plastic 0.70 MIP (A-92/B-108/C-122/D-104 mV). NO mesh target on purpose \u2014 after the 2026-07-23 M6 re-cable the mesh sits on SEC_B out2/out3 and SEC_B/C enables are aliased, so scan_control must not touch M6 in this run. scint+ps routing static (pre-run)."
-    },
-    "m050On": {
-      "thrA": {
-        "threshold": -66
-      },
-      "thrB": {
-        "threshold": -77
-      },
-      "thrC": {
-        "threshold": -87
-      },
-      "thrD": {
-        "threshold": -74
-      },
-      "_note": "run_70 plastic-threshold PLATEAU scan (2026-07-23): plastic 0.50 MIP (A-66/B-77/C-87/D-74 mV). NO mesh target on purpose \u2014 after the 2026-07-23 M6 re-cable the mesh sits on SEC_B out2/out3 and SEC_B/C enables are aliased, so scan_control must not touch M6 in this run. scint+ps routing static (pre-run)."
-    },
-    "acmeshOn": {
-      "mesh_ac": {
-        "output_status": true
-      },
-      "_note": "run_71 mesh ON: enable SEC_B out2 (det A) + out3 (det C) charge-injection legs ONLY. out0/out1 (SiPM-enable bias) untouched -- this is the fix for the SEC_C-out cross-talk that collapsed the SiPM walls 28x in run_67. Paired with run_config_mesh_onoff_hv_scan.py; drift/resist HV driven by the DREAM scan. Plastic HELD at 1.41 MIP (A-185/B-217/C-245/D-210).",
-      "thrA": {
-        "threshold": -185
-      },
-      "thrB": {
-        "threshold": -217
-      },
-      "thrC": {
-        "threshold": -245
-      },
-      "thrD": {
-        "threshold": -210
-      }
-    },
-    "acmeshOff": {
-      "mesh_ac": {
-        "output_status": false
-      },
-      "_note": "run_71 mesh OFF: disable SEC_B out2/out3 (det A/C mesh legs) only; SiPM enables out0/out1 stay ON. If the walls still collapse on OFF, the mesh<->wall coupling is NOT the SEC_C-out alias -- this run is the test. Plastic HELD at 1.41 MIP (A-185/B-217/C-245/D-210).",
-      "thrA": {
-        "threshold": -185
-      },
-      "thrB": {
-        "threshold": -217
-      },
-      "thrC": {
-        "threshold": -245
-      },
-      "thrD": {
-        "threshold": -210
-      }
-    },
-    "cosbounce": {
-      "_note": "run_72 BEAM-OFF cosmics resist bounce (run_config_cosmics_hv_bounce.py). Sets the M2 plastic discriminators to 0.5 MIP (A-65/B-78/C-86/D-83, calibrations/pss/mip_thresholds_y88.json) and NOTHING ELSE -- cosmics are MIPs (Landau MPV = 1 MIP), so run_71's standing 1.41 MIP bar would cut most of them; 0.5 MIP is ~3x the trigger rate. NO mesh target: the mesh ON/OFF axis was dropped because M6.B in0 (the injection trigger) is PS/T0-fed and never fires with beam off, so board .245 is not touched by this run at all. Walls (M1) not touched. Resist/drift HV driven by the DREAM scan, not by this tag.",
-      "thrA": {
-        "threshold": -65
-      },
-      "thrB": {
-        "threshold": -78
-      },
-      "thrC": {
-        "threshold": -86
-      },
-      "thrD": {
-        "threshold": -83
-      }
-    },
-    "stat090": {
-      "mesh_ac": {
-        "output_status": false
-      },
-      "_note": "run_77 STATISTICS run at the single run_67 operating point (calibrations/mm/statistics_run_config_run67.json). Plastic discriminators at 0.90 MIP (A-118/B-139/C-157/D-134 mV) -- same numbers as m090On/m090Off, i.e. the run_67 threshold ladder rung the calibration selects on tracks-per-spill. Mesh charge-injection held OFF: disable SEC_B out2/out3 (det A/C legs) only, exactly as acmeshOff does; SiPM-enable bias out0/out1 is NOT touched. Every sub-run carries this same tag, so scan_control re-asserts thresholds + mesh-off each sub-run -- there is no scan axis in run_77, this is a HOLD. HV is driven by the DREAM config, not by this tag.",
-      "thrA": {
-        "threshold": -118
-      },
-      "thrB": {
-        "threshold": -139
-      },
-      "thrC": {
-        "threshold": -157
-      },
-      "thrD": {
-        "threshold": -134
-      }
-    }
+  "c_in0": {
+   "section": "SEC_C",
+   "channels": [
+    0
+   ]
+  },
+  "c_in1": {
+   "section": "SEC_C",
+   "channels": [
+    1
+   ]
+  },
+  "c_in4": {
+   "section": "SEC_C",
+   "channels": [
+    4
+   ]
+  },
+  "mesh_b": {
+   "board": "192.168.10.245",
+   "section": "SEC_B",
+   "channels": [
+    0,
+    1,
+    2,
+    3
+   ]
+  },
+  "thrA": {
+   "board": "192.168.10.241",
+   "section": "SEC_A",
+   "channels": [
+    0
+   ]
+  },
+  "thrB": {
+   "board": "192.168.10.241",
+   "section": "SEC_B",
+   "channels": [
+    0
+   ]
+  },
+  "thrC": {
+   "board": "192.168.10.241",
+   "section": "SEC_C",
+   "channels": [
+    0
+   ]
+  },
+  "thrD": {
+   "board": "192.168.10.241",
+   "section": "SEC_D",
+   "channels": [
+    0
+   ]
+  },
+  "mesh_ac": {
+   "board": "192.168.10.245",
+   "section": "SEC_B",
+   "channels": [
+    2,
+    3
+   ]
   }
+ },
+ "scans": {
+  "flashOn": {
+   "d_in1": {
+    "input_status": false
+   },
+   "d_in0": {
+    "input_status": true,
+    "enable_gd": false,
+    "gate": 100,
+    "delay": 0
+   },
+   "mesh_b": {
+    "output_status": true
+   },
+   "_note": "PS trigger only (C path cut at D.in1); mesh injection ON; 400x20ns lat 60"
+  },
+  "flashOff": {
+   "d_in1": {
+    "input_status": false
+   },
+   "d_in0": {
+    "input_status": true,
+    "enable_gd": false,
+    "gate": 100,
+    "delay": 0
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "same, mesh injection OFF (M6.B outputs disabled)"
+  },
+  "randOn": {
+   "d_in1": {
+    "input_status": true
+   },
+   "c_in0": {
+    "input_status": false
+   },
+   "c_in1": {
+    "input_status": false
+   },
+   "c_in4": {
+    "input_status": true
+   },
+   "d_in0": {
+    "input_status": true,
+    "enable_gd": false,
+    "gate": 100,
+    "delay": 0
+   },
+   "mesh_b": {
+    "output_status": true
+   },
+   "_note": "PS + veto-gated pulser; singles/doubles cut at C inputs; mesh ON; 32x60ns lat 5"
+  },
+  "randOff": {
+   "d_in1": {
+    "input_status": true
+   },
+   "c_in0": {
+    "input_status": false
+   },
+   "c_in1": {
+    "input_status": false
+   },
+   "c_in4": {
+    "input_status": true
+   },
+   "d_in0": {
+    "input_status": true,
+    "enable_gd": false,
+    "gate": 100,
+    "delay": 0
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "same, mesh OFF"
+  },
+  "fulltimeOn": {
+   "d_in1": {
+    "input_status": true
+   },
+   "c_in0": {
+    "input_status": false
+   },
+   "c_in1": {
+    "input_status": false
+   },
+   "c_in4": {
+    "input_status": true
+   },
+   "d_in0": {
+    "input_status": true,
+    "enable_gd": false,
+    "gate": 100,
+    "delay": 0
+   },
+   "mesh_b": {
+    "output_status": true
+   },
+   "_note": "run_35 full-temporal-space scan (2026-07-13): PS + UNGATED ~67 Hz Poisson pulser, mesh injection ON. Structurally a mirror of randOn, but the 30 ms VETO IS OFF and the pulser is throttled to 15 ms. NOTE the veto-open is NOT expressed here (the schedule only toggles input channels): it comes from M4.C being a plain FN_OR with only lemo4 enabled, plus the 15 ms pulser period \u2014 both applied ONCE by n1081b/setup_fulltime_trigger.py before the run. Singles/Doubles are cut both at the C inputs (here) AND at the C function level (there). 32x60ns lat 5."
+  },
+  "scintOn": {
+   "d_in1": {
+    "input_status": true
+   },
+   "c_in0": {
+    "input_status": true
+   },
+   "c_in1": {
+    "input_status": false
+   },
+   "c_in4": {
+    "input_status": false
+   },
+   "d_in0": {
+    "input_status": true,
+    "enable_gd": true,
+    "gate": 100,
+    "delay": 1980
+   },
+   "mesh_b": {
+    "output_status": true
+   },
+   "_note": "PS (delayed +1980ns -> flash peak ~smp 15 at lat 35) + Singles; pulser cut; mesh ON; 32x60ns lat 35"
+  },
+  "scintOff": {
+   "d_in1": {
+    "input_status": true
+   },
+   "c_in0": {
+    "input_status": true
+   },
+   "c_in1": {
+    "input_status": false
+   },
+   "c_in4": {
+    "input_status": false
+   },
+   "d_in0": {
+    "input_status": true,
+    "enable_gd": true,
+    "gate": 100,
+    "delay": 1980
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "same, mesh OFF. Watcher snapshot-restore resets d_in0 G&D on exit."
+  },
+  "m05On": {
+   "thrA": {
+    "threshold": -66
+   },
+   "thrB": {
+    "threshold": -77
+   },
+   "thrC": {
+    "threshold": -87
+   },
+   "thrD": {
+    "threshold": -74
+   },
+   "mesh_b": {
+    "output_status": true
+   },
+   "_note": "plastic 0.5 MIP (A-66/B-77/C-87/D-74 mV) + mesh ON; scint+ps routing static (pre-run)"
+  },
+  "m05Off": {
+   "thrA": {
+    "threshold": -66
+   },
+   "thrB": {
+    "threshold": -77
+   },
+   "thrC": {
+    "threshold": -87
+   },
+   "thrD": {
+    "threshold": -74
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "plastic 0.5 MIP (A-66/B-77/C-87/D-74 mV) + mesh OFF; scint+ps routing static (pre-run)"
+  },
+  "m10On": {
+   "thrA": {
+    "threshold": -131
+   },
+   "thrB": {
+    "threshold": -154
+   },
+   "thrC": {
+    "threshold": -174
+   },
+   "thrD": {
+    "threshold": -149
+   },
+   "mesh_b": {
+    "output_status": true
+   },
+   "_note": "plastic 1.0 MIP (A-131/B-154/C-174/D-149 mV) + mesh ON; scint+ps routing static (pre-run)"
+  },
+  "m10Off": {
+   "thrA": {
+    "threshold": -131
+   },
+   "thrB": {
+    "threshold": -154
+   },
+   "thrC": {
+    "threshold": -174
+   },
+   "thrD": {
+    "threshold": -149
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "plastic 1.0 MIP (A-131/B-154/C-174/D-149 mV) + mesh OFF; scint+ps routing static (pre-run)"
+  },
+  "m15On": {
+   "thrA": {
+    "threshold": -196
+   },
+   "thrB": {
+    "threshold": -232
+   },
+   "thrC": {
+    "threshold": -261
+   },
+   "thrD": {
+    "threshold": -224
+   },
+   "mesh_b": {
+    "output_status": true
+   },
+   "_note": "plastic 1.5 MIP (A-196/B-232/C-261/D-224 mV) + mesh ON; scint+ps routing static (pre-run)"
+  },
+  "m15Off": {
+   "thrA": {
+    "threshold": -196
+   },
+   "thrB": {
+    "threshold": -232
+   },
+   "thrC": {
+    "threshold": -261
+   },
+   "thrD": {
+    "threshold": -224
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "plastic 1.5 MIP (A-196/B-232/C-261/D-224 mV) + mesh OFF; scint+ps routing static (pre-run)"
+  },
+  "m20On": {
+   "thrA": {
+    "threshold": -262
+   },
+   "thrB": {
+    "threshold": -309
+   },
+   "thrC": {
+    "threshold": -348
+   },
+   "thrD": {
+    "threshold": -298
+   },
+   "mesh_b": {
+    "output_status": true
+   },
+   "_note": "plastic 2.0 MIP (A-262/B-309/C-348/D-298 mV) + mesh ON; scint+ps routing static (pre-run)"
+  },
+  "m20Off": {
+   "thrA": {
+    "threshold": -262
+   },
+   "thrB": {
+    "threshold": -309
+   },
+   "thrC": {
+    "threshold": -348
+   },
+   "thrD": {
+    "threshold": -298
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "plastic 2.0 MIP (A-262/B-309/C-348/D-298 mV) + mesh OFF; scint+ps routing static (pre-run)"
+  },
+  "m141On": {
+   "thrA": {
+    "threshold": -185
+   },
+   "thrB": {
+    "threshold": -217
+   },
+   "thrC": {
+    "threshold": -245
+   },
+   "thrD": {
+    "threshold": -210
+   },
+   "_note": "run_67: plastic 1.41 MIP (A-185/B-217/C-245/D-210 mV) \u2014 NO mesh target: the M6.B mesh circuit was taken FULLY OFF (all inputs and outputs) on 2026-07-22 via set_m6_secB_full_off.py, so scan_control must NOT re-enable it. scint+ps routing static (pre-run)."
+  },
+  "m141Off": {
+   "thrA": {
+    "threshold": -185
+   },
+   "thrB": {
+    "threshold": -217
+   },
+   "thrC": {
+    "threshold": -245
+   },
+   "thrD": {
+    "threshold": -210
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "run_67: plastic 1.41 MIP (A-185/B-217/C-245/D-210 mV) + mesh OFF; scint+ps routing static (pre-run). GEANT-optimised ladder, optimum (1.41 MIP) and DOWN only \u2014 see MX17_Full_Geant .claude/al_pair_background/PLASTIC_THRESHOLD.md and run_config_hv_mesh_thresh_scan.py."
+  },
+  "m113On": {
+   "thrA": {
+    "threshold": -148
+   },
+   "thrB": {
+    "threshold": -174
+   },
+   "thrC": {
+    "threshold": -196
+   },
+   "thrD": {
+    "threshold": -168
+   },
+   "_note": "run_67: plastic 1.13 MIP (A-148/B-174/C-196/D-168 mV) \u2014 NO mesh target: the M6.B mesh circuit was taken FULLY OFF (all inputs and outputs) on 2026-07-22 via set_m6_secB_full_off.py, so scan_control must NOT re-enable it. scint+ps routing static (pre-run)."
+  },
+  "m113Off": {
+   "thrA": {
+    "threshold": -148
+   },
+   "thrB": {
+    "threshold": -174
+   },
+   "thrC": {
+    "threshold": -196
+   },
+   "thrD": {
+    "threshold": -168
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "run_67: plastic 1.13 MIP (A-148/B-174/C-196/D-168 mV) + mesh OFF; scint+ps routing static (pre-run). GEANT-optimised ladder, optimum (1.41 MIP) and DOWN only \u2014 see MX17_Full_Geant .claude/al_pair_background/PLASTIC_THRESHOLD.md and run_config_hv_mesh_thresh_scan.py."
+  },
+  "m090On": {
+   "thrA": {
+    "threshold": -118
+   },
+   "thrB": {
+    "threshold": -139
+   },
+   "thrC": {
+    "threshold": -157
+   },
+   "thrD": {
+    "threshold": -134
+   },
+   "_note": "run_67: plastic 0.90 MIP (A-118/B-139/C-157/D-134 mV) \u2014 NO mesh target: the M6.B mesh circuit was taken FULLY OFF (all inputs and outputs) on 2026-07-22 via set_m6_secB_full_off.py, so scan_control must NOT re-enable it. scint+ps routing static (pre-run)."
+  },
+  "m090Off": {
+   "thrA": {
+    "threshold": -118
+   },
+   "thrB": {
+    "threshold": -139
+   },
+   "thrC": {
+    "threshold": -157
+   },
+   "thrD": {
+    "threshold": -134
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "run_67: plastic 0.90 MIP (A-118/B-139/C-157/D-134 mV) + mesh OFF; scint+ps routing static (pre-run). GEANT-optimised ladder, optimum (1.41 MIP) and DOWN only \u2014 see MX17_Full_Geant .claude/al_pair_background/PLASTIC_THRESHOLD.md and run_config_hv_mesh_thresh_scan.py."
+  },
+  "mtestOn": {
+   "thrA": {
+    "threshold": -185
+   },
+   "thrB": {
+    "threshold": -217
+   },
+   "thrC": {
+    "threshold": -245
+   },
+   "thrD": {
+    "threshold": -210
+   },
+   "mesh_b": {
+    "output_status": true
+   },
+   "_note": "MESH TOGGLE DIAGNOSTIC (2026-07-22): plastic held at 1.41 MIP (A-185/B-217/C-245/D-210) so the ONLY variable is M6.B outputs ENABLED. Paired with run_config_mesh_toggle_test.py to correlate the DREAM rate and the n_TOF stream wall-flash amplitude against mesh state. Toggles OUTPUTS only (same knob as the historical mesh_b, which produced the 28x effect)."
+  },
+  "mtestOff": {
+   "thrA": {
+    "threshold": -185
+   },
+   "thrB": {
+    "threshold": -217
+   },
+   "thrC": {
+    "threshold": -245
+   },
+   "thrD": {
+    "threshold": -210
+   },
+   "mesh_b": {
+    "output_status": false
+   },
+   "_note": "MESH TOGGLE DIAGNOSTIC (2026-07-22): plastic held at 1.41 MIP (A-185/B-217/C-245/D-210) so the ONLY variable is M6.B outputs DISABLED. Paired with run_config_mesh_toggle_test.py to correlate the DREAM rate and the n_TOF stream wall-flash amplitude against mesh state. Toggles OUTPUTS only (same knob as the historical mesh_b, which produced the 28x effect)."
+  },
+  "m200On": {
+   "thrA": {
+    "threshold": -262
+   },
+   "thrB": {
+    "threshold": -309
+   },
+   "thrC": {
+    "threshold": -348
+   },
+   "thrD": {
+    "threshold": -298
+   },
+   "_note": "run_70 plastic-threshold PLATEAU scan (2026-07-23): plastic 2.00 MIP (A-262/B-309/C-348/D-298 mV). NO mesh target on purpose \u2014 after the 2026-07-23 M6 re-cable the mesh sits on SEC_B out2/out3 and SEC_B/C enables are aliased, so scan_control must not touch M6 in this run. scint+ps routing static (pre-run)."
+  },
+  "m070On": {
+   "thrA": {
+    "threshold": -92
+   },
+   "thrB": {
+    "threshold": -108
+   },
+   "thrC": {
+    "threshold": -122
+   },
+   "thrD": {
+    "threshold": -104
+   },
+   "_note": "run_70 plastic-threshold PLATEAU scan (2026-07-23): plastic 0.70 MIP (A-92/B-108/C-122/D-104 mV). NO mesh target on purpose \u2014 after the 2026-07-23 M6 re-cable the mesh sits on SEC_B out2/out3 and SEC_B/C enables are aliased, so scan_control must not touch M6 in this run. scint+ps routing static (pre-run)."
+  },
+  "m050On": {
+   "thrA": {
+    "threshold": -66
+   },
+   "thrB": {
+    "threshold": -77
+   },
+   "thrC": {
+    "threshold": -87
+   },
+   "thrD": {
+    "threshold": -74
+   },
+   "_note": "run_70 plastic-threshold PLATEAU scan (2026-07-23): plastic 0.50 MIP (A-66/B-77/C-87/D-74 mV). NO mesh target on purpose \u2014 after the 2026-07-23 M6 re-cable the mesh sits on SEC_B out2/out3 and SEC_B/C enables are aliased, so scan_control must not touch M6 in this run. scint+ps routing static (pre-run)."
+  },
+  "acmeshOn": {
+   "mesh_ac": {
+    "output_status": true
+   },
+   "_note": "run_71 mesh ON: enable SEC_B out2 (det A) + out3 (det C) charge-injection legs ONLY. out0/out1 (SiPM-enable bias) untouched -- this is the fix for the SEC_C-out cross-talk that collapsed the SiPM walls 28x in run_67. Paired with run_config_mesh_onoff_hv_scan.py; drift/resist HV driven by the DREAM scan. Plastic HELD at 1.41 MIP (A-185/B-217/C-245/D-210).",
+   "thrA": {
+    "threshold": -185
+   },
+   "thrB": {
+    "threshold": -217
+   },
+   "thrC": {
+    "threshold": -245
+   },
+   "thrD": {
+    "threshold": -210
+   }
+  },
+  "acmeshOff": {
+   "mesh_ac": {
+    "output_status": false
+   },
+   "_note": "run_71 mesh OFF: disable SEC_B out2/out3 (det A/C mesh legs) only; SiPM enables out0/out1 stay ON. If the walls still collapse on OFF, the mesh<->wall coupling is NOT the SEC_C-out alias -- this run is the test. Plastic HELD at 1.41 MIP (A-185/B-217/C-245/D-210).",
+   "thrA": {
+    "threshold": -185
+   },
+   "thrB": {
+    "threshold": -217
+   },
+   "thrC": {
+    "threshold": -245
+   },
+   "thrD": {
+    "threshold": -210
+   }
+  },
+  "cosbounce": {
+   "_note": "run_72 BEAM-OFF cosmics resist bounce (run_config_cosmics_hv_bounce.py). Sets the M2 plastic discriminators to 0.5 MIP (A-65/B-78/C-86/D-83, calibrations/pss/mip_thresholds_y88.json) and NOTHING ELSE -- cosmics are MIPs (Landau MPV = 1 MIP), so run_71's standing 1.41 MIP bar would cut most of them; 0.5 MIP is ~3x the trigger rate. NO mesh target: the mesh ON/OFF axis was dropped because M6.B in0 (the injection trigger) is PS/T0-fed and never fires with beam off, so board .245 is not touched by this run at all. Walls (M1) not touched. Resist/drift HV driven by the DREAM scan, not by this tag.",
+   "thrA": {
+    "threshold": -65
+   },
+   "thrB": {
+    "threshold": -78
+   },
+   "thrC": {
+    "threshold": -86
+   },
+   "thrD": {
+    "threshold": -83
+   }
+  },
+  "stat090": {
+   "mesh_ac": {
+    "output_status": false
+   },
+   "_note": "run_77 STATISTICS run at the single run_67 operating point (calibrations/mm/statistics_run_config_run67.json). Plastic discriminators at 0.90 MIP (A-118/B-139/C-157/D-134 mV) -- same numbers as m090On/m090Off, i.e. the run_67 threshold ladder rung the calibration selects on tracks-per-spill. Mesh charge-injection held OFF: disable SEC_B out2/out3 (det A/C legs) only, exactly as acmeshOff does; SiPM-enable bias out0/out1 is NOT touched. Every sub-run carries this same tag, so scan_control re-asserts thresholds + mesh-off each sub-run -- there is no scan axis in run_77, this is a HOLD. HV is driven by the DREAM config, not by this tag.",
+   "thrA": {
+    "threshold": -118
+   },
+   "thrB": {
+    "threshold": -139
+   },
+   "thrC": {
+    "threshold": -157
+   },
+   "thrD": {
+    "threshold": -134
+   }
+  },
+  "thr090": {
+   "mesh_ac": {
+    "output_status": false
+   },
+   "thrA": {
+    "threshold": -118
+   },
+   "thrB": {
+    "threshold": -139
+   },
+   "thrC": {
+    "threshold": -157
+   },
+   "thrD": {
+    "threshold": -134
+   },
+   "_note": "run_83 PLASTIC-THRESHOLD ladder for the 1-10 ms acceptance-comb spikiness study (2026-07-27). Identical in shape to `stat090` \u2014 mesh charge-injection held OFF (SEC_B out2/out3 only; SiPM-enable bias out0/out1 NOT touched) \u2014 and differing ONLY in the M2 plastic discriminator level, so threshold is the single variable against the run_79/run_81 production point. 0.90 MIP = A-118/B-139/C-157/D-134 mV. mV values are byte-identical to `m090On` (run_67/run_70) so this ladder is directly comparable to that data. Rationale: run_79 shows the comb only where the offered rate is high (33% of 1-10 ms starved at 3.1-5.6 kHz; 20-40 ms comb-FREE at 1.27 kHz), so cutting the singles rate should clear it the way time already does. thr090 IS the production point and is the in-run control. \u26a0 scan_control does NOT restore section thresholds on exit \u2014 re-apply 0.90 MIP by hand afterwards."
+  },
+  "thr113": {
+   "mesh_ac": {
+    "output_status": false
+   },
+   "thrA": {
+    "threshold": -148
+   },
+   "thrB": {
+    "threshold": -174
+   },
+   "thrC": {
+    "threshold": -196
+   },
+   "thrD": {
+    "threshold": -168
+   },
+   "_note": "run_83 PLASTIC-THRESHOLD ladder for the 1-10 ms acceptance-comb spikiness study (2026-07-27). Identical in shape to `stat090` \u2014 mesh charge-injection held OFF (SEC_B out2/out3 only; SiPM-enable bias out0/out1 NOT touched) \u2014 and differing ONLY in the M2 plastic discriminator level, so threshold is the single variable against the run_79/run_81 production point. 1.13 MIP = A-148/B-174/C-196/D-168 mV. mV values are byte-identical to `m113On` (run_67/run_70) so this ladder is directly comparable to that data. Rationale: run_79 shows the comb only where the offered rate is high (33% of 1-10 ms starved at 3.1-5.6 kHz; 20-40 ms comb-FREE at 1.27 kHz), so cutting the singles rate should clear it the way time already does. thr090 IS the production point and is the in-run control. \u26a0 scan_control does NOT restore section thresholds on exit \u2014 re-apply 0.90 MIP by hand afterwards."
+  },
+  "thr141": {
+   "mesh_ac": {
+    "output_status": false
+   },
+   "thrA": {
+    "threshold": -185
+   },
+   "thrB": {
+    "threshold": -217
+   },
+   "thrC": {
+    "threshold": -245
+   },
+   "thrD": {
+    "threshold": -210
+   },
+   "_note": "run_83 PLASTIC-THRESHOLD ladder for the 1-10 ms acceptance-comb spikiness study (2026-07-27). Identical in shape to `stat090` \u2014 mesh charge-injection held OFF (SEC_B out2/out3 only; SiPM-enable bias out0/out1 NOT touched) \u2014 and differing ONLY in the M2 plastic discriminator level, so threshold is the single variable against the run_79/run_81 production point. 1.41 MIP = A-185/B-217/C-245/D-210 mV. mV values are byte-identical to `m141On` (run_67/run_70) so this ladder is directly comparable to that data. Rationale: run_79 shows the comb only where the offered rate is high (33% of 1-10 ms starved at 3.1-5.6 kHz; 20-40 ms comb-FREE at 1.27 kHz), so cutting the singles rate should clear it the way time already does. thr090 IS the production point and is the in-run control. \u26a0 scan_control does NOT restore section thresholds on exit \u2014 re-apply 0.90 MIP by hand afterwards."
+  },
+  "thr200": {
+   "mesh_ac": {
+    "output_status": false
+   },
+   "thrA": {
+    "threshold": -262
+   },
+   "thrB": {
+    "threshold": -309
+   },
+   "thrC": {
+    "threshold": -348
+   },
+   "thrD": {
+    "threshold": -298
+   },
+   "_note": "run_83 PLASTIC-THRESHOLD ladder for the 1-10 ms acceptance-comb spikiness study (2026-07-27). Identical in shape to `stat090` \u2014 mesh charge-injection held OFF (SEC_B out2/out3 only; SiPM-enable bias out0/out1 NOT touched) \u2014 and differing ONLY in the M2 plastic discriminator level, so threshold is the single variable against the run_79/run_81 production point. 2.00 MIP = A-262/B-309/C-348/D-298 mV. mV values are byte-identical to `m200On` (run_67/run_70) so this ladder is directly comparable to that data. Rationale: run_79 shows the comb only where the offered rate is high (33% of 1-10 ms starved at 3.1-5.6 kHz; 20-40 ms comb-FREE at 1.27 kHz), so cutting the singles rate should clear it the way time already does. thr090 IS the production point and is the in-run control. \u26a0 scan_control does NOT restore section thresholds on exit \u2014 re-apply 0.90 MIP by hand afterwards."
+  }
+ }
 }
