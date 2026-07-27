@@ -94,21 +94,34 @@ dependency sets are disjoint and deliberately kept that way — `ipc_yield.py` r
 the frozen projection straight from its JSON rather than importing `live.py`, so
 neither environment has to grow the other's dependencies.
 
-Two panels sharing an x axis, not one overlay: the curves are ~1e-6 IPC pairs/pulse/ms
-and ~2 triggers/spill/ms. A twin y-axis would put two unrelated scales in one frame
-and invite reading a crossing point that means nothing. Both axes are log — the
-arrival density goes as 1/t, and log x also spreads the five regions to roughly even
-widths so their labels don't collide and the 25–80 ms band stops occupying two thirds
-of the frame while contributing a third of the triggers.
+A true overlay on twin y axes, matching the house format of
+`analysis/flash_comb/tools/ipc_spectrum_vs_runs.py`. Two scales in one frame is
+normally the wrong call — the crossing points mean nothing — so each axis, its label
+and its ticks are colour-matched to its curve, and the regions are what is actually
+being compared. Log x spreads the five regions to roughly even widths so their labels
+don't collide, stops the 25–80 ms band from occupying two thirds of the frame while
+contributing a third of the triggers, and keeps the thermal peak legible, which a
+linear axis out to 80 ms would not.
 
-**Expected IPC** — Geant4 thermal campaign
-(`MX17_Full_Geant/docs/report/thermal_captures_subkev_full.json`), per-decade
-radiative capture from `rad_per_pulse_npxbr` × `ALPHA_IPC`, mapped to arrival time by
-neutron TOF over 19.5 m EAR2, `t[ms] = 1.41/√E[eV]`, spread within each decade as
-dN/dt ~ 1/t. It steps at decade boundaries because the model is piecewise — that is
-not noise. It **stops at 44.6 ms**, the TOF of the campaign's lowest energy (1 meV);
-past that the panel is greyed, because that is absence of simulation, not absence of
-IPC. The 25–80 ms region is therefore only half covered by the expectation.
+**Expected IPC** — `MX17_Full_Geant/analysis/reweight/ipc_ingate_spectrum.npz`, the
+in-gate production spectrum: the sub-keV thermal campaign reweighted by ENDF/B-VIII.0
+σ_nγ/σ_np, 4.1e8 effective counts. Taken **verbatim** — `t_ms` and
+`dNdt_ipc_per_pulse_per_ms` straight out of the file — so this plot cannot drift away
+from the `flash_comb` ones. Integral 6.58e-05 IPC/pulse = 1.27 IPC/day.
+
+⚠ Do **not** rebuild this curve by integrating the raw six-decade table
+(`thermal_captures_subkev_full.json`) by hand. That gives a monotonic 1/t staircase
+and **loses the thermal peak entirely** — an earlier draft of this script did exactly
+that and the resulting curve was qualitatively wrong.
+
+The peak search starts above `THERMAL_SEARCH_MS = 3.5`, as the house script does: the
+global maximum sits on the epithermal shoulder at the 1 ms gate edge, and labelling
+that "the thermal peak" names the wrong feature at the wrong energy (1988 meV instead
+of 71 meV).
+
+The spectrum **stops at 31.6 ms** (2 meV, its lowest energy). Past that the plot is
+greyed — absence of simulation, not absence of IPC — so the 25–80 ms region is only
+partly covered, flagged with `*`.
 
 **Measured yield** — run_79, FEU 01 only (every FEU reads every event, so one FEU is
 the whole event list at ⅛ the I/O). Anchored on the **gamma flash itself**, tagged by
@@ -122,13 +135,17 @@ Region totals scale each region's measured share to the frozen projection, so
 **re-run this after freezing a new projection** or the `→ xM` figures will still
 refer to the old one.
 
-| region | share | /spill | → by Aug 10 |
-|---|---|---|---|
-| 1–3 ms | 8.7% | 8.9 | 2.59M |
-| 3–8 ms | 16.3% | 16.7 | 4.86M |
-| 8–15 ms | 21.7% | 22.2 | 6.45M |
-| 15–25 ms | 19.9% | 20.3 | 5.91M |
-| 25–80 ms | 33.5% | 34.3 | 9.97M |
+| region | triggers | /spill | → by Aug 10 | of the IPC |
+|---|---|---|---|---|
+| 1–3 ms | 8.7% | 8.9 | 2.59M | 25% |
+| 3–8 ms | 16.3% | 16.7 | 4.86M | **56%** |
+| 8–15 ms | 21.7% | 22.2 | 6.45M | 17% |
+| 15–25 ms | 19.9% | 20.3 | 5.91M | 2% |
+| 25–80 ms | 33.5% | 34.3 | 9.97M | ~0%* |
+
+The two columns pull in opposite directions, which is the point of overlaying them:
+**56% of the IPC lands in 3–8 ms, where only 16% of the triggers are**, while a third
+of all triggers sit in 25–80 ms, where the expectation is essentially nothing.
 
 ## Cosmics during beam-off
 
