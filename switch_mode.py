@@ -60,6 +60,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -272,6 +273,53 @@ def verify_applied_cfg(run_num, timeout_s=180):
     return ok
 
 
+def gate_pids():
+    """PIDs of any running beam_gate.py, matched on argv."""
+    out = []
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f'/proc/{pid}/cmdline', 'rb') as f:
+                argv = [a.decode('utf-8', 'replace') for a in f.read().split(b'\0') if a]
+        except OSError:
+            continue
+        if any(os.path.basename(a) == 'beam_gate.py' for a in argv):
+            out.append(int(pid))
+    return out
+
+
+def stop_beam_gate():
+    """Stop any running beam_gate and WAIT for it, so it releases a hold it owns.
+
+    ⚠ This matters most when switching TO COSMICS. beam_gate holds .pause_run whenever beam
+    is off — which is exactly when a cosmic run is taking data — so a gate surviving into a
+    cosmic run would stall it at its first sub-run boundary and it would never resume.
+    beam_gate releases its own hold on SIGTERM, so a clean stop is enough.
+    """
+    pids = gate_pids()
+    if not pids:
+        return
+    print(f'[gate]  stopping beam_gate.py {pids} — it must not outlive a beam run')
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    t0 = time.time()
+    while gate_pids() and time.time() - t0 < 30:
+        time.sleep(1)
+    left = gate_pids()
+    if left:
+        print(f'[gate]  ⚠ beam_gate {left} did not exit — check .pause_run by hand')
+    else:
+        print('[gate]  beam_gate stopped')
+    try:
+        os.remove(os.path.join(REPO, '.beam_gate.pid'))
+    except FileNotFoundError:
+        pass
+
+
 def start_beam_gate():
     gate = os.path.join(REPO, 'beam_gate.py')
     log = os.path.join(REPO, 'logs', 'beam_gate.log')
@@ -438,6 +486,9 @@ def main():
         subprocess.run(['bash', START_RUN, cfg], cwd=REPO, check=False)
         print(f'[start] sent to the daq_control tmux pane.')
         if args.go:
+            # unconditional: for cosmics this is the fix (a surviving gate would stall the
+            # run at its first boundary); for beam it stops a duplicate gate piling up.
+            stop_beam_gate()
             if spec.get('gate'):
                 start_beam_gate()
             if go_run is not None:
