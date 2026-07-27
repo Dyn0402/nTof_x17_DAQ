@@ -73,6 +73,21 @@ DISARM_FLAG = os.path.join(REPO, 'config', '.mode_watcher_disarmed')
 STATE_FILE = os.path.join(REPO, 'config', 'mode_watcher_state.json')
 
 POLL_S = 5.0
+
+# BEAM_DOWN_MIN — MEASURED, not guessed. beam_monitor/analyze_stop_durations.py over
+# 2026-06-30..07-27 (642 h, 130 real beam stops, 4.9/day, 18% of wall-clock):
+#   * the short-hiccup population dies out sharply — 23 stops in 1-2 min, 18 in 2-3,
+#     13 in 3-4, then only 4 in 4-5 and 2 in 5-6. Past ~4 min the distribution is flat
+#     and long (median stop overall 8.6 min, p75 47 min, mean 53 min).
+#   * conditional survival has its knee in the same place. Given the beam has been away
+#     T min, P(away another 15) = 51% at T=2, 70% at T=4, 72% at T=5 — then it PLATEAUS
+#     (72% at 7, 72% at 8, 79% at 10).
+# So 5 min sits just past the end of the self-resolving hiccups and at the knee: below
+# ~4 min we would be swapping the DAQ for stops that fix themselves (at T=2 it is a coin
+# flip, and half the switches would not last one cosmic sub-run); above ~10 min we buy
+# almost no extra certainty and just sit idle through real downtime.
+# ⚠ Re-run the analysis after a machine schedule change — this is a property of the
+# accelerator, not of our DAQ. See docs/METHOD_beam_stop_threshold.md.
 BEAM_DOWN_MIN = 5.0        # no pulse for this long -> give up on beam, go cosmics
 PULSE_FRESH_S = 25.0       # a pulse this recent = beam actively running (they come ~11-16 s apart)
 CONFIRM_READS = 2          # consecutive agreeing polls before acting, either direction
