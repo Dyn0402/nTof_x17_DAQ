@@ -6,26 +6,19 @@ the run_82 result (`docs/PLAN_comb_spikiness_2026-07-27.md` §4d).
 
 ---
 
-## State as of 2026-07-27 15:10
+## State as of 2026-07-27 15:15
 
-**`run_84` — production beam statistics, LIVE** since 14:37:52. The post-run_82 point:
-RAW, latency 27, 20 smp × 60 ns, IPD 5, **Hwm 1 / Lwm 0**, drift 700 V all four, resist
-A540/B540/C525/D520, plastics 0.90 MIP (`stat090` tag), mesh off, 120 × 1 h open-ended.
-Verified on the applied cfg *and* on all 8 FEUs. `beam_gate.py` is running alongside it.
+**`run_85` — beam-off cosmics, LIVE** since 15:14. Started by the first end-to-end run of
+`./switch_mode.py cosmics --go`, which took **59 s** and exited 0 with every step verified.
 
-**`run_83` — beam-off cosmic reference, DONE.** 14:23–14:37, one 15 min sub-run stopped early
-when beam returned: 4.3 GB, 8/8 FEUs, 22 428 events/FEU, 0.0000 % loss, 27.3 Hz (matches the
-25.6 Hz run_72 reference). Marked complete by hand after that verification, so it is eligible
-for the normal backup/cleanup pipeline. Trigger was UNGATED scint Singles (M4.C `or[0]` veto
-OPEN, M4.D `or[1]`, PS leg dropped) with plastics at **0.50 MIP** via the `cosbounce` tag.
+**`run_84` — production beam, DONE.** 14:38–15:13 at the post-run_82 point (Hwm 1 / Lwm 0,
+IPD 5). One sub-run, stopped mid-flight when beam went down: 5.8 GB, 32 files, 8/8 FEUs,
+30 310 events/FEU, **0.0000 % loss** — verified and then marked complete by hand.
 
-**Why cosmics use 0.50 MIP and beam uses 0.90:** cosmics *are* MIPs (Landau MPV = 1 MIP), so
-the 0.90 MIP beam bar would cut most of them. The tags handle it in both directions —
-`cosbounce` sets 0.50, `stat090` sets 0.90 — so neither changeover needs a manual step.
+**`run_83` — cosmics, DONE.** 14:23–14:37, 4.3 GB, 22 428 events/FEU, 0.0000 % loss, 27.3 Hz.
+Also verified and marked by hand.
 
-**Why cosmics also run Hwm 1:** so the cosmic reference differs from the beam run it
-references in *nothing but the trigger*. At ~25 Hz the watermark is inert (0.5 % duty at
-196 µs/event), so this does not break comparability with run_80 at Hwm 2.
+Every sub-run of all three is now marked, so nothing is pinning the backup/cleanup pipeline.
 
 ---
 
