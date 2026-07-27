@@ -48,9 +48,10 @@ HISTORY_MAX = 240          # ~4 h at one sample per 60 s
 
 PROJECTIONS_DIR = os.path.join(REPO_DIR, "projections")
 LIVE_PLOT_PATH = os.path.join(PROJECTIONS_DIR, "plots", "progress_live.png")
-# Static: run_79 is a fixed reference measurement, so this is built by hand
+# Static: run_79 is a fixed reference measurement, so these are built by hand
 # (projections/ipc_yield.py) and shipped with the page rather than regenerated.
-IPC_PLOT_PATH = os.path.join(PROJECTIONS_DIR, "plots", "ipc_yield.png")
+IPC_PLOT_PATHS = [os.path.join(PROJECTIONS_DIR, "plots", n)
+                  for n in ("ipc_yield.png", "ipc_yield_linear.png")]
 
 DEFAULTS = {
     "status_url": "http://localhost:5001/status",
@@ -345,8 +346,10 @@ def push_eos(cfg, payload, history, with_page=True, png=None):
             ok, msg = _xrdcp(page_path, f"{www}/index.html", cfg)
             if not ok:
                 return False, msg
-            if os.path.exists(IPC_PLOT_PATH):
-                ok, msg = _xrdcp(IPC_PLOT_PATH, f"{www}/ipc_yield.png", cfg)
+            for p in IPC_PLOT_PATHS:
+                if not os.path.exists(p):
+                    continue
+                ok, msg = _xrdcp(p, f"{www}/{os.path.basename(p)}", cfg)
                 if not ok:
                     print(f"[stats_page] IPC plot upload failed: {msg}", file=sys.stderr)
         if png and os.path.exists(png):

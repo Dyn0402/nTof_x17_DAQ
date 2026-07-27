@@ -98,10 +98,19 @@ A true overlay on twin y axes, matching the house format of
 `analysis/flash_comb/tools/ipc_spectrum_vs_runs.py`. Two scales in one frame is
 normally the wrong call — the crossing points mean nothing — so each axis, its label
 and its ticks are colour-matched to its curve, and the regions are what is actually
-being compared. Log x spreads the five regions to roughly even widths so their labels
-don't collide, stops the 25–80 ms band from occupying two thirds of the frame while
-contributing a third of the triggers, and keeps the thermal peak legible, which a
-linear axis out to 80 ms would not.
+being compared. IPC is the light-blue field behind; the measured triggers are the
+darker red line in front.
+
+**Two files, one per x scale:**
+
+| file | axis | good for |
+|---|---|---|
+| `ipc_yield.png` | log | comparing the regions — they come out roughly even width, labels fit inline, thermal peak stays legible |
+| `ipc_yield_linear.png` | linear | the true spacing — which shows how compressed the interesting part is |
+
+On the linear axis 1–3 ms is 2.5% of the frame, far too narrow for a label block, so
+that version tags each band with its range only and puts the numbers in one aligned
+table in the space the decaying curves leave free.
 
 **Expected IPC** — `MX17_Full_Geant/analysis/reweight/ipc_ingate_spectrum.npz`, the
 in-gate production spectrum: the sub-keV thermal campaign reweighted by ENDF/B-VIII.0

@@ -199,13 +199,23 @@
 
   <h2>IPC yield vs time since the gamma flash</h2>
   <p class="caption">
-    Expected IPC arrival from the Geant4 thermal capture campaign, over the trigger
-    yield measured in run_79 in 50 µs bins, flash-anchored. The banded totals are each
-    region's share of the recorded triggers, scaled to the projection above.
+    In-gate IPC production (reweighted Geant4, light blue) under the trigger yield
+    measured in run_79 in 50 µs bins, flash-anchored (dark red). Each band shows its
+    share of the recorded triggers, that share scaled to the projection above, and its
+    share of the expected IPC — which is where the two disagree: 56% of the IPC lands
+    in 3–8 ms, where only 16% of the triggers are.
   </p>
   <div class="card plot">
     <img id="ipc-plot" src="ipc_yield.png" loading="lazy"
-         alt="Expected IPC arrival and measured run_79 trigger yield versus time since the gamma flash">
+         alt="In-gate IPC spectrum and measured run_79 trigger yield versus time since the gamma flash, log time axis">
+  </div>
+  <p class="caption">
+    The same thing on a linear time axis, for the true spacing — most of the IPC and
+    all of the comb structure live inside the first 15 ms.
+  </p>
+  <div class="card plot">
+    <img id="ipc-plot-linear" src="ipc_yield_linear.png" loading="lazy"
+         alt="In-gate IPC spectrum and measured run_79 trigger yield versus time since the gamma flash, linear time axis">
   </div>
 
   <h2>Services</h2>

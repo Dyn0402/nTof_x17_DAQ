@@ -261,11 +261,10 @@ def region_table(meas, projected_total=None, ipc_t=None, ipc_d=None):
         })
     return rows, total_in_gate
 
-
 def main():
     ap = argparse.ArgumentParser(description="IPC expectation vs measured run_79 yield.")
     ap.add_argument("--refresh", action="store_true", help="re-extract from ROOT files")
-    ap.add_argument("--out", help="output PNG path")
+    ap.add_argument("--outdir", default=PLOT_DIR, help="where the PNGs go")
     ap.add_argument("--show", action="store_true")
     args = ap.parse_args()
 
@@ -287,146 +286,178 @@ def main():
     n_flash = float(meas["n_spill_flash"])
     per_spill_per_ms = meas["counts"].astype(float) / n_flash / BIN_MS
 
-    # -------------------------------------------------------------- figure
     INK, INK2, MUTED = "#0b0b0b", "#52514e", "#898781"
     GRID, AXIS, SURFACE = "#e1e0d9", "#c3c2b7", "#fcfcfb"
-    MEASURED, EXPECTED = "#2a78d6", "#eb6834"
+    # IPC sits behind as a light-blue field; the data reads in front in a darker red.
+    IPC_LINE, IPC_FILL = "#5598e7", "#9ec5f4"
+    DATA = "#c0392b"
 
-    fig, ax = plt.subplots(figsize=(12.6, 6.8))
-    fig.patch.set_facecolor(SURFACE)
-    # A true overlay on twin y axes, matching the house format of
-    # analysis/flash_comb/tools/ipc_spectrum_vs_runs.py. Two scales in one frame is
-    # normally the wrong call — the crossing points carry no meaning — so the axes,
-    # their labels and their ticks are colour-matched to their curves and the
-    # regions are the thing actually being compared.
-    axr = ax.twinx()
-
-    for a in (ax, axr):
-        a.set_facecolor(SURFACE)
-    ax.grid(True, color=GRID, linewidth=0.8, alpha=0.9)
-    ax.set_axisbelow(True)
-
-    # Alternating region bands.
-    for i, (lo, hi) in enumerate(REGIONS):
-        ax.axvspan(lo, hi, color=MUTED, alpha=0.09 if i % 2 == 0 else 0.03,
-                   linewidth=0, zorder=0)
-        ax.axvline(lo, color=AXIS, linewidth=0.8, alpha=0.7, zorder=1)
-    ax.axvline(REGIONS[-1][1], color=AXIS, linewidth=0.8, alpha=0.7, zorder=1)
-
-    # --- measured triggers (right axis, behind) ---
-    axr.step(centres, per_spill_per_ms, where="mid", color=MEASURED,
-             linewidth=0.9, alpha=0.85, zorder=2,
-             label=f"run_79 recorded triggers ({BIN_MS * 1000:.0f} $\\mu$s bins)")
-    axr.fill_between(centres, 0, per_spill_per_ms, step="mid",
-                     color=MEASURED, alpha=0.13, linewidth=0, zorder=2)
-    gate = centres >= TPLOT_MIN
-    gate_max = float(per_spill_per_ms[gate].max())
-    axr.set_ylim(0, gate_max * 1.75)
-    axr.set_ylabel("run_79 recorded triggers / spill / ms", color=MEASURED, fontsize=10)
-    axr.tick_params(axis="y", colors=MEASURED, labelsize=9, length=3)
-
-    # --- expected IPC (left axis, in front) ---
-    ax.plot(ipc_t, ipc_d * 1e6, color=EXPECTED, linewidth=2.4, zorder=4,
-            label="In-gate IPC production (reweighted Geant4)")
-    ax.fill_between(ipc_t, 0, ipc_d * 1e6, color=EXPECTED, alpha=0.20,
-                    linewidth=0, zorder=3)
-    ax.set_ylim(0, float((ipc_d * 1e6).max()) * 1.55)
-    ax.set_ylabel("IPC pairs / pulse / ms   [$\\times10^{-6}$]",
-                  color=EXPECTED, fontsize=10)
-    ax.tick_params(axis="y", colors=EXPECTED, labelsize=9, length=3)
-
-    # The thermal peak is the feature worth naming — it is where the IPC actually is.
-    # Search above THERMAL_SEARCH_MS, as ipc_spectrum_vs_runs.py does: the global
-    # maximum sits at the 1 ms gate edge, on the epithermal shoulder, and reporting
-    # that as "the thermal peak" would name the wrong feature at the wrong energy.
+    # Thermal peak: search above THERMAL_SEARCH_MS (see the constant).
     m_th = ipc_t > THERMAL_SEARCH_MS
     i_pk = int(np.flatnonzero(m_th)[np.argmax(ipc_d[m_th])])
     t_pk = float(ipc_t[i_pk])
+    y_pk = float(ipc_d[i_pk] * 1e6)
     E_pk = (ipc_meta["flight_ms"] / t_pk) ** 2
-    ax.annotate(f"thermal peak {t_pk:.1f} ms\n(E $\\approx$ {E_pk * 1e3:.0f} meV)",
-                xy=(t_pk, float(ipc_d[i_pk] * 1e6)),
-                xytext=(t_pk * 1.9, float(ipc_d[i_pk] * 1e6) * 1.42),
-                color=EXPECTED, fontsize=9.5, fontweight="bold", linespacing=1.35,
-                arrowprops=dict(arrowstyle="->", color=EXPECTED, lw=1.4))
 
-    if t_cov < TMAX:
-        ax.axvspan(t_cov, TMAX, color=MUTED, alpha=0.14, linewidth=0, zorder=1)
-        ax.text(float(np.sqrt(t_cov * TMAX)), 0.42,
-                f"no IPC expectation past {t_cov:.0f} ms\n(spectrum stops at 2 meV)",
-                transform=ax.get_xaxis_transform(), ha="center", va="center",
-                fontsize=8.5, color=MUTED, linespacing=1.4, zorder=5)
+    def make_figure(xscale, out_path):
+        """One figure per x scale. Log spreads the regions evenly and keeps the
+        thermal peak legible; linear shows the true spacing, at the cost of
+        crushing everything below ~8 ms — which is where most of the IPC is."""
+        fig, ax = plt.subplots(figsize=(12.6, 6.8))
+        fig.patch.set_facecolor(SURFACE)
+        axr = ax.twinx()
+        for a in (ax, axr):
+            a.set_facecolor(SURFACE)
+        ax.grid(True, color=GRID, linewidth=0.8, alpha=0.9)
+        ax.set_axisbelow(True)
 
-    ax.set_xlabel("neutron arrival time  t  [ms]      (t = 0 is the gamma flash)",
-                  color=INK2, fontsize=10.5)
-    # Log x: it spreads the five regions to roughly even widths, which both
-    # un-crowds their labels and stops the 25-80 ms band from occupying two thirds
-    # of the frame while contributing a third of the triggers. The thermal peak
-    # stays legible, which a linear axis out to 80 ms would not manage.
-    ax.set_xscale("log")
-    ax.set_xlim(TPLOT_MIN, TMAX)
-    ax.set_xticks([1, 2, 3, 5, 8, 10, 15, 25, 40, 80])
-    ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:g}"))
-    ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
-    for s in ("top",):
-        ax.spines[s].set_visible(False)
-        axr.spines[s].set_visible(False)
-    ax.spines["left"].set_color(EXPECTED)
-    axr.spines["right"].set_color(MEASURED)
-    axr.spines["left"].set_visible(False)
-    ax.spines["bottom"].set_color(AXIS)
-    ax.tick_params(axis="x", colors=MUTED, labelsize=9, length=3)
-    for lbl in ax.get_xticklabels():
-        lbl.set_color(INK2)
+        for i, (lo, hi) in enumerate(REGIONS):
+            ax.axvspan(lo, hi, color=MUTED, alpha=0.09 if i % 2 == 0 else 0.03,
+                       linewidth=0, zorder=0)
+            ax.axvline(lo, color=AXIS, linewidth=0.8, alpha=0.7, zorder=1)
+        ax.axvline(REGIONS[-1][1], color=AXIS, linewidth=0.8, alpha=0.7, zorder=1)
 
-    # Region labels at the geometric middle of each band.
-    for r in rows:
-        mid = float(np.sqrt(r["lo"] * r["hi"]))
-        txt = f"{r['lo']:g}–{r['hi']:g} ms\n{r['share'] * 100:.0f}% · {r['per_spill']:.1f}/spill"
-        if r["projected"]:
-            txt += f"\n→ {r['projected'] / 1e6:.2f}M"
-        if r["ipc_share"] is not None:
-            txt += f"\nIPC {r['ipc_share'] * 100:.0f}%{'*' if r['ipc_partial'] else ''}"
-        ax.text(mid, 0.985, txt, transform=ax.get_xaxis_transform(),
-                ha="center", va="top", fontsize=8.5, color=INK2, linespacing=1.4,
-                zorder=6,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor=SURFACE,
-                          edgecolor=AXIS, linewidth=0.8, alpha=0.95))
+        # --- expected IPC: the light-blue field behind everything ---
+        ax.fill_between(ipc_t, 0, ipc_d * 1e6, color=IPC_FILL, alpha=0.75,
+                        linewidth=0, zorder=2)
+        ax.plot(ipc_t, ipc_d * 1e6, color=IPC_LINE, linewidth=1.8, zorder=3,
+                label="In-gate IPC production (reweighted Geant4)")
+        ax.set_ylim(0, float((ipc_d * 1e6).max()) * 1.55)
+        ax.set_ylabel("IPC pairs / pulse / ms   [$\\times10^{-6}$]",
+                      color=IPC_LINE, fontsize=10)
+        ax.tick_params(axis="y", colors=IPC_LINE, labelsize=9, length=3)
 
-    h1, l1 = ax.get_legend_handles_labels()
-    h2, l2 = axr.get_legend_handles_labels()
-    leg = ax.legend(h1 + h2, l1 + l2, loc="center right", frameon=False, fontsize=9.5)
-    for t in leg.get_texts():
-        t.set_color(INK2)
+        # --- measured triggers: in front, darker red ---
+        axr.step(centres, per_spill_per_ms, where="mid", color=DATA,
+                 linewidth=1.0, zorder=5,
+                 label=f"run_79 recorded triggers ({BIN_MS * 1000:.0f} $\\mu$s bins)")
+        gate = centres >= TPLOT_MIN
+        gate_max = float(per_spill_per_ms[gate].max())
+        axr.set_ylim(0, gate_max * 1.75)
+        axr.set_ylabel("run_79 recorded triggers / spill / ms", color=DATA, fontsize=10)
+        axr.tick_params(axis="y", colors=DATA, labelsize=9, length=3)
 
-    ax.set_title("In-gate IPC spectrum vs run_79's recorded triggers",
-                 color=INK, fontsize=14, fontweight="bold", loc="left", pad=34)
-    sub = (f"$\\int$ = {ipc_meta['ipc_per_pulse']:.2e} IPC/pulse = "
-           f"{ipc_meta['ipc_per_day']:.2f} IPC/day  ·  "
-           f"run_79 {int(meas['n_spill_flash']):,} flash-anchored spills of "
-           f"{int(meas['n_spill_total']):,} · FEU {str(meas['feu'])}")
-    if projected_total:
-        sub += f"  ·  → scaled to the {projected_total / 1e6:.1f}M projection"
-    ax.text(0, 1.045, sub, transform=ax.transAxes, color=MUTED,
-            fontsize=9.5, va="bottom")
+        ax.annotate(f"thermal peak {t_pk:.1f} ms\n(E $\\approx$ {E_pk * 1e3:.0f} meV)",
+                    xy=(t_pk, y_pk),
+                    xytext=((t_pk * 1.9, y_pk * 1.42) if xscale == "log"
+                            else (t_pk + 9.0, y_pk * 1.30)),
+                    color=IPC_LINE, fontsize=9.5, fontweight="bold", linespacing=1.35,
+                    zorder=6,
+                    arrowprops=dict(arrowstyle="->", color=IPC_LINE, lw=1.4))
 
-    fig.text(0.008, -0.02,
-             f"Generated {datetime.now():%Y-%m-%d %H:%M} · IPC = MX17_Full_Geant "
-             f"analysis/reweight/ipc_ingate_spectrum.npz (sub-keV thermal campaign "
-             f"reweighted by ENDF/B-VIII.0 $\\sigma_{{n\\gamma}}/\\sigma_{{np}}$) · "
-             f"flash tagged by ADC saturation, unflashed spills dropped · "
-             f"* region only partly covered by the spectrum",
-             color=MUTED, fontsize=8)
+        if t_cov < TMAX:
+            ax.axvspan(t_cov, TMAX, color=MUTED, alpha=0.14, linewidth=0, zorder=1)
+            xm = float(np.sqrt(t_cov * TMAX)) if xscale == "log" else 0.5 * (t_cov + TMAX)
+            ax.text(xm, 0.42,
+                    f"no IPC expectation past {t_cov:.0f} ms\n(spectrum stops at 2 meV)",
+                    transform=ax.get_xaxis_transform(), ha="center", va="center",
+                    fontsize=8.5, color=MUTED, linespacing=1.4, zorder=6)
 
-    out = args.out or os.path.join(PLOT_DIR, "ipc_yield.png")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=SURFACE)
-    print(f"[ipc_yield] Wrote {out}")
+        ax.set_xlabel("neutron arrival time  t  [ms]      (t = 0 is the gamma flash)",
+                      color=INK2, fontsize=10.5)
+        ax.set_xscale(xscale)
+        ax.set_xlim(TPLOT_MIN, TMAX)
+        if xscale == "log":
+            ax.set_xticks([1, 2, 3, 5, 8, 10, 15, 25, 40, 80])
+            ax.xaxis.set_major_formatter(
+                matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:g}"))
+            ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+        else:
+            ax.set_xticks([1] + list(range(10, 81, 10)))
 
-    print(f"\n{'region':>12}  {'triggers':>12}  {'/spill':>8}  {'share':>7}  {'projected':>12}")
+        ax.spines["top"].set_visible(False)
+        axr.spines["top"].set_visible(False)
+        ax.spines["left"].set_color(IPC_LINE)
+        axr.spines["right"].set_color(DATA)
+        axr.spines["left"].set_visible(False)
+        ax.spines["bottom"].set_color(AXIS)
+        ax.tick_params(axis="x", colors=MUTED, labelsize=9, length=3)
+        for lbl in ax.get_xticklabels():
+            lbl.set_color(INK2)
+
+        if xscale == "log":
+            # Each band is wide enough on a log axis to hold its own numbers.
+            for r in rows:
+                mid = float(np.sqrt(r["lo"] * r["hi"]))
+                txt = (f"{r['lo']:g}–{r['hi']:g} ms\n"
+                       f"{r['share'] * 100:.0f}% · {r['per_spill']:.1f}/spill")
+                if r["projected"]:
+                    txt += f"\n→ {r['projected'] / 1e6:.2f}M"
+                if r["ipc_share"] is not None:
+                    txt += f"\nIPC {r['ipc_share'] * 100:.0f}%{'*' if r['ipc_partial'] else ''}"
+                ax.text(mid, 0.985, txt, transform=ax.get_xaxis_transform(),
+                        ha="center", va="top", fontsize=8.5, color=INK2,
+                        linespacing=1.4, zorder=7,
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor=SURFACE,
+                                  edgecolor=AXIS, linewidth=0.8, alpha=0.95))
+        else:
+            # On a linear axis 1-3 ms is 2.5% of the frame — far too narrow for a
+            # label block. Tag each band with its range only, and put the numbers in
+            # one aligned table in the space the decaying curves leave free.
+            for r in rows:
+                ax.text(0.5 * (r["lo"] + r["hi"]), 0.985,
+                        f"{r['lo']:g}–{r['hi']:g}",
+                        transform=ax.get_xaxis_transform(), ha="center", va="top",
+                        fontsize=7.5, color=MUTED, zorder=7)
+            table_lines = [f"{'region':<9}{'trig':>6}{'→ Aug 10':>11}{'IPC':>7}"]
+            for r in rows:
+                band = f"{r['lo']:g}–{r['hi']:g} ms"
+                trig = f"{r['share'] * 100:.0f}%"
+                proj = f"{r['projected'] / 1e6:.2f}M" if r["projected"] else "—"
+                ipc = "—"
+                if r["ipc_share"] is not None:
+                    ipc = f"{r['ipc_share'] * 100:.0f}%" + ("*" if r["ipc_partial"] else "")
+                table_lines.append(f"{band:<9}{trig:>6}{proj:>11}{ipc:>7}")
+            ax.text(0.985, 0.965, "\n".join(table_lines), transform=ax.transAxes,
+                    ha="right", va="top", fontsize=8.5, color=INK2,
+                    family="monospace", linespacing=1.5, zorder=7,
+                    bbox=dict(boxstyle="round,pad=0.45", facecolor=SURFACE,
+                              edgecolor=AXIS, linewidth=0.8, alpha=0.95))
+
+        h1, l1 = ax.get_legend_handles_labels()
+        h2, l2 = axr.get_legend_handles_labels()
+        leg = ax.legend(h1 + h2, l1 + l2, frameon=False, fontsize=9.5,
+                        loc="center right",
+                        bbox_to_anchor=(1.0, 0.60) if xscale == "linear" else (1.0, 0.5))
+        for t in leg.get_texts():
+            t.set_color(INK2)
+
+        ax.set_title(f"In-gate IPC spectrum vs run_79's recorded triggers"
+                     f"   —   {'log' if xscale == 'log' else 'linear'} time axis",
+                     color=INK, fontsize=14, fontweight="bold", loc="left", pad=34)
+        sub = (f"$\\int$ = {ipc_meta['ipc_per_pulse']:.2e} IPC/pulse = "
+               f"{ipc_meta['ipc_per_day']:.2f} IPC/day  ·  "
+               f"run_79 {int(meas['n_spill_flash']):,} flash-anchored spills of "
+               f"{int(meas['n_spill_total']):,} · FEU {str(meas['feu'])}")
+        if projected_total:
+            sub += f"  ·  → scaled to the {projected_total / 1e6:.1f}M projection"
+        ax.text(0, 1.045, sub, transform=ax.transAxes, color=MUTED,
+                fontsize=9.5, va="bottom")
+
+        fig.text(0.008, -0.02,
+                 f"Generated {datetime.now():%Y-%m-%d %H:%M} · IPC = MX17_Full_Geant "
+                 f"analysis/reweight/ipc_ingate_spectrum.npz (sub-keV thermal campaign "
+                 f"reweighted by ENDF/B-VIII.0 $\\sigma_{{n\\gamma}}/\\sigma_{{np}}$) · "
+                 f"flash tagged by ADC saturation, unflashed spills dropped · "
+                 f"* region only partly covered by the spectrum",
+                 color=MUTED, fontsize=8)
+
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+        print(f"[ipc_yield] Wrote {out_path}")
+        return fig
+
+    make_figure("log", os.path.join(args.outdir, "ipc_yield.png"))
+    make_figure("linear", os.path.join(args.outdir, "ipc_yield_linear.png"))
+
+    print(f"\n{'region':>12}  {'triggers':>12}  {'/spill':>8}  {'share':>7}"
+          f"  {'projected':>12}  {'IPC':>6}")
     for r in rows:
         pr = f"{r['projected'] / 1e6:.2f}M" if r["projected"] else "—"
+        ip = f"{r['ipc_share'] * 100:.0f}%{'*' if r['ipc_partial'] else ''}" \
+            if r["ipc_share"] is not None else "—"
         print(f"{r['lo']:5g}-{r['hi']:<5g}  {r['counts']:>12,}  {r['per_spill']:>8.2f}  "
-              f"{r['share'] * 100:>6.1f}%  {pr:>12}")
+              f"{r['share'] * 100:>6.1f}%  {pr:>12}  {ip:>6}")
 
     if args.show:
         plt.show()
