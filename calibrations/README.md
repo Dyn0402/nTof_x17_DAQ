@@ -16,6 +16,7 @@ are exported snapshots with provenance — regenerate rather than hand-edit.
 | `pss/` | Plastic PMT gain curves G∝V^n, HV equalization + global gain-slide table | **filled** (run224466 HV scan) |
 | `pss_trigger/` | Plastic trigger thresholds vs the 10 mV discriminator floor: efficiencies + HV-recovery options | **filled** (run224466) |
 | `liq/` | Liquid scintillators (LS): MIP / PSD calibration | placeholder — awaiting LIQ readout |
+| `flash_timing/` | γ-flash arrival time per channel, referenced to the beam pickup: `t_flash = tof_PKUP + C`. 32 wall constants + LIQ time-base monitor | **filled** (divert-off runs 224356–360, 224464/466) |
 
 Anticipated later: `sili/` (Si monitor), `mm/` (Micromegas gain/threshold maps).
 
@@ -36,6 +37,15 @@ Open `pss/global_gain_slide_<run>.csv`, pick the column with the desired gain
 factor g, set the 8 listed voltages (CAEN card 07). Each PMT moves by its own
 amount (`V × g^(1/n)`, n per PMT) so the fleet stays equalized. Details and
 caveats in `pss/README.md`.
+
+## Operational quick answer: "what time did the γ-flash hit this channel?"
+
+`t_flash = tof_PKUP(bunch) + C_ns[channel]`, with the 32 constants in
+`flash_timing/flash_time_constants.json` (2026-07-16 epoch for runs ≥224400).
+**Per channel, not per wall** — a per-detector constant is no better than a
+single global one. Never use the PSA's stored `tflash` from the official files;
+the wall flash finder is bistable within a run. Details in
+`flash_timing/README.md`.
 
 ## Provenance / regeneration
 
