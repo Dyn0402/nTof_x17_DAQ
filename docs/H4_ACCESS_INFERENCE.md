@@ -66,8 +66,14 @@ Data path: `beam_watcher` → `SpsSpillMonitor._poll_tax()` → per-day CSV
 when the TAX **leaves** open (not when it arrives at the far end), spans closer
 than 10 min are merged, and anything under 5 min is dropped as pure motion.
 
-The 2026-07-20 → 07-27 history was backfilled into those CSVs from NXCALS, so
-the panel has 7 days of context from the start.
+History was backfilled into those CSVs from NXCALS: 07-20 → 07-27 initially, then
+back to **07-14** on 07-28, so the panel opens with two weeks of context. The
+backfill tool is `sps_monitor/backfill_tax_nxcals.py` (safe to re-run, dedups on
+`unix_ts`, refuses today's file while the watcher is appending to it).
+
+The **P2 sibling DAQ (banco) shows this same panel by proxying this box** — it is
+not TN-trusted and cannot reach NXCALS, so it holds no TAX data of its own. See
+`H4_BARRIER_ON_BANCO_2026-07-28.md`.
 
 ## Inferred spans, 2026-07-20 → 07-27
 
