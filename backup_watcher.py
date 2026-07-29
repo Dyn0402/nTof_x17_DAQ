@@ -48,13 +48,27 @@ Config keys (see backup_config.py to generate the JSON):
   rsync_extra_args    : extra arguments passed verbatim to rsync  (default: [])
 """
 
+import os
 import re
 import sys
 import json
 import time
 import datetime
+import traceback
 import subprocess
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common_functions import log_event
+
+# Durable event log. NOT a mirror of stdout — the pre-2026-07-07 log of this same
+# name was exactly that and reached 83 MB. Events only; see
+# docs/PLAN_2026-07-29_watcher_logging.md.
+_LOG_FILE = Path(__file__).parent / 'logs' / 'backup_watcher.log'
+
+
+def _log(event: str, **details):
+    log_event(str(_LOG_FILE), event, 'backup', **details)
 
 
 def main():
@@ -63,7 +77,16 @@ def main():
         sys.exit(1)
     with open(sys.argv[1]) as f:
         config = json.load(f)
-    run_watcher(config, Path(sys.argv[1]))
+    try:
+        run_watcher(config, Path(sys.argv[1]))
+    except KeyboardInterrupt:
+        _log('STOP', reason='KeyboardInterrupt')
+        raise
+    except Exception as e:  # noqa: BLE001
+        # Durable second copy only — re-raised so the tmux pane still shows the live
+        # traceback and the process still exits non-zero.
+        _log('CRASH', error=repr(e), traceback=traceback.format_exc())
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +134,10 @@ def run_watcher(config: dict, config_path: Path):
     print(f"[backup] poll               : {poll_interval}s  stale_after={stale_run_days}d")
     print(f"[backup] xrdcp timeout      : {_XRDCP_TIMEOUT_BASE:.0f}s + 1s per "
           f"{_XRDCP_MIN_RATE:.0f} MB  (xrdfs ls {_XRDFS_TIMEOUT:.0f}s)")
+    _log('START', source_dir=source_dir, eos_dir=eos_dir, xrootd_url=_XROOTD_URL,
+         principal=cern_principal, poll=f'{poll_interval}s',
+         stale_after=f'{stale_run_days}d', kinit_interval=f'{kinit_interval}s',
+         reconcile_interval=f'{reconcile_interval}s')
 
     state_path = config_path.parent / 'backup_state.json'
     loose_state_path = config_path.parent / 'backup_loose_state.json'
@@ -146,12 +173,17 @@ def run_watcher(config: dict, config_path: Path):
         if now - last_kinit_check >= kinit_interval:
             ok, method = _refresh_kerberos(cern_principal, keytab_file, gpg_pass_file)
             last_kinit_check = now
-            kerberos_ok = ok
+            was_ok, kerberos_ok = kerberos_ok, ok
             _end_idle()
             if ok:
                 print(f"[backup] Kerberos OK ({method})")
+                # Only on a transition: an hourly "still fine" line is noise, but the
+                # moment auth comes back after an outage is exactly what you look for.
+                if not was_ok:
+                    _log('KERBEROS_OK', method=method)
             else:
                 print(f"[backup] Kerberos FAILED: {method}")
+                _log('KERBEROS_FAILED', detail=method)
 
         found_new = False
 
@@ -190,45 +222,58 @@ def run_watcher(config: dict, config_path: Path):
                         else:
                             # Leave the signature stale so the next poll retries.
                             print(f"[backup] loose-file sync FAILED for {run_dir.name}")
+                            _log('LOOSE_SYNC_FAILED', run=run_dir.name)
 
                     if run_dir.name in checked_stale_runs:
                         continue
 
-                    is_stale = _run_is_stale(run_dir, stale_run_days)
+                    try:
+                        is_stale = _run_is_stale(run_dir, stale_run_days)
 
-                    for subrun_dir in sorted(run_dir.iterdir()):
-                        if not subrun_dir.is_dir():
-                            continue
+                        for subrun_dir in sorted(run_dir.iterdir()):
+                            if not subrun_dir.is_dir():
+                                continue
 
-                        key = (run_dir.name, subrun_dir.name)
-                        current_size = _dir_size(subrun_dir)
+                            key = (run_dir.name, subrun_dir.name)
+                            current_size = _dir_size(subrun_dir)
 
-                        # Stable check: size must match the previous poll
-                        if prev_sizes.get(key) != current_size:
-                            prev_sizes[key] = current_size
-                            continue
+                            # Stable check: size must match the previous poll
+                            if prev_sizes.get(key) != current_size:
+                                prev_sizes[key] = current_size
+                                continue
 
-                        # Skip if already rsynced at this exact size
-                        if synced_sizes.get(key) == current_size:
-                            continue
+                            # Skip if already rsynced at this exact size
+                            if synced_sizes.get(key) == current_size:
+                                continue
 
-                        _end_idle()
-                        mb = current_size // (1024 * 1024)
-                        print(f"[backup] {run_dir.name}/{subrun_dir.name}  size={mb}MB")
+                            _end_idle()
+                            mb = current_size // (1024 * 1024)
+                            print(f"[backup] {run_dir.name}/{subrun_dir.name}  size={mb}MB")
 
-                        ok = _xrd_sync_tree(subrun_dir, eos_runs_dir / run_dir.name / subrun_dir.name)
-                        if ok:
-                            _xrd_loose_files(run_dir, eos_runs_dir / run_dir.name)
-                            synced_sizes[key] = current_size
-                            _save_state(state_path, synced_sizes)
-                            found_new = True
-                        else:
-                            print(f"[backup] sync FAILED for {run_dir.name}/{subrun_dir.name}")
+                            ok = _xrd_sync_tree(subrun_dir, eos_runs_dir / run_dir.name / subrun_dir.name)
+                            if ok:
+                                _xrd_loose_files(run_dir, eos_runs_dir / run_dir.name)
+                                synced_sizes[key] = current_size
+                                _save_state(state_path, synced_sizes)
+                                found_new = True
+                            else:
+                                print(f"[backup] sync FAILED for {run_dir.name}/{subrun_dir.name}")
+                                _log('SUBRUN_SYNC_FAILED', run=run_dir.name,
+                                     subrun=subrun_dir.name, size_mb=mb)
 
-                    if is_stale:
-                        checked_stale_runs.add(run_dir.name)
-                        _end_idle()
-                        print(f"[backup] Marked stale (will skip): {run_dir.name}")
+                        if is_stale:
+                            checked_stale_runs.add(run_dir.name)
+                            _end_idle()
+                            print(f"[backup] Marked stale (will skip): {run_dir.name}")
+                    except FileNotFoundError:
+                        # space_watcher (Disk Space tab) deletes a run from HDD
+                        # staging the moment it's fully verified on EOS — that can
+                        # land mid-poll, out from under this loop. Nothing left to
+                        # sync, so just move on instead of crashing the watcher.
+                        print(f"[backup] {run_dir.name} vanished mid-poll (space_watcher"
+                              f" cleanup?) — skipping")
+                        _log('RUN_VANISHED', run=run_dir.name, phase='subrun_sync')
+                        continue
 
             # --- Periodic full sync for all other subdirs ---
             if now - last_extra_sync >= extra_sync_interval:
@@ -246,6 +291,7 @@ def run_watcher(config: dict, config_path: Path):
                         print(f"[backup] extra sync done: {subdir.name}/")
                     else:
                         print(f"[backup] extra sync FAILED: {subdir.name}/")
+                        _log('EXTRA_SYNC_FAILED', subdir=subdir.name)
 
             # --- Full-reconcile sweep (idle-only backstop) ---
             # Re-verifies EVERY run against EOS and re-copies any missing or
@@ -265,12 +311,19 @@ def run_watcher(config: dict, config_path: Path):
                     if run_dir.name in exclude_runs:
                         continue
                     n_runs += 1
-                    # Recursive sync of the whole run: subruns + loose files.
-                    if not _xrd_sync_tree(run_dir, eos_runs_dir / run_dir.name):
-                        n_gap_runs += 1
-                        print(f"[backup] reconcile: sync gaps remain in {run_dir.name}")
+                    try:
+                        # Recursive sync of the whole run: subruns + loose files.
+                        if not _xrd_sync_tree(run_dir, eos_runs_dir / run_dir.name):
+                            n_gap_runs += 1
+                            print(f"[backup] reconcile: sync gaps remain in {run_dir.name}")
+                    except FileNotFoundError:
+                        # Same race as the per-subrun path above: run_dir vanished
+                        # (space_watcher cleanup) between listing and reconciling it.
+                        print(f"[backup] {run_dir.name} vanished mid-reconcile — skipping")
+                        _log('RUN_VANISHED', run=run_dir.name, phase='reconcile')
                 print(f"[backup] full reconcile done: {n_runs} runs checked, "
                       f"{n_gap_runs} with unresolved gaps")
+                _log('RECONCILE_DONE', runs_checked=n_runs, runs_with_gaps=n_gap_runs)
 
         if found_new:
             idle_ticks = 0
@@ -448,6 +501,7 @@ def _remote_size_map(eos_dir: Path, recursive: bool = True) -> dict:
         # Same failure mode as a wedged xrdcp. An empty map is already the
         # "directory not there yet" answer, so the caller just re-copies.
         print(f"[backup] xrdfs ls TIMED OUT after {_XRDFS_TIMEOUT:.0f}s: {eos_dir}")
+        _log('XRDFS_LS_TIMEOUT', eos_dir=eos_dir, timeout_s=f'{_XRDFS_TIMEOUT:.0f}')
         return {}
     if result.returncode != 0:
         return {}
@@ -492,20 +546,27 @@ def _xrdcp_file(local: Path, eos_path: Path) -> bool:
             # the link, so attempt 2 normally flies (measured 0.4-6.9 s).
             print(f"[backup] xrdcp WEDGED after {budget:.0f}s ({mb:.1f} MB) "
                   f"{local.name} — killed, attempt {attempt}/{_XRDCP_ATTEMPTS}")
+            _log('XRDCP_WEDGED', file=local.name, size_mb=f'{mb:.1f}',
+                 budget_s=f'{budget:.0f}', attempt=f'{attempt}/{_XRDCP_ATTEMPTS}')
             continue
         if result.returncode == 0:
             if attempt > 1:
                 print(f"[backup] xrdcp recovered on attempt {attempt}: {local.name}")
+                _log('XRDCP_RECOVERED', file=local.name, attempt=attempt)
             return True
         # A real error (permissions, quota, bad path) will not fix itself by
         # retrying, so report and give up on this file for this pass.
         print(f"[backup] xrdcp FAILED (exit {result.returncode}) {local.name}: "
               f"{result.stderr.strip()[:200]}")
+        _log('XRDCP_FAILED', file=local.name, exit=result.returncode,
+             stderr=result.stderr.strip()[:200])
         return False
 
     # Still wedged after every attempt. Not recorded as synced, so the next poll
     # retries this file from scratch.
     print(f"[backup] xrdcp gave up after {_XRDCP_ATTEMPTS} attempts: {local.name}")
+    _log('XRDCP_GAVE_UP', file=local.name, attempts=_XRDCP_ATTEMPTS,
+         size_mb=f'{mb:.1f}')
     return False
 
 
