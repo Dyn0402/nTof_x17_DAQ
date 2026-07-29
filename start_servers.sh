@@ -131,12 +131,19 @@ bash_scripts/start_tmux.sh stats_page_watcher "python stats_page_watcher.py" 500
 # per-pedestal-run tool driven from the GUI, not a standing service, and an empty
 # 0-byte pedestal FDF deadlocks it — add a start_watcher_with_config line here if you
 # decide you want it standing.
-# N1081B time-tag watcher: sole owner of Module 5 (.244). Arms all four scintillator-wall
-# sections to Time-Tag and streams per-edge timestamps to a daily CSV (n1081b/logs/).
-# NOTE: this holds .244 in Time-Tag mode (not counter) for as long as it runs, and
-# poll_modules auto-skips .244 while it is up. On stop it restores .244 to counters.
-# Flask reads its state from config/n1081b_timetag_state.json. See n1081b/TIMETAG_WATCHER.md.
-# DISABLED 2026-07-15: a ~1 h run WEDGED .244's firmware (command interface hung, needed a
-# power-cycle) — the rapid TT start/stop cycling is too hard on the board. Do NOT re-enable
-# until the cadence is made gentle + a duration soak-test passes. See n1081b/TIMETAG_WATCHER.md.
-# bash_scripts/start_tmux.sh n1081b_timetag_watcher "python n1081b_timetag_watcher.py" 5000
+# N1081B trigger-timestamp stream: sole owner of Module 5 (.244). Streams section C
+# (the four sector coincidences from M3) continuously as per-edge timestamps, for
+# offline DREAM event <-> trigger matching. Holds .244 in Time-Tag for as long as it
+# runs, and poll_modules auto-skips .244 while it is up; on stop it restores counters.
+# Flask reads config/n1081b_timetag_state.json. See n1081b/TIMETAG_WATCHER.md.
+#
+# The tmux session name MUST stay `n1081b_timetag_watcher` — that is the name
+# poll_modules looks for to decide to skip .244.
+#
+# History: the v1/v2 round-robin watcher (`n1081b_timetag_watcher.py`) WEDGED .244 on
+# 2026-07-15 and again on 07-17 — the damage was rapid TT start/stop cycling and
+# reconnect churn, not TT streaming itself. The supervisor below is the mode that was
+# actually proven: ONE section, THREE stream commands per 6 h segment, zero reconnects.
+# Re-enabled 2026-07-29. Do NOT swap this back to n1081b_timetag_watcher.py.
+bash_scripts/start_tmux.sh n1081b_timetag_watcher \
+    "$VENV_PY $PWD/n1081b/tt_stream_supervisor.py --section C" 5000

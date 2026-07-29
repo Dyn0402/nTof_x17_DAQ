@@ -4610,18 +4610,25 @@ async function n1081bTTUpdateStatus() {
     document.getElementById("n1081b-updated").textContent = "";
     return;
   }
-  conn.textContent = "connected · " + (d.sections || "");
+  conn.textContent = (d.status_detail || "connected") +
+    (d.tt_sections ? ` · streaming ${d.tt_sections}` : "");
   conn.style.color = "var(--ok)";
   big.textContent = (d.rate_hz_total != null ? d.rate_hz_total : 0) + " Hz";
   big.style.color = (d.rate_hz_total > 0) ? "var(--ok)" : "var(--muted)";
+  // rate_hz = counter-measured INPUT rate, refreshed only at a segment baseline
+  // (~6 h apart) — do not read it as live.
   const r = d.rate_hz || {};
   setRate("n1081b-rate-A", r.A); setRate("n1081b-rate-B", r.B);
   setRate("n1081b-rate-C", r.C); setRate("n1081b-rate-D", r.D);
   document.getElementById("n1081b-total-today").textContent =
     (d.total_today_all != null ? d.total_today_all.toLocaleString() : "—");
   if (d.csv_path) document.getElementById("n1081b-csv-path").textContent = d.csv_path;
+  const counterAge = d.counter_rates_at
+    ? ` · counters @ ${d.counter_rates_at.split("T")[1] || ""}` : "";
+  const freeNote = (d.free_gb != null) ? ` · ${d.free_gb} GB free` : "";
   document.getElementById("n1081b-updated").textContent =
-    d.timestamp ? `updated ${d.timestamp.split("T")[1] || ""} · ${d.cycles ?? "?"} cycles` : "";
+    d.timestamp ? `updated ${d.timestamp.split("T")[1] || ""} · segment ${d.segment ?? "?"}`
+                  + counterAge + freeNote : "";
 }
 
 async function n1081bTTRenderPlot() {
@@ -4640,11 +4647,22 @@ async function n1081bTTRenderPlot() {
              ...axis, rangemode: "tozero" },
   };
   const colors = { A: "#4dabe8", B: "#5cc98a", C: "#c98500", D: "#c95c8a" };
+  // Series are "<section><channel>" (e.g. C1) now that ONE section is streamed
+  // continuously: colour by section, shade by channel so the four sector
+  // coincidences are told apart within it.
+  const shades = ["", "cc", "99", "66"];
   const secs = h.sections || {};
-  const traces = Object.keys(secs).sort().map(name => ({
-    x: h.time, y: secs[name], name: `Section ${name}`, type: "scatter", mode: "lines",
-    line: { color: colors[name] || "#8b96a5", width: 2 },
-  }));
+  const names = Object.keys(secs).sort();
+  const traces = names.map((name, i) => {
+    const sec = name[0], ch = name.slice(1);
+    const seen = names.filter(n => n[0] === sec).indexOf(name);
+    return {
+      x: h.time, y: secs[name],
+      name: ch ? `Sec ${sec} ch ${ch}` : `Section ${sec}`,
+      type: "scatter", mode: "lines",
+      line: { color: (colors[sec] || "#8b96a5") + shades[seen % shades.length], width: 2 },
+    };
+  });
   Plotly.react("n1081b-plot", traces, { ...layout, uirevision: "n1081b-plot" },
                { responsive: true, displaylogo: false });
 }

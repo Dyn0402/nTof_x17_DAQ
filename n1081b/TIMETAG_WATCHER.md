@@ -1,4 +1,23 @@
-# N1081B Module-5 Watcher (.244) — v3: rate-gated TT + counter totals
+# N1081B Module-5 Watcher (.244)
+
+> ## ⚠ WHAT ACTUALLY RUNS IS THE SUPERVISOR, NOT THIS WATCHER (2026-07-29)
+>
+> The standing Module-5 logger is **`n1081b/tt_stream_supervisor.py`** — chained 6 h
+> **continuous single-section** streams of **section C**. It is what
+> `start_servers.sh` and the GUI Start/Stop buttons launch, in the tmux session still
+> named `n1081b_timetag_watcher` (that name is what `poll_modules` keys its .244 skip
+> off — do not rename it). See **§The standing configuration** at the bottom.
+>
+> **`n1081b_timetag_watcher.py` (v3, documented below) has never been run against
+> hardware and is not what you want.** Its rotation still costs a TT start/stop per
+> section per cycle, and its un-tapped gaps are real data loss. It is kept only for
+> `--restore`, which is still the right way to put .244 back to counters by hand:
+>
+> ```
+> .venv/bin/python n1081b_timetag_watcher.py --restore
+> ```
+
+## v3 design (rate-gated TT + counter totals) — reference only, never hardware-run
 
 > **History:** v1 (fast round-robin) **wedged .244 on 2026-07-15** — ~11 TT start/stop
 > commands/s stalled the TT engine, then the whole command processor; physical reboot
@@ -110,6 +129,86 @@ un-tapped gaps in C/D are real losses (no backlog assumption).
   C/D wedged the board (see History above). v2 retired.
 - **2026-07-17 evening:** v3 written; offline dry-run passed (fake-board harness:
   gate in/out, counter CSV deltas, dedup across cycles, silent-strike alarm,
-  GUI state keys). **NOT yet run against hardware.** Next: stage 1 =
-  `--duration 900` bounded run while someone is watching the Trigger tab's Board
-  Access card; then a multi-hour soak; only then uncomment auto-start.
+  GUI state keys). **NOT yet run against hardware** — and never was: the
+  continuous single-section stream below superseded it two days later.
+
+---
+
+# The standing configuration (2026-07-29)
+
+**`n1081b/tt_stream_supervisor.py --section C`**, in the tmux session
+`n1081b_timetag_watcher`, auto-started by `start_servers.sh`.
+
+## Why this mode and not a rotation
+
+Every wedge in this board's history came from **command churn**, not from streaming:
+v1 did ~11 TT start/stop per second (wedged 07-15), v2 did 5 reconnect+re-arm cycles
+onto a healthy board (wedged 07-17), and a Ctrl-C landing inside `rate_scan_2d`'s raw
+TT phase closed a socket dirty (wedged 07-22). The continuous single-section stream is
+the opposite of all three: **one session and exactly three stream commands per 6 h
+segment**, zero reconnects, and a clean `stop_tt_data` + verified restore at the end.
+
+It is also the only mode that produces a *faithful* record — a rotation's un-tapped
+gaps are real losses, since the backlog dump cannot be relied on (§The physics
+constraint).
+
+The evidence it works: **2026-07-18 03:38–09:38, a full 6 h segment on C, 14,235,386
+edges, 678,141 packets, zero recorded gaps, max packet gap 0.4 s, restored clean.**
+
+## Why section C
+
+| | C (sector coincidences, from M3) | D (Singles/Doubles/master trigger) |
+|---|---|---|
+| information | the four `sectorN = wallN ∧ liqN` — reconstructs the trigger logic offline | collapsed trigger outputs |
+| rate 2026-07-29 | 48–76 Hz per channel | up to 235 Hz on Singles |
+| ceiling headroom | ~3–4× | none — at the bracket |
+
+The TT ceiling is **per channel (~220 Hz streams / ~700 Hz silent)**, not aggregate
+(`HANDOFF_2026-07-17_tt_rate_ceiling.md` + the 07-18 T1 result). D sat at the ceiling
+and went silent for 15 min in the T1 test; C streamed complete in the same conditions.
+Walls (A, ~3.7 kHz) and liq (B, ~1.5 kHz) are far over it and are counter-logged only.
+
+## What it writes
+
+| what | where |
+|---|---|
+| per-edge timestamps (the scientific record) | `~/beam_july/slow_control/n1081b_timetag/stream/<label>/edges.csv.gz` — `host_unix, channel, t_board_ns`; **gzipped** at segment end, ~100 MB/day; pruned after 21 days |
+| per-segment report | same dir, `stats.json` (pre/post counter rates for **all four** sections, gaps, restore verdict) + `counters.csv` |
+| 10 s binned rates (what the GUI plots) | `~/beam_july/slow_control/n1081b_timetag/n1081b_tt_rates_%Y-%m-%d.csv` — `host_unix, section, channel, edges, hz` |
+| health for the Module-5 card | `config/n1081b_timetag_state.json` (`/n1081b/status`) |
+| durable process log | `logs/n1081b_tt_stream.log` (rotates at 20 MB) |
+
+`t_board_ns` is in **1 ns** ticks (measured 07-18; older docs saying 10 ns are wrong).
+Sort globally before use — a packet interleaves per-channel blocks.
+
+## Failure policy
+
+- Reconnect budget **zero**. Any socket/login/call error ends the segment.
+- Silent start (0 edges for 90 s while the pre-baseline says the input is live) ⇒
+  stall. Strike 1 = one clean retry; strike 2 = **rest 50 min, then ONE
+  `tt_probe_v2`** — the 07-18 stall healed with exactly this. 3 failed probe cycles ⇒
+  Telegram + stop.
+- Two consecutive harness alarms ⇒ Telegram + stop.
+- Disk guard: no segment is started below 25 GB free.
+
+## Operating it
+
+```
+# start / stop (also the GUI buttons on the Module-5 tab)
+bash_scripts/start_tmux.sh n1081b_timetag_watcher \
+    "$PWD/.venv/bin/python $PWD/n1081b/tt_stream_supervisor.py --section C" 5000
+touch config/tt_stream_supervisor.stop     # clean stop; restores .244, then exits
+
+tail -f logs/n1081b_tt_stream.log
+```
+
+**Never SIGKILL it, and do not `tmux kill-session` it while a stream is open** — both
+are dirty disconnects. Use the stop-file (or the GUI Stop button, which writes the
+stop-file, waits, and only then reaps the session). If it *was* killed hard, .244 is
+left in `wire`/`time_tag`: `python n1081b_timetag_watcher.py --restore` fixes it, and
+the next segment's `ensure_counter` would too.
+
+**Exclusivity:** the session name `n1081b_timetag_watcher` is what `poll_modules`
+matches to skip .244 — **do not rename it**. The scan watcher never touches .244.
+While the stream runs, .244 is absent from the per-sub-run `n1081b_config.json`
+snapshots; the 6-hourly `stats.json` baselines are the wall-rate record instead.

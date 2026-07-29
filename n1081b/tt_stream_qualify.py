@@ -85,6 +85,14 @@ CNT = N1081B.FunctionType.FN_COUNTER
 DEFAULT_IP = "192.168.10.244"
 PANEL_OF_INPUT = [1, 2, 4, 5]      # counter index i <-> front-panel/TT channel
 OUT_BASE = os.path.expanduser("~/beam_july/test/tt_stream_qualify")
+# Production tree (tt_stream_supervisor passes --out-base here): the qualification
+# runs stay in the test tree above, the unattended chain writes next to the other
+# slow-control logs.
+PROD_OUT_BASE = os.path.expanduser("~/beam_july/slow_control/n1081b_timetag/stream")
+# Rate rollup for the dashboard: edges.csv is ~400 MB/day, far too big for Flask to
+# bin on request, so we also append one cheap row per section/channel per bin.
+RATES_DIR = os.path.expanduser("~/beam_july/slow_control/n1081b_timetag")
+RATES_BIN_S = 10.0
 
 CMD_GAP_S = 0.12
 DRAIN_RECV_TIMEOUT_S = 0.5
@@ -119,28 +127,44 @@ def read_counters(s, letter):
     return time.time(), vals
 
 
-def counter_series(s, letter, seconds, csv_writer, phase):
-    """Sample the section's free-running counters every ~2 s for `seconds`;
-    returns per-channel mean rates (Hz, by counter index)."""
-    t0, v0 = read_counters(s, letter)
-    csv_writer.writerow([f"{t0:.3f}", phase] + list(v0))
-    first_t, first_v = t0, v0
-    t_end = t0 + seconds
+def counter_series(s, letters, seconds, csv_writer, phase):
+    """Sample each section's free-running counters every ~2 s for `seconds`;
+    returns {letter: per-channel mean rates (Hz, by counter index)}.
+
+    Baselining more than the streamed section is how the walls (A) and liq (B)
+    keep a rate record at all while this process owns .244 — poll_modules skips
+    the board for as long as the watcher's tmux session is alive."""
+    first = {}
+    last = {}
+    for c in letters:
+        t, v = read_counters(s, c)
+        csv_writer.writerow([f"{t:.3f}", phase, c] + list(v))
+        first[c] = last[c] = (t, v)
+    t_end = time.time() + seconds
     while time.time() < t_end and not _stop["flag"]:
         time.sleep(COUNTER_READ_EVERY_S)
-        t1, v1 = read_counters(s, letter)
-        csv_writer.writerow([f"{t1:.3f}", phase] + list(v1))
-        t0, v0 = t1, v1
-    span = max(t0 - first_t, 0.1)
-    # free-running counters: a shrink means someone reset them; rate then unknown
-    rates = [((b - a) / span if b >= a else float("nan"))
-             for a, b in zip(first_v, v0)]
+        for c in letters:
+            t, v = read_counters(s, c)
+            csv_writer.writerow([f"{t:.3f}", phase, c] + list(v))
+            last[c] = (t, v)
+    rates = {}
+    for c in letters:
+        span = max(last[c][0] - first[c][0], 0.1)
+        # free-running counters: a shrink means someone reset them; rate unknown
+        rates[c] = [((b - a) / span if b >= a else float("nan"))
+                    for a, b in zip(first[c][1], last[c][1])]
     return rates
 
 
-def ensure_counter(s, letter):
+def ensure_counter(s, letters):
+    """Put every named section into the board's counter steady state (a no-op for
+    sections already there). Needed before a baseline read: get_function_results on
+    a time_tag section returns a payload the SDK cannot decode."""
     names = [x["function_name"] for x in s.call("get_sections_function")["data"]]
-    if names[SEC[letter].value] != "counter":
+    for letter in letters:
+        if names[SEC[letter].value] == "counter":
+            continue
+        log(f"  SEC_{letter}: {names[SEC[letter].value]} -> counter")
         s.call("set_section_function", SEC[letter], CNT)
         s.call("configure_counter", SEC[letter], True, True, True, True, False)
         for ch in range(4):
@@ -148,10 +172,62 @@ def ensure_counter(s, letter):
         time.sleep(0.5)
 
 
+class RateRollup:
+    """Appends binned edge rates to a daily CSV so the dashboard has something
+    cheap to plot. edges.csv is the scientific record (~400 MB/day); this is ~1 kB
+    per bin and is what /n1081b/history reads.
+
+    Schema: host_unix, section, channel, edges, hz  (one row per channel per bin).
+    Append-only and re-opened per bin, so a crash costs at most one bin and a
+    reader never sees a partial line."""
+
+    def __init__(self, section, bin_s=RATES_BIN_S, directory=RATES_DIR):
+        self.section = section
+        self.bin_s = bin_s
+        self.directory = directory
+        self.bin_start = None
+        self.counts = {}
+
+    def _path(self):
+        return os.path.join(self.directory,
+                            f"n1081b_tt_rates_{datetime.now().strftime('%Y-%m-%d')}.csv")
+
+    def add(self, channel, now):
+        if self.bin_start is None:
+            self.bin_start = now
+        if now - self.bin_start >= self.bin_s:
+            self.flush(now)
+        self.counts[channel] = self.counts.get(channel, 0) + 1
+
+    def flush(self, now=None):
+        """Write the accumulated bin. Never raises — a full or unwritable disk must
+        not take down the stream that is the whole point of the process."""
+        now = now or time.time()
+        if self.bin_start is None or not self.counts:
+            self.bin_start, self.counts = now, {}
+            return
+        span = max(now - self.bin_start, 0.001)
+        try:
+            os.makedirs(self.directory, exist_ok=True)
+            path = self._path()
+            new = not os.path.exists(path)
+            with open(path, "a", newline="") as f:
+                w = csv.writer(f)
+                if new:
+                    w.writerow(["host_unix", "section", "channel", "edges", "hz"])
+                for ch in sorted(self.counts):
+                    w.writerow([f"{self.bin_start:.3f}", self.section, ch,
+                                self.counts[ch], round(self.counts[ch] / span, 2)])
+        except Exception as e:
+            log(f"rate rollup write failed (non-fatal): {e!r}")
+        self.bin_start, self.counts = now, {}
+
+
 def restore_counter(ip, password, letter):
     try:
         with board_session(ip, password=password,
-                           purpose=f"tt_stream_qualify restore {letter}") as s:
+                           purpose=f"tt_stream_qualify restore {letter}",
+                           timeout_s=8.0, connect_timeout_s=8.0) as s:
             s.call("set_section_function", SEC[letter], CNT)
             s.call("configure_counter", SEC[letter], True, True, True, True, False)
             for ch in range(4):
@@ -184,9 +260,25 @@ def main():
                     help="record delivery gaps longer than this many seconds")
     ap.add_argument("--label", default=None,
                     help="output subdir name (default sec<X>_<YYYYmmdd_HHMMSS>)")
+    ap.add_argument("--out-base", default=OUT_BASE,
+                    help=f"parent dir for the run's output subdir (default {OUT_BASE}; "
+                         f"the unattended chain uses {PROD_OUT_BASE})")
+    ap.add_argument("--baseline-sections", default=None,
+                    help="sections whose counters are sampled in the pre/post baselines "
+                         "(default: just the streamed one). The supervisor passes ABCD so "
+                         "the walls keep a rate record while this process owns .244.")
+    ap.add_argument("--rates-csv", action="store_true",
+                    help=f"also append {RATES_BIN_S:.0f}s binned edge rates to the daily "
+                         f"rollup in {RATES_DIR} (what the dashboard plots)")
     args = ap.parse_args()
     letter = args.section.upper()
     duration = min(args.duration, 6 * 3600.0)
+    baseline = "".join(dict.fromkeys((args.baseline_sections or letter).upper()))
+    if letter not in baseline:      # the streamed section's baseline is not optional
+        baseline = letter + baseline
+    for c in baseline:
+        if c not in SEC:
+            ap.error(f"--baseline-sections: {c!r} is not one of ABCD")
 
     for sg in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         try:
@@ -195,7 +287,7 @@ def main():
             pass
 
     label = args.label or f"sec{letter}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    out_dir = os.path.join(OUT_BASE, label)
+    out_dir = os.path.join(os.path.expanduser(args.out_base), label)
     os.makedirs(out_dir, exist_ok=True)
     edges_path = os.path.join(out_dir, "edges.csv")
     counters_path = os.path.join(out_dir, "counters.csv")
@@ -206,6 +298,10 @@ def main():
         "section": letter, "ip": args.ip, "duration_s": duration,
         "started": datetime.now().isoformat(timespec="seconds"),
         "pre_rates_hz": None, "post_rates_hz": None,
+        # every baselined section, so the supervisor's chain log keeps the wall (A)
+        # and liq (B) rates that poll_modules can no longer collect
+        "baseline_sections": baseline,
+        "pre_rates_all_hz": None, "post_rates_all_hz": None,
         "panel_of_input": PANEL_OF_INPUT,
         "edges_total": 0, "edges_by_channel": {}, "packets": 0,
         "gaps": [], "max_packet_gap_s": 0.0,
@@ -220,7 +316,8 @@ def main():
 
     counters_f = open(counters_path, "w", newline="")
     counters_w = csv.writer(counters_f)
-    counters_w.writerow(["host_unix", "phase", "c0", "c1", "c2", "c3"])
+    counters_w.writerow(["host_unix", "phase", "section", "c0", "c1", "c2", "c3"])
+    rollup = RateRollup(letter) if args.rates_csv else None
     edges_f = open(edges_path, "w", newline="")
     edges_w = csv.writer(edges_f)
     edges_w.writerow(["host_unix", "channel", "t_board_ns"])
@@ -235,11 +332,17 @@ def main():
                            purpose=f"tt_stream_qualify sec {letter}",
                            timeout_s=8.0, connect_timeout_s=8.0) as s:
             # --- phase 1: baseline (s.call) ---
-            ensure_counter(s, letter)
-            log(f"pre-stream counter baseline ({args.pre:.0f}s)...")
-            stats["pre_rates_hz"] = counter_series(s, letter, args.pre,
-                                                   counters_w, "pre")
+            ensure_counter(s, baseline)
+            log(f"pre-stream counter baseline ({args.pre:.0f}s, sections {baseline})...")
+            all_pre = counter_series(s, baseline, args.pre, counters_w, "pre")
+            stats["pre_rates_all_hz"] = {c: [round(r, 1) for r in v]
+                                         for c, v in all_pre.items()}
+            stats["pre_rates_hz"] = all_pre[letter]
             counters_f.flush()
+            for c in baseline:
+                if c != letter:
+                    log(f"  baseline SEC_{c}: {stats['pre_rates_all_hz'][c]} Hz "
+                        f"(agg {sum(all_pre[c]):.0f})")
             log("pre rates (Hz, by counter idx -> panel "
                 f"{PANEL_OF_INPUT}): {[round(r, 1) for r in stats['pre_rates_hz']]}")
             save_stats()
@@ -305,6 +408,8 @@ def main():
                         by_ch[ch] = by_ch.get(ch, 0) + 1
                         stats["edges_total"] += 1
                         last_edge["host"], last_edge["tboard"] = now, tb
+                        if rollup:
+                            rollup.add(ch, now)
                 if now - last_flush > CSV_FLUSH_EVERY_S:
                     edges_f.flush()
                     last_flush = now
@@ -330,6 +435,8 @@ def main():
     finally:
         if t_stream0 and t_stream_end is None:
             t_stream_end = time.time()   # stream ended by error/signal
+        if rollup:
+            rollup.flush()
         edges_f.flush(); edges_f.close()
         stats["edges_by_channel"] = dict(by_ch)
         stats["stream_seconds"] = (round(t_stream_end - t_stream0, 1)
@@ -342,10 +449,14 @@ def main():
     if ok and args.post > 0 and not _stop["flag"]:
         try:
             with board_session(args.ip, password=args.password,
-                               purpose=f"tt_stream_qualify post-baseline {letter}") as s:
-                log(f"post-stream counter baseline ({args.post:.0f}s)...")
-                stats["post_rates_hz"] = counter_series(s, letter, args.post,
-                                                        counters_w, "post")
+                               purpose=f"tt_stream_qualify post-baseline {letter}",
+                               timeout_s=8.0, connect_timeout_s=8.0) as s:
+                log(f"post-stream counter baseline ({args.post:.0f}s, {baseline})...")
+                ensure_counter(s, baseline)
+                all_post = counter_series(s, baseline, args.post, counters_w, "post")
+                stats["post_rates_all_hz"] = {c: [round(r, 1) for r in v]
+                                              for c, v in all_post.items()}
+                stats["post_rates_hz"] = all_post[letter]
         except Exception as e:
             log(f"post baseline failed ({e!r}) — pre rates still usable")
     counters_f.flush(); counters_f.close()

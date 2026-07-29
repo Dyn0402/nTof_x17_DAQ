@@ -1808,57 +1808,128 @@ def n1081b_clear_quarantine():
 
 @app.route("/n1081b/history")
 def n1081b_history():
-    """Per-section edge RATE history binned from the per-day time-tag CSV(s). The raw CSV
-    is one row per edge (high volume), so we bin by `bin_s` seconds into rates for the
-    plot rather than returning raw edges. `hours` trims to a recent window."""
+    """Per-channel edge RATE history for the Module-5 card.
+
+    Reads the stream's daily RATE ROLLUP (`n1081b_tt_rates_*.csv`, one row per
+    channel per 10 s bin, written by tt_stream_qualify.RateRollup) rather than the
+    per-edge `edges.csv`, which runs ~400 MB/day and must never be parsed on a web
+    request. Falls back to the legacy per-edge daily CSVs of the retired round-robin
+    watcher if no rollup exists yet.
+
+    Series are keyed "<section><channel>" (e.g. "C1") — with one section streamed
+    continuously, the per-channel split is the informative view."""
     import glob
     hours = request.args.get("hours", default=6.0, type=float)
     bin_s = max(1.0, request.args.get("bin_s", default=10.0, type=float))
+    empty = {"success": True, "time": [], "sections": {}, "bin_s": bin_s}
     try:
-        files = sorted(glob.glob(os.path.join(N1081B_TT_LOG_DIR, "n1081b_timetag_*.csv")))
-        if not files:
-            return jsonify({"success": True, "time": [], "sections": {}, "bin_s": bin_s})
-        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
-        df["ts"] = pd.to_datetime(df["host_unix"], unit="s", errors="coerce")
-        df = df.dropna(subset=["ts"])
-        if hours and hours > 0:
-            df = df[df["ts"] >= datetime.now() - timedelta(hours=hours)]
+        # Work in EPOCH SECONDS end to end. `pd.to_datetime(host_unix, unit="s")` is
+        # naive UTC while `datetime.now()` is local (CEST), so comparing the two drops
+        # everything inside the last 2 h — the same UTC/local trap as the EOS mtimes.
+        cutoff = (time.time() - hours * 3600.0) if hours and hours > 0 else None
+        # Pick files by the DAY IN THE NAME, not a fixed tail slice: a `files[-2:]`
+        # cap here silently hid data on the beam/spill plots (see the backfill fix).
+        days = sorted(glob.glob(os.path.join(N1081B_TT_LOG_DIR, "n1081b_tt_rates_*.csv")))
+        if cutoff:
+            first_day = datetime.fromtimestamp(cutoff - 86400).strftime("%Y-%m-%d")
+            days = [f for f in days if f[-14:-4] >= first_day]
+        if days:
+            df = pd.concat([pd.read_csv(f) for f in days], ignore_index=True)
+            df["series"] = df["section"].astype(str) + df["channel"].astype(str)
+            value_col = "hz"
+        else:
+            legacy = sorted(glob.glob(os.path.join(N1081B_TT_LOG_DIR,
+                                                   "n1081b_timetag_*.csv")))
+            if not legacy:
+                return jsonify(empty)
+            df = pd.concat([pd.read_csv(f) for f in legacy[-2:]], ignore_index=True)
+            df["series"] = df["section"].astype(str) + df["channel"].astype(str)
+            df["hz"] = 1.0          # one row per edge; summing then /bin_s gives Hz
+            value_col = "edges"
+            df["edges"] = 1
+
+        df["host_unix"] = pd.to_numeric(df["host_unix"], errors="coerce")
+        df = df.dropna(subset=["host_unix"])
+        if cutoff is not None:
+            df = df[df["host_unix"] >= cutoff]
         if df.empty:
-            return jsonify({"success": True, "time": [], "sections": {}, "bin_s": bin_s})
-        # Bin edges/section into rates (Hz) on a common time axis.
+            return jsonify(empty)
+
         df["bin"] = (df["host_unix"] // bin_s * bin_s).astype("int64")
-        grp = df.groupby(["bin", "section"]).size().unstack(fill_value=0)
-        bins = grp.index.to_numpy()
-        times = [datetime.fromtimestamp(float(b)).strftime("%Y-%m-%d %H:%M:%S") for b in bins]
-        sections = {col: (grp[col] / bin_s).round(2).tolist() for col in grp.columns}
-        return jsonify({"success": True, "time": times, "sections": sections, "bin_s": bin_s})
+        if value_col == "hz":
+            # rollup bins may be finer than the requested bin: average within it
+            grp = df.groupby(["bin", "series"])["hz"].mean().unstack()
+        else:
+            grp = df.groupby(["bin", "series"])["edges"].sum().unstack() / bin_s
+        grp = grp.sort_index()
+        times = [datetime.fromtimestamp(float(b)).strftime("%Y-%m-%d %H:%M:%S")
+                 for b in grp.index.to_numpy()]
+        sections = {col: [None if pd.isna(v) else round(float(v), 2)
+                          for v in grp[col]] for col in grp.columns}
+        return jsonify({"success": True, "time": times, "sections": sections,
+                        "bin_s": bin_s})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route("/start_n1081b_timetag_watcher", methods=["POST"])
 def start_n1081b_timetag_watcher():
-    """Start the N1081B time-tag watcher (sole owner of .244: arms all 4 sections to
-    Time-Tag and streams per-edge timestamps to a daily CSV). While it runs, poll_modules
-    auto-skips .244. On stop it restores .244 to its counter steady state."""
+    """Start the N1081B trigger-timestamp stream (sole owner of .244: holds ONE section
+    in Time-Tag and streams per-edge timestamps continuously, in chained 6 h segments).
+    While it runs, poll_modules auto-skips .244; on stop it restores the counter state.
+
+    This deliberately launches tt_stream_supervisor.py, NOT n1081b_timetag_watcher.py:
+    the round-robin watcher's TT start/stop churn is what wedged .244 on 2026-07-15/17.
+    The tmux session name must stay `n1081b_timetag_watcher` — poll_modules keys its
+    .244 skip off that name."""
     try:
         subprocess.run(["tmux", "kill-session", "-t", "n1081b_timetag_watcher"], capture_output=True)
         subprocess.Popen([
             "tmux", "new-session", "-d", "-s", "n1081b_timetag_watcher",
-            sys.executable, f"{BASE_DIR}/n1081b_timetag_watcher.py"
+            sys.executable, f"{BASE_DIR}/n1081b/tt_stream_supervisor.py", "--section", "C"
         ])
-        return jsonify({"success": True, "message": "N1081B time-tag watcher started"})
+        return jsonify({"success": True,
+                        "message": "N1081B trigger-timestamp stream started (section C)"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route("/stop_n1081b_timetag_watcher", methods=["POST"])
 def stop_n1081b_timetag_watcher():
-    """Stop the N1081B time-tag watcher. Killing the tmux session sends SIGTERM, so the
-    watcher runs its clean-exit restore (.244 back to counters) before exiting."""
+    """Stop the N1081B trigger-timestamp stream, gracefully.
+
+    Order matters here. Dropping the websocket without closing the stream is the
+    dirty disconnect that wedges these boards, and killing the tmux session first
+    would take the pane's pty out from under a supervisor that still has to close
+    the stream and put .244 back to counters. So: write the stop-file, give the
+    chain up to STOP_GRACE_S to wind down (a segment notices within ~10 s, then the
+    harness needs ~30-70 s for stop_tt_data + the verified restore), and only then
+    reap the tmux session. Runs on a background thread so the button returns at
+    once; the Module-5 card reports the real state as it progresses."""
+    STOP_GRACE_S = 150.0
+    stop_file = os.path.join(BASE_DIR, "config", "tt_stream_supervisor.stop")
+
+    def _graceful_stop():
+        deadline = time.time() + STOP_GRACE_S
+        while time.time() < deadline:
+            if not subprocess.run(["pgrep", "-f", "tt_stream_supervisor.py"],
+                                  capture_output=True).stdout.strip():
+                break
+            time.sleep(2)
+        subprocess.run(["tmux", "kill-session", "-t", "n1081b_timetag_watcher"],
+                       capture_output=True)
+        try:
+            os.remove(stop_file)
+        except OSError:
+            pass
+
     try:
-        subprocess.run(["tmux", "kill-session", "-t", "n1081b_timetag_watcher"], capture_output=True)
-        return jsonify({"success": True, "message": "N1081B time-tag watcher stopped"})
+        with open(stop_file, "w") as f:
+            f.write(f"stop requested via GUI {datetime.now().isoformat()}\n")
+        threading.Thread(target=_graceful_stop, daemon=True).start()
+        return jsonify({"success": True,
+                        "message": "Stopping: closing the stream and restoring .244 to "
+                                   f"counters (up to {STOP_GRACE_S:.0f}s)"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

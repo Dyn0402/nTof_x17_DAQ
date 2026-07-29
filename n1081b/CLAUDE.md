@@ -119,7 +119,27 @@ Quick check: `python -c "from n1081b.n1081b_session import quarantine_status; pr
   predates the 07-19 change — it still records walls +15/+16/+15/+16 (and old
   plastic HV); do NOT blindly restore it onto M1 or re-snapshot before updating.
   Details: `HANDOFF_2026-07-17_night_trigger_scans.md`, `RUN_MODES_2026-07.md` §top.
-- `.244` (M5): **fully HEALTHY** (2026-07-17 midday: power-cycled at closeout, standard
+- **`.244` (M5) IS IN USE 24/7 as of 2026-07-29 — do not connect to it.** The trigger-
+  timestamp stream (`n1081b/tt_stream_supervisor.py --section C`, tmux session
+  `n1081b_timetag_watcher`, auto-started by `start_servers.sh`) holds **section C in
+  Time-Tag continuously** in chained 6 h segments and owns the board's flock. A
+  `send_data` stream is broadcast to every client, so a second connection both
+  corrupts the capture and is a wedge risk. `poll_modules` already skips .244 whenever
+  that tmux session is alive — **do not rename the session**. To do board work on
+  .244, stop it first (`touch config/tt_stream_supervisor.stop`, wait for the pane to
+  report the verified restore) — **never SIGKILL and never `tmux kill-session` it
+  mid-stream**; both are the dirty disconnect that wedges these boards.
+  Sections A/B/D stay counters and are sampled at each 6 h segment boundary (rates in
+  the segment's `stats.json`). Design + operating notes: `n1081b/TIMETAG_WATCHER.md`
+  §The standing configuration.
+- **`.242` (M3) has been LINK-DEAD since ~2026-07-28 15:30** — ARP `FAILED`, no ping,
+  `OSError(113, 'No route to host')`; per [[feu-dropout-recovery-verification]] that is
+  link-dead (powered off / cable / switch port), **not** a libwebsock wedge, so resting
+  it will not help and it needs physical attention. Its **NIM logic is still running** —
+  M5.C still counts the sector coincidences M3 produces — so the trigger is unaffected;
+  what is lost is remote read/write of M3 (its per-sub-run snapshot rows and any
+  scan target on it; the current scan schedule touches only .241/.243/.245).
+- `.244` (M5) history: **fully HEALTHY** (2026-07-17 midday: power-cycled at closeout, standard
   cabling, all four sections `counter` + verified counting, login 0.06 s). The
   **"per-section TT wedge" turned out not to exist** — TT sections silently emit zero
   tags whenever their input rate is above a live ceiling (~50 Hz streams, ~800 Hz

@@ -33,7 +33,7 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_qa_watcher_status, get_gas_watcher_status,
                         get_backup_watcher_status,
                         get_beam_watcher_status, get_stream1_watcher_status,
-                        get_space_watcher_status,
+                        get_space_watcher_status, get_n1081b_timetag_watcher_status,
                         get_run_progress, status_field,
                         GAS_STATE_FILE, BEAM_STATE_FILE, STREAM1_STATE_FILE)
 
@@ -177,6 +177,7 @@ class DaqMonitor:
         "rule_beam_off": "n_TOF beam is back.",
         "rule_stream1_watcher_dead": "stream1_watcher is back up.",
         "rule_backup_watcher_dead": "backup_watcher is back up — runs are reaching EOS again.",
+        "rule_n1081b_tt_stream_dead": "N1081B trigger-timestamp stream is logging again.",
         "rule_processor_watcher_dead": "processor_watcher is back up.",
         "rule_qa_watcher_dead": "qa_watcher is back up.",
         "rule_space_watcher_dead": "space_watcher is back up — the SSD is being pruned again.",
@@ -225,6 +226,7 @@ class DaqMonitor:
             "rule_qa_watcher_dead",
             "rule_space_watcher_dead",
             "rule_space_watcher_stuck",
+            "rule_n1081b_tt_stream_dead",
         ]),
         ("Disk space", [
             "rule_ssd_disk_space",
@@ -774,6 +776,34 @@ class DaqMonitor:
         if status == "Stale":
             return True, "stream1_watcher is not publishing fresh state (state file is stale)."
         return False, f"stream1_watcher: {status}"
+
+    def rule_n1081b_tt_stream_dead(self):
+        """Alert if the Module-5 trigger-timestamp stream is down or has given up.
+
+        The supervisor Telegrams its own stalls and stops, but it cannot report the
+        cases that matter most — the process itself dying (host reboot, OOM, someone
+        killing the tmux session) — and there is no supervisor-of-the-supervisor. Note
+        `Resting` is deliberately NOT an alert: a 50 min rest is the recovery policy
+        working, and the supervisor already sent a message when it began.
+
+        Data exposure is real but bounded: .244 is monitoring-only and never in the
+        trigger, so a dead stream costs trigger timestamps for DREAM matching, not
+        physics data."""
+        info = get_n1081b_timetag_watcher_status()
+        status = info["status"]
+        if status == "STOPPED":
+            return True, ("N1081B trigger-timestamp stream is not running — no per-trigger "
+                          "timestamps are being logged (.244 is monitoring-only, so the run "
+                          "itself is unaffected). Restart from the Module-5 tab.")
+        if status == "ALARM":
+            return True, ("N1081B trigger-timestamp stream STOPPED itself after repeated "
+                          "failures — leave .244 alone and check logs/n1081b_tt_stream.log.")
+        if status == "Stale":
+            return True, ("N1081B trigger-timestamp stream is up but has stopped publishing "
+                          "state — the supervisor may be hung.")
+        if status == "No Board":
+            return True, "N1081B trigger-timestamp stream cannot reach .244."
+        return False, f"n1081b tt stream: {status}"
 
     def rule_backup_watcher_dead(self):
         """Alert if the EOS backup watcher is not running, or is up but failing to

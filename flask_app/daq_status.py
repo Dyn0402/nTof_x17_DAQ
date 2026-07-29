@@ -667,12 +667,24 @@ def get_n1081b_timetag_watcher_status():
     except Exception:
         return small("Starting", "info")   # session up, no state published yet
 
+    # The supervisor is not streaming for the whole of its life, and most of its
+    # not-streaming states are healthy: `connected` is False between segments and for
+    # the whole of a 50 min stall rest. Reading those as "No Board" would cry wolf
+    # every 6 h, so classify on status_detail first.
+    detail = str(st.get("status_detail") or "")
     if not st.get("connected"):
-        return small("No Board", "warning")   # session up but .244 not reachable
+        if detail == "stopped-alarm" or st.get("alarm"):
+            return small("ALARM", "danger")
+        if detail.startswith("resting"):
+            return small("Resting", "warning")     # deliberate: recovering, board idle
+        if detail in ("between segments", "starting"):
+            return small(detail.title(), "info")
+        if detail == "stopped":
+            return small("STOPPED", "secondary")
+        return small("No Board", "warning")        # session up but .244 not reachable
 
-    # Session + connection OK: flag stale if the state file isn't being updated. v2
-    # heartbeats every ~5 s while streaming but rests up to ~30 s around a reconnect /
-    # re-arm, so give it 60 s before calling the loop wedged.
+    # Streaming: flag stale if the state file stops being updated (published every
+    # ~10 s), which is how a hung supervisor shows up.
     try:
         age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
     except Exception:
