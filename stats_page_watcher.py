@@ -21,13 +21,23 @@ for the payload.
 
 import os
 import sys
+import traceback
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from stats_page.stats_collector import load_config, run_blocking
+from stats_page.stats_collector import (load_config, run_blocking,
+                                        STATS_PAGE_EVENT_LOG)
+from common_functions import log_event
 
 
 def main():
-    run_blocking(load_config())
+    try:
+        run_blocking(load_config())
+    except Exception as e:  # noqa: BLE001
+        # Durable second copy only — re-raised so the tmux pane still shows the live
+        # traceback and the process still exits non-zero.
+        log_event(STATS_PAGE_EVENT_LOG, 'CRASH', 'stats_page',
+                  error=repr(e), traceback=traceback.format_exc())
+        raise
 
 
 if __name__ == "__main__":

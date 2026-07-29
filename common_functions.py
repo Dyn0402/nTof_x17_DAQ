@@ -14,6 +14,44 @@ from datetime import datetime
 import time
 
 
+def _oneline(value):
+    """Flatten a detail value to a single line.
+
+    The event-log convention is one line per event (that is what makes it
+    greppable), and the most useful CRASH detail — a traceback — is multi-line.
+    Newlines become a literal '\\n' so nothing is lost and nothing wraps.
+    """
+    return str(value).replace('\r', ' ').replace('\n', '\\n')
+
+
+def log_event(log_path, event, source, **details):
+    """Append one line to a lightweight per-process event log.
+
+    Format matches the watcher logs that already exist (logs/qa_watcher.log,
+    logs/pedestal_watcher.log):
+
+        2026-07-29 10:15:03 | START            | backup_watch | key=value | key=value
+
+    This is deliberately NOT `setup_logging`/`teardown_logging` above: those attach a
+    logging.FileHandler to the root logger for the duration of a run and write into
+    that run's own data directory. This is the lighter, standing "what did this
+    process do" trail under the repo's logs/ dir, and the two are unrelated.
+
+    Never raises. A logging failure must not take down the process it instruments.
+    """
+    try:
+        log_dir = os.path.dirname(log_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        detail_str = ' | '.join(f'{k}={_oneline(v)}' for k, v in details.items())
+        line = f"{ts} | {event:<16} | {source:<12} | {detail_str}\n"
+        with open(log_path, 'a') as f:
+            f.write(line)
+    except Exception as e:
+        print(f"Warning: could not write to {log_path}: {e}")
+
+
 def setup_logging(log_path):
     """Attach a FileHandler for log_path to the root logger. Returns the handler."""
     handler = logging.FileHandler(log_path)

@@ -37,10 +37,15 @@ import os
 import csv
 import glob
 import json
+import sys
 import time
 import signal
 import threading
+import traceback
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common_functions import log_event
 
 try:
     import propar
@@ -58,6 +63,13 @@ _REPO_DIR = os.path.dirname(_MODULE_DIR)
 GAS_LOG_DIR = os.path.expanduser("~/beam_july/slow_control/gas_flow")
 GAS_STATE_PATH = os.path.join(_REPO_DIR, "config", "gas_state.json")
 GAS_COMMAND_PATH = os.path.join(_REPO_DIR, "config", "gas_command.json")
+# Durable event log for the gas_watcher process. Events only (bus up/down, setpoints
+# applied, crash) — the per-day CSV above is flow DATA and is not duplicated here.
+GAS_EVENT_LOG = os.path.join(_REPO_DIR, "logs", "gas_watcher.log")
+
+
+def _log(event, **details):
+    log_event(GAS_EVENT_LOG, event, 'gas_watcher', **details)
 
 # --- propar parameter numbers (DDE) we read/write ---
 DDE_SETPOINT   = 9    # int 0..32000  (0..100% of capacity)
@@ -495,18 +507,30 @@ class FlowController:
         self._last_command_result = res
         self.log(f"command {action}: success={res.get('success')} "
                  f"{res.get('warnings') or res.get('message') or ''}")
+        _log('COMMAND', action=action, success=res.get('success'),
+             argon_lnh=res.get('argon_set_lnh'), iso_lnh=res.get('iso_set_lnh'),
+             detail=res.get('warnings') or res.get('message') or '')
         self._write_state(self.get_state())   # publish ack immediately (fast Flask reply)
 
     # ---------------- poll loop ----------------
 
     def _run(self):
+        # Logged once per disconnect episode, not once per 5 s retry: a bus that is
+        # simply unplugged must not fill the event log.
+        disconnect_logged = False
         while not self._stop.is_set():
             if not self.connected:
                 with self._lock:
                     self._connect()
                 if self.connected:
                     self.log(f"connected: argon node {self.argon.node}, iso node {self.iso.node}")
+                    _log('BUS_CONNECTED', argon_node=self.argon.node,
+                         iso_node=self.iso.node)
+                    disconnect_logged = False
                 else:
+                    if not disconnect_logged:
+                        _log('BUS_DISCONNECTED', error=self.last_error)
+                        disconnect_logged = True
                     with self._state_lock:
                         self._state = {"connected": False, "last_error": self.last_error}
                     self._write_state(self.get_state())
@@ -548,8 +572,15 @@ class FlowController:
         signal.signal(signal.SIGTERM, lambda *a: self._stop.set())
         self.prime_command_id()
         self.log(f"gas watcher starting (poll {self.poll_s}s, log {self.log_s}s)")
-        self._run()
+        _log('START', poll=f'{self.poll_s}s', log=f'{self.log_s}s',
+             port=self.port or 'auto', csv_dir=self.log_dir)
+        try:
+            self._run()
+        except Exception as e:  # noqa: BLE001 — durable copy, then re-raise
+            _log('CRASH', error=repr(e), traceback=traceback.format_exc())
+            raise
         self.log("gas watcher stopped (setpoints left as-is in hardware)")
+        _log('STOP', note='setpoints left as-is in hardware')
 
 
 # Module-level singleton so the Flask app shares one controller/logger.

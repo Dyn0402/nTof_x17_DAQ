@@ -25,6 +25,18 @@ from Server import Server
 import socket
 from common_functions import *
 
+# Durable event log for the dream_daq process itself. Deliberately NOT named
+# dream_daq.log: that name belongs to the per-run logging.FileHandler that
+# setup_logging() attaches inside each run's own data directory, which covers
+# per-run debugging but says nothing about whether this process is alive.
+# `log_event` comes from the common_functions star-import above.
+_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         'logs', 'dream_daq_control.log')
+
+
+def _log(event, **details):
+    log_event(_LOG_FILE, event, 'dream_daq', **details)
+
 
 def main():
     logging.basicConfig(
@@ -33,6 +45,7 @@ def main():
         handlers=[logging.StreamHandler()]
     )
     port = 1101
+    _log('START', port=port)
     while True:
         run_log_handler = None
         subrun_log_handler = None
@@ -304,6 +317,10 @@ def main():
                     run_log_handler = None
         except Exception as e:
             logging.exception(f'Unhandled error: {e}')
+            # This handler is the process's real crash path — it recovers in place
+            # rather than exiting, so the durable copy has to go here. The sleep(30)
+            # below bounds the rate, so no throttling is needed.
+            _log('CRASH', error=repr(e), traceback=traceback.format_exc())
             if subrun_log_handler is not None:
                 teardown_logging(subrun_log_handler)
                 subrun_log_handler = None

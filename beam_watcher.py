@@ -26,13 +26,22 @@ beam_monitor/README.md.
 
 import os
 import sys
+import traceback
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from beam_monitor.beam_intensity_controller import BeamIntensityMonitor
+from beam_monitor.beam_intensity_controller import BeamIntensityMonitor, BEAM_EVENT_LOG
+from common_functions import log_event
 
 
 def main():
-    BeamIntensityMonitor().run_blocking()
+    try:
+        BeamIntensityMonitor().run_blocking()
+    except Exception as e:  # noqa: BLE001
+        # Durable second copy only — re-raised so the tmux pane still shows the live
+        # traceback and the process still exits non-zero.
+        log_event(BEAM_EVENT_LOG, 'CRASH', 'beam_watcher',
+                  error=repr(e), traceback=traceback.format_exc())
+        raise
 
 
 if __name__ == "__main__":

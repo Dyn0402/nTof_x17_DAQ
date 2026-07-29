@@ -49,12 +49,21 @@ import time
 import datetime
 import signal
 import tempfile
+import traceback
 import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common_functions import create_dir_if_not_exist
+from common_functions import create_dir_if_not_exist, log_event
+
+# Durable event log (the tmux pane's scrollback is capped and dies with the session).
+# Events only — never a mirror of stdout; see docs/PLAN_2026-07-29_watcher_logging.md.
+_LOG_FILE = Path(__file__).parent / 'logs' / 'processor_watcher.log'
+
+
+def _log(event: str, **details):
+    log_event(str(_LOG_FILE), event, 'processor', **details)
 
 # How long to wait for every FEU of a file-group to arrive before giving up and
 # processing it incomplete (with a warning). copy_on_fly streams the FDFs across
@@ -93,7 +102,16 @@ def main():
     with open(sys.argv[1]) as f:
         config = json.load(f)
 
-    run_watcher(config)
+    try:
+        run_watcher(config)
+    except KeyboardInterrupt:
+        _log('STOP', reason='KeyboardInterrupt')
+        raise
+    except Exception as e:  # noqa: BLE001
+        # Durable second copy only — re-raised so the tmux pane still shows the live
+        # traceback and the process still exits non-zero.
+        _log('CRASH', error=repr(e), traceback=traceback.format_exc())
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +158,10 @@ def run_watcher(config: dict):
     print(f"[watcher] pipeline      : decode={do_decode}  analyze={do_analyze}  combine={do_combine}")
     print(f"[watcher] threads       : {n_threads}  poll={poll_interval}s  stale_after={stale_run_days}d")
     print(f"[watcher] pedestal      : loc={pedestal_loc}  base={pedestal_base_dir or '(same as raw)'}")
+    _log('START', runs_dir=runs_dir,
+         pipeline=f'decode={do_decode},analyze={do_analyze},combine={do_combine}',
+         threads=n_threads, poll=f'{poll_interval}s', stale_after=f'{stale_run_days}d',
+         pedestal=f'{pedestal_loc}:{pedestal_base_dir or "same-as-raw"}')
 
     checked_stale_runs: set = set()
     prev_sizes: dict = {}
@@ -240,6 +262,9 @@ def run_watcher(config: dict):
                               f"file_num={fnum:03d}: only {n_feus}/{expected_feus} "
                               f"FEUs after {waited / 60:.0f} min — processing "
                               f"INCOMPLETE")
+                        _log('FEUS_INCOMPLETE', run=run_dir.name, subrun=subrun_dir.name,
+                             file_num=f'{fnum:03d}', feus=f'{n_feus}/{expected_feus}',
+                             waited_min=f'{waited / 60:.0f}')
                     else:
                         incomplete_since.pop(key, None)
 
@@ -330,6 +355,9 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                     # re-decoding a file that just hung would only hang again.
                     print(f"[decode]  quarantined {os.path.basename(e.hang_path)} "
                           f"({e.reason}); continuing with surviving FEUs")
+                    _log('DECODE_HANG', run=subrun_dir.parent.name, subrun=subrun_dir.name,
+                         file=os.path.basename(e.hang_path), reason=e.reason,
+                         action='quarantined, continuing with surviving FEUs')
                     counts[futs[t]] = None
 
         # Truncation guard: all FEUs of a group see the same triggers, so their
@@ -343,6 +371,9 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                     continue
                 print(f"[decode]  TRUNCATED {os.path.basename(str(fdf))}: "
                       f"{c} events vs {gmax} in this group — re-decoding")
+                _log('DECODE_TRUNCATED', run=subrun_dir.parent.name, subrun=subrun_dir.name,
+                     file=os.path.basename(str(fdf)), events=c, group_max=gmax,
+                     action='re-decoding')
                 if root_path.exists():
                     root_path.unlink()
                 try:
@@ -351,10 +382,16 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
                 except DecodeTimeout as e:
                     print(f"[decode]  quarantined {os.path.basename(e.hang_path)} "
                           f"({e.reason}) on the truncation retry")
+                    _log('DECODE_HANG', run=subrun_dir.parent.name, subrun=subrun_dir.name,
+                         file=os.path.basename(e.hang_path), reason=e.reason,
+                         action='quarantined on the truncation retry')
                     continue
                 if c2 is None or (c2 > 0 and c2 < gmax):
                     print(f"[decode]  WARNING {os.path.basename(str(fdf))} still "
                           f"short after retry ({c2} vs {gmax})")
+                    _log('DECODE_STILL_SHORT', run=subrun_dir.parent.name,
+                         subrun=subrun_dir.name, file=os.path.basename(str(fdf)),
+                         events=c2, group_max=gmax)
 
     # Step 2: Analyze waveforms
     if do_analyze:
@@ -756,6 +793,7 @@ def _decode_file(fdf_path: str, root_path: str, decode_exe: str,
             reason = (f'output frozen {int(now - last_progress)}s at {size} B'
                       if stalled else f'exceeded {int(hard_timeout_s)}s hard cap')
             print(f"[decode]  HANG: {os.path.basename(fdf_path)} — {reason}; killing decoder")
+            _log('DECODE_HANG_KILL', file=os.path.basename(fdf_path), reason=reason)
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
@@ -787,11 +825,13 @@ def _decode_file(fdf_path: str, root_path: str, decode_exe: str,
     # next pass retries this FEU instead of treating it as done.
     if proc.returncode != 0:
         print(f"[decode]  FAILED rc={proc.returncode}: {os.path.basename(fdf_path)}")
+        _log('DECODE_FAILED', file=os.path.basename(fdf_path), rc=proc.returncode)
         if os.path.exists(root_path):
             os.remove(root_path)
         return None
     if not os.path.exists(root_path) or os.path.getsize(root_path) == 0:
         print(f"[decode]  FAILED (no/empty output): {os.path.basename(fdf_path)}")
+        _log('DECODE_FAILED', file=os.path.basename(fdf_path), reason='no/empty output')
         if os.path.exists(root_path):
             os.remove(root_path)
         return None

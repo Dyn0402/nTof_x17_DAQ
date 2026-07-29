@@ -27,13 +27,23 @@ watcher uses). See stream1_monitor/stream1_size_controller.py for the classifier
 
 import os
 import sys
+import traceback
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from stream1_monitor.stream1_size_controller import Stream1SizeMonitor
+from stream1_monitor.stream1_size_controller import (Stream1SizeMonitor,
+                                                     STREAM1_EVENT_LOG)
+from common_functions import log_event
 
 
 def main():
-    Stream1SizeMonitor().run_blocking()
+    try:
+        Stream1SizeMonitor().run_blocking()
+    except Exception as e:  # noqa: BLE001
+        # Durable second copy only — re-raised so the tmux pane still shows the live
+        # traceback and the process still exits non-zero.
+        log_event(STREAM1_EVENT_LOG, 'CRASH', 'stream1',
+                  error=repr(e), traceback=traceback.format_exc())
+        raise
 
 
 if __name__ == "__main__":

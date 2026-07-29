@@ -12,17 +12,53 @@ import os
 import threading
 import time
 import csv
+from pathlib import Path
 
 from Server import Server
 from caen_hv_py.CAENHVController import CAENHVController
 from caen_hv_py.exceptions import CAENHVError
-from hv_alerts import HVAlerter
+from common_functions import log_event
+from hv_alerts import HVAlerter, HV_LOG_FILE
 
 # from run_config import Config
 
 # Bound the ramp wait so a dead crate costs one sub-run rather than hanging the
 # whole (possibly overnight) run. Overridable via hv_info.
 DEFAULT_RAMP_TIMEOUT_S = 180
+
+# Durable event log, shared with hv_alerts (same process). Events only, never a
+# mirror of the very chatty per-poll monitor output.
+_LOG_FILE = Path(HV_LOG_FILE)
+
+
+def _log(event, **details):
+    log_event(str(_LOG_FILE), event, 'hv_control', **details)
+
+
+# Repeat-suppression for the failure paths that can fire in a tight loop.
+# main()'s `while True: try/except` has NO sleep, so an immediately-failing
+# Server() (port already bound, say) spins at full speed — logging every pass
+# would rebuild the 83 MB fossil this whole exercise exists to prevent. Same
+# story for a dead crate, which fails a read per channel per monitor poll.
+_LOG_THROTTLE_S = 60
+_last_logged = {}      # key -> (last write time, suppressed count)
+_throttle_lock = threading.Lock()
+
+
+def _log_throttled(key, event, **details):
+    """_log(), but at most once per _LOG_THROTTLE_S per key. The next line that
+    does get through carries how many were suppressed, so a spin is still visible
+    as a spin rather than as one lonely line."""
+    now = time.time()
+    with _throttle_lock:
+        last, suppressed = _last_logged.get(key, (0.0, 0))
+        if now - last < _LOG_THROTTLE_S:
+            _last_logged[key] = (last, suppressed + 1)
+            return
+        _last_logged[key] = (now, 0)
+    if suppressed:
+        details['suppressed_since_last'] = suppressed
+    _log(event, **details)
 
 
 class HVRampError(RuntimeError):
@@ -36,6 +72,7 @@ def main():
     # One alerter for the process lifetime: its resend throttle survives sub-run
     # boundaries so a persistently-bad channel is not re-announced each sub-run.
     hv_alerter = HVAlerter()
+    _log('START', port=port)
     while True:
         try:
             with Server(port=port) as server:
@@ -73,6 +110,8 @@ def main():
                                 # (leaving it un-marked, so a resume run re-tries it) and
                                 # moves on to the next one.
                                 print(f'HV RAMP FAILED for {sub_run["sub_run_name"]}: {e}')
+                                _log('RAMP_FAILED', sub_run=sub_run["sub_run_name"],
+                                     error=str(e))
                                 if monitor_thread is not None:
                                     monitor_stop_event.set()
                                     monitor_thread.join()
@@ -108,6 +147,9 @@ def main():
                         res = server.receive()
         except Exception as e:
             print(f'Error: {e}\nRestarting hv control server...')
+            # Throttled: this loop has no sleep, so a permanently-failing Server()
+            # would otherwise write thousands of lines a second.
+            _log_throttled('server_restart', 'SERVER_RESTART', error=repr(e))
     print('donzo')
 
 
@@ -142,6 +184,7 @@ def _notify_alerter(alerter, method, **kwargs):
         getattr(alerter, method)(**kwargs)
     except Exception as e:  # noqa: BLE001
         print(f'HV alert {method} failed: {e}')
+        _log('ALERTER_CALL_FAILED', method=method, error=repr(e))
 
 
 def _set_and_wait_for_ramp(hvs, caen_hv, caen_lock, ramp_timeout_s):
@@ -210,6 +253,7 @@ def power_off_hvs(hv_info, caen_hv, caen_lock):
                     # Power-off runs at end of run, possibly after a crate failure;
                     # don't let one dead channel abort the whole shutdown.
                     print(f'Power off failed for {slot}:{channel}: {e}')
+                    _log('POWER_OFF_FAILED', channel=f'{slot}:{channel}', error=str(e))
     print('HV Powered Off')
 
 
@@ -275,6 +319,12 @@ def monitor_hvs(hv_info, hvs, sub_run_name, stop_event, print_event, caen_hv, ca
                             # thread — log a blank row and keep going. Transient
                             # session drops are auto-healed inside the controller.
                             print(f"HV monitor read failed for {slot}:{channel}: {e}")
+                            # Throttled per channel: a dead crate fails every channel
+                            # on every poll, and this must stay an event log.
+                            _log_throttled(f'monitor_read_{slot}:{channel}',
+                                           'MONITOR_READ_FAILED',
+                                           sub_run=sub_run_name,
+                                           channel=f'{slot}:{channel}', error=str(e))
                             power, vmon, imon = '', float('nan'), float('nan')
 
                         row.extend([power, v0, vmon, imon])  # Append to row

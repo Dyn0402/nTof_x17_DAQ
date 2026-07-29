@@ -3,7 +3,7 @@
 """
 mode_watcher.py — keep the DAQ on whichever trigger the beam justifies, in BOTH directions.
 
-    nohup .venv/bin/python mode_watcher.py > logs/mode_watcher.log 2>&1 &
+    nohup .venv/bin/python mode_watcher.py > logs/mode_watcher.stdout.log 2>&1 &
     .venv/bin/python mode_watcher.py --status      # what would it do right now?
     .venv/bin/python mode_watcher.py --dry-run     # full loop, decides, touches nothing
 
@@ -63,9 +63,13 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 from datetime import datetime
 
 REPO = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, REPO)
+from common_functions import log_event
+
 PY = os.path.join(REPO, '.venv', 'bin', 'python')
 BEAM_STATE = os.path.join(REPO, 'config', 'beam_state.json')
 SWITCH = os.path.join(REPO, 'switch_mode.py')
@@ -103,6 +107,16 @@ _spec.loader.exec_module(sm)
 
 def log(msg):
     print(f'[mode_watcher {datetime.now():%Y-%m-%d %H:%M:%S}] {msg}', flush=True)
+
+
+# Durable event log. The GUI launches this into a tmux session whose scrollback is
+# capped and dies with the session, so the changeover decisions — the ones that
+# silently trade a beam run for a cosmic one — had no lasting record.
+EVENT_LOG = os.path.join(REPO, 'logs', 'mode_watcher.log')
+
+
+def _log(event, **details):
+    log_event(EVENT_LOG, event, 'mode_watcher', **details)
 
 
 def config_prefixes():
@@ -219,14 +233,16 @@ def decide(mode, beam, since_pulse, beam_down_min, cooldown_min, now=None):
     return 'cosmics', f'beam down {since_pulse / 60.0:.1f} min with a run on the beam trigger'
 
 
-def do_changeover(target, dry):
+def do_changeover(target, dry, reason=''):
     held = sm.read_changeover_lock()
     if held:
         log(f'  another changeover is in progress ({held}) — skipping this cycle')
+        _log('CHANGEOVER_SKIPPED', target=target, reason=f'lock held by {held}')
         return False
     log(f'*** switching to {target.upper()} — running switch_mode.py {target} --go ***')
     if dry:
         log('  [dry-run] not executing')
+        _log('CHANGEOVER_DRYRUN', target=target)
         return False
     r = subprocess.run([PY, SWITCH, target, '--go'], cwd=REPO,
                        capture_output=True, text=True)
@@ -236,15 +252,19 @@ def do_changeover(target, dry):
         log(f'    ! {line}')
     if r.returncode == 0:
         log(f'  CHANGEOVER TO {target.upper()} COMPLETE')
+        _log('CHANGEOVER_DONE', target=target, reason=reason)
         save_state(last_changeover_ts=time.time(), last_target=target,
                    last_result='ok',
                    last_changeover_at=datetime.now().isoformat(timespec='seconds'))
         return True
     if r.returncode == 7:
         log('  lost the changeover lock race — someone else is doing it; fine, standing down')
+        _log('CHANGEOVER_SKIPPED', target=target, reason='lost the lock race (rc=7)')
         return False
     log(f'!! switch_mode.py exited {r.returncode} — the DAQ may be in NEITHER state. '
         f'Not retrying automatically; check by hand.')
+    _log('CHANGEOVER_FAILED', target=target, rc=r.returncode, reason=reason,
+         note='the DAQ may be in NEITHER state — not retried automatically')
     save_state(last_changeover_ts=time.time(), last_target=target,
                last_result=f'FAILED rc={r.returncode}',
                last_changeover_at=datetime.now().isoformat(timespec='seconds'))
@@ -292,6 +312,10 @@ def main():
     log(f'first decision: {("SWITCH to " + target) if target else "none"} — {reason}')
     if disarmed():
         log('DISARMED (config/.mode_watcher_disarmed present) — will poll and log but not act')
+    _log('START', dry_run=args.dry_run, armed=not disarmed(),
+         beam_down_min=args.beam_down_min, cooldown_min=args.cooldown_min,
+         poll=f'{args.poll:g}s', mode=mode or '-', beam=beam,
+         first_decision=(f'SWITCH to {target}' if target else 'none'), reason=reason)
 
     last_reason, streak, last_target = None, 0, None
     while not stopping['now']:
@@ -311,8 +335,10 @@ def main():
             if disarmed():
                 if streak == CONFIRM_READS:
                     log(f'  would switch to {target.upper()} but DISARMED — not acting')
+                    _log('CHANGEOVER_SKIPPED', target=target,
+                         reason=f'DISARMED ({reason})')
             else:
-                do_changeover(target, args.dry_run)
+                do_changeover(target, args.dry_run, reason=reason)
                 last_reason, streak, last_target = None, 0, None
                 if args.once:
                     break
@@ -326,8 +352,15 @@ def main():
             slept += 0.25
 
     log('stopped')
+    _log('STOP')
     return 0
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception as e:  # noqa: BLE001 — durable copy, then re-raise
+        _log('CRASH', error=repr(e), traceback=traceback.format_exc())
+        raise

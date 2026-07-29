@@ -30,10 +30,15 @@ import os
 import csv
 import glob
 import json
+import sys
 import time
 import signal
 import threading
+import traceback
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common_functions import log_event
 
 try:
     import Gpib
@@ -56,6 +61,13 @@ HE3_PRESSURE_STATE_PATH = os.path.join(_REPO_DIR, "config", "he3_pressure_state.
 # and applies it within one cycle (read-only monitor, so a plain config file — no
 # per-command ack machinery like the gas watcher needs).
 HE3_PRESSURE_CONFIG_PATH = os.path.join(_REPO_DIR, "config", "he3_pressure_config.json")
+# Durable event log for the he3_pressure_watcher process. Events only (link up/down,
+# crash) — the per-day CSV above is pressure DATA and is not duplicated here.
+HE3_EVENT_LOG = os.path.join(_REPO_DIR, "logs", "he3_pressure_watcher.log")
+
+
+def _log(event, **details):
+    log_event(HE3_EVENT_LOG, event, 'he3_watcher', **details)
 
 # --- voltage -> pressure conversion:  pressure = (V - offset) * slope, in bar ---
 PRESS_OFFSET_V = 1.0
@@ -270,6 +282,9 @@ class He3PressureController:
 
     def _run(self):
         self._apply_config()   # honor any saved rate before the first sample
+        # Logged once per disconnect episode, not once per 5 s retry: an instrument
+        # that is simply off must not fill the event log.
+        disconnect_logged = False
         while not self._stop.is_set():
             self._apply_config()
             if not self.connected:
@@ -277,7 +292,12 @@ class He3PressureController:
                     self._connect()
                 if self.connected:
                     self.log(f"connected: {self.idn} (pad {self.pad})")
+                    _log('GPIB_CONNECTED', idn=self.idn, pad=self.pad)
+                    disconnect_logged = False
                 else:
+                    if not disconnect_logged:
+                        _log('GPIB_DISCONNECTED', error=self.last_error)
+                        disconnect_logged = True
                     with self._state_lock:
                         self._state = {"connected": False, "last_error": self.last_error}
                     self._write_state(self.get_state())
@@ -316,8 +336,15 @@ class He3PressureController:
         signal.signal(signal.SIGTERM, lambda *a: self._stop.set())
         self.log(f"3He pressure watcher starting (pad {self.pad}, poll {self.poll_s}s, "
                  f"log {self.log_s}s, P=(V-{PRESS_OFFSET_V})*{PRESS_SLOPE} {PRESS_UNIT})")
-        self._run()
+        _log('START', pad=self.pad, poll=f'{self.poll_s}s', log=f'{self.log_s}s',
+             csv_dir=self.log_dir)
+        try:
+            self._run()
+        except Exception as e:  # noqa: BLE001 — durable copy, then re-raise
+            _log('CRASH', error=repr(e), traceback=traceback.format_exc())
+            raise
         self.log("3He pressure watcher stopped")
+        _log('STOP')
 
 
 # Module-level singleton so the Flask app could share one controller if ever needed.

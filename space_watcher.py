@@ -66,14 +66,20 @@ import sys
 import json
 import time
 import argparse
+import traceback
 from datetime import datetime
 from pathlib import Path
 
 import space_manager
 from space_manager import human
+from common_functions import log_event
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(BASE_DIR, 'config', 'space_watcher_state.json')
+# Durable event log: lifecycle only. Every deletion this watcher triggers is already
+# recorded by space_manager's DELETE_LOG (logs/space_manager.log), which is the
+# authoritative record of what left the disk — do not duplicate it here.
+EVENT_LOG  = os.path.join(BASE_DIR, 'logs', 'space_watcher.log')
 
 GB = 1024 ** 3
 
@@ -83,6 +89,10 @@ def log(msg):
     changed the disk ALSO goes to the space_manager delete log, which is the
     durable record of every removal."""
     print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {msg}", flush=True)
+
+
+def _log(event, **details):
+    log_event(EVENT_LOG, event, 'space_watcher', **details)
 
 
 def ssd_free() -> int:
@@ -453,6 +463,10 @@ def main():
         f"keep newest {cfg['keep_recent_runs']} runs / {cfg['keep_recent_subruns']} subruns, "
         f"min age {cfg['min_age_hours']} h, guards off below {cfg['emergency_gb']} GB"
         f"{'  [DRY RUN]' if cfg['dry_run'] else ''}")
+    _log('START', floor_gb=cfg['low_water_gb'], target_free_gb=cfg['target_free_gb'],
+         keep_runs=cfg['keep_recent_runs'], keep_subruns=cfg['keep_recent_subruns'],
+         min_age_h=cfg['min_age_hours'], emergency_gb=cfg['emergency_gb'],
+         dry_run=cfg['dry_run'])
 
     last_futile = 0.0
     futile_emergency = False   # were the guards already off when that futile pass ran?
@@ -498,10 +512,19 @@ def main():
                     futile_emergency = False
         except Exception as e:
             log(f"ERROR in poll: {e}")
+            # Not a CRASH — the loop swallows this and carries on. Still worth a
+            # durable line: a watcher that errors every poll looks alive from outside.
+            _log('POLL_ERROR', error=repr(e), traceback=traceback.format_exc())
         if args.once:
             break
         time.sleep(cfg['poll_interval'])
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:  # noqa: BLE001
+        # Durable second copy only — re-raised so the tmux pane still shows the live
+        # traceback and the process still exits non-zero.
+        _log('CRASH', error=repr(e), traceback=traceback.format_exc())
+        raise

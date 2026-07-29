@@ -35,10 +35,15 @@ The per-day CSVs live with the other slow-control logs under
 import os
 import csv
 import json
+import sys
 import time
 import signal
 import threading
+import traceback
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common_functions import log_event
 
 try:
     import psutil
@@ -53,6 +58,13 @@ SYSTEM_STATS_LOG_DIR = os.path.expanduser("~/beam_july/slow_control/system_stats
 # The Flask app (or an operator) may write {"poll_s": <seconds>} here to retune the
 # sample rate; the watcher picks it up within one cycle. Missing file -> default rate.
 SYSTEM_STATS_CONFIG_PATH = os.path.join(_REPO_DIR, "config", "system_stats_config.json")
+# Durable event log: baseline lifecycle only. This is a pure logger — it owns no
+# hardware and commands nothing — so START/STOP/CRASH is the whole useful set.
+SYSTEM_STATS_EVENT_LOG = os.path.join(_REPO_DIR, "logs", "system_stats_watcher.log")
+
+
+def _log(event, **details):
+    log_event(SYSTEM_STATS_EVENT_LOG, event, 'sysstats', **details)
 
 # Which network interfaces / physical disks to log. KEEP IN SYNC with the same two
 # constants in flask_app/app.py (_NET_IFACES / _DISK_DEVS) — both read the same box.
@@ -259,5 +271,11 @@ class SystemStatsController:
         self.log(f"system stats watcher starting (poll {self.poll_s}s = "
                  f"{1.0 / self.poll_s:.3f} Hz, {self.n_cores} cores, "
                  f"log dir {self.log_dir})")
-        self._run()
+        _log('START', poll=f'{self.poll_s}s', cores=self.n_cores, csv_dir=self.log_dir)
+        try:
+            self._run()
+        except Exception as e:  # noqa: BLE001 — durable copy, then re-raise
+            _log('CRASH', error=repr(e), traceback=traceback.format_exc())
+            raise
         self.log("system stats watcher stopped")
+        _log('STOP')

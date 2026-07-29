@@ -37,6 +37,19 @@ import urllib.request
 from datetime import datetime
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+sys.path.insert(0, REPO_DIR)
+from common_functions import log_event
+
+# Durable event log for the stats_page_watcher process. Lifecycle + push failures /
+# recoveries; the per-push payload lives in STATE_PATH below, not here.
+STATS_PAGE_EVENT_LOG = os.path.join(REPO_DIR, "logs", "stats_page_watcher.log")
+
+
+def _log(event, **details):
+    log_event(STATS_PAGE_EVENT_LOG, event, 'stats_page', **details)
+
+
 CONFIG_PATH = os.path.join(REPO_DIR, "config", "stats_page_config.json")
 HISTORY_PATH = os.path.join(REPO_DIR, "config", "stats_page_history.json")
 # Last-push outcome, for the Flask dashboard's status card (flask_app/daq_status.py
@@ -537,10 +550,12 @@ def render_preview(payload, out_path, history=None):
 def run_blocking(cfg):
     interval = float(cfg["interval_s"])
     print(f"[stats_page] Publishing to {cfg['eos_www_dir']} every {interval:g}s")
+    _log('START', eos_www_dir=cfg['eos_www_dir'], interval=f'{interval:g}s')
 
     ok, msg = ensure_eos_dir(cfg)
     if not ok:
         print(f"[stats_page] Could not create {cfg['eos_www_dir']}: {msg}", file=sys.stderr)
+        _log('EOS_MKDIR_FAILED', eos_www_dir=cfg['eos_www_dir'], detail=msg)
 
     history = load_history()
     fails = 0
@@ -555,13 +570,16 @@ def run_blocking(cfg):
         if ok:
             if fails:
                 print(f"[stats_page] Recovered after {fails} failed push(es)")
+                _log('PUSH_RECOVERED', after_failures=fails)
             fails, first = 0, False
         else:
             fails += 1
             # Noisy for the first few, then back off the logging — a long beam-off
-            # network outage should not fill the pane.
+            # network outage should not fill the pane. The event log follows the same
+            # back-off for the same reason.
             if fails <= 3 or fails % 20 == 0:
                 print(f"[stats_page] Push failed ({fails}): {msg}", file=sys.stderr)
+                _log('PUSH_FAILED', consecutive=fails, detail=str(msg)[:300])
         time.sleep(interval)
 
 

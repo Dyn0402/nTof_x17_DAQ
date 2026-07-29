@@ -10,6 +10,7 @@ Created as Cosmic_Bench_DAQ_Control/daq_control.py
 
 import sys
 import shutil
+import traceback
 from time import sleep
 from contextlib import nullcontext
 
@@ -21,6 +22,17 @@ from common_functions import *
 from weiner_ps_monitor import get_pl512_status
 
 RUNCONFIG_REL_PATH = "config/json_run_configs/"
+
+# Durable event log. daq_control is relaunched per run inside the daq_control tmux
+# pane, so this file accumulates a cross-run history of the decisions that have cost
+# time before: pre-flight refusals, unverified-trigger holds, empty sub-runs.
+# `log_event` comes from the common_functions star-import above.
+_LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         'logs', 'daq_control.log')
+
+
+def _log(event, **details):
+    log_event(_LOG_FILE, event, 'daq_control', **details)
 
 # Stop-request flags dropped by bash_scripts/stop_run.sh and stop_sub_run.sh.
 # Using flag files (instead of racing Ctrl-C into the tmux pane) makes stopping
@@ -142,6 +154,8 @@ def _apply_n1081b_with_retry(scan_ctl, sub_run):
             print('[n1081b] !! trigger/mesh config did NOT verify — HOLDING the run '
                   '(paused). Fix the board, then Resume to retry. Refusing to take '
                   'data with an unverified trigger.')
+            _log('N1081B_VERIFY_FAILED', sub_run=sub_run.get('sub_run_name'),
+                 action='HOLDING the run paused until it verifies or Stop Run')
             announced = True
         with open(PAUSE_FLAG, 'w') as f:
             f.write('n1081b config apply failed — fix board and Resume to retry\n')
@@ -181,6 +195,11 @@ def main():
         elif config_path.endswith('.py'):
             pass
     config.start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    _log('START', run=getattr(config, 'run_name', '?'),
+         config=os.path.basename(sys.argv[1]) if len(sys.argv) == 2 else '(default)',
+         sub_runs=len(getattr(config, 'sub_runs', [])),
+         resume=getattr(config, 'resume', False),
+         out_dir=getattr(config, 'run_out_dir', '?'))
 
     # In-process N1081B scan control (replaces the standalone scan-watcher process):
     # daq_control applies each sub-run's trigger/mesh config itself, so it can never
@@ -252,18 +271,26 @@ def main():
                               f'so every sub-run would record ZERO data while still being '
                               f'marked complete. Fix the crate (see feu_health.py), or set '
                               f'skip_feu_preflight=True to override.')
+                        _log('FEU_PREFLIGHT_FAILED',
+                             missing=', '.join(_crate['missing']),
+                             action='REFUSING to start')
                         ok_to_run = False
                     else:
                         print(f'[feu] pre-flight OK — {_crate["summary"]}')
+                        _log('FEU_PREFLIGHT_OK', summary=_crate['summary'])
                 except Exception as e:  # noqa: BLE001
                     # Fail OPEN on a checker bug: a broken pre-flight must never be
                     # the reason a beam run does not start.
                     print(f'[feu] pre-flight could not run ({e!r}) — continuing anyway.')
+                    _log('FEU_PREFLIGHT_ERROR', error=repr(e),
+                         action='continuing anyway (fail open)')
 
             if scan_ctl is None:
                 print('[n1081b] !! scan control could not be built — REFUSING to start. '
                       'Fix the error above, or set n1081b_scan="off" in the run config '
                       'to deliberately run WITHOUT trigger modulation.')
+                _log('N1081B_REFUSED', reason='scan control could not be built',
+                     action='REFUSING to start')
                 ok_to_run = False
             elif scan_ctl.needed:
                 unknown = scan_ctl.unknown_tags()
@@ -272,6 +299,8 @@ def main():
                           f'— REFUSING to start (those sub-runs would take data with an '
                           f'uncontrolled / leftover trigger). Fix the schedule or the '
                           f'sub-run names.')
+                    _log('N1081B_REFUSED', reason=f'no schedule entry for tag(s) {unknown}',
+                         action='REFUSING to start')
                     ok_to_run = False
                 else:
                     try:
@@ -280,6 +309,8 @@ def main():
                         print(f'[n1081b] !! could not snapshot the trigger boards '
                               f'({e!r}) — REFUSING to start a scan run without trigger '
                               f'control. Fix the board network and relaunch.')
+                        _log('N1081B_REFUSED', reason=f'board snapshot failed: {e!r}',
+                             action='REFUSING to start')
                         ok_to_run = False
 
             # Consecutive sub-runs that recorded nothing; reset by any good sub-run.
@@ -290,6 +321,7 @@ def main():
             for sub_run in (config.sub_runs if ok_to_run else []):
                 if os.path.exists(STOP_RUN_FLAG):
                     print('[stop] Stop-run requested — ending run before next sub-run.')
+                    _log('STOP_REQUESTED', run=config.run_name, when='between sub-runs')
                     break
                 # Post-sub-run pause: if armed, wait here before ramping the next
                 # sub-run. HV stays at its current setpoint. Interruptible by Stop Run;
@@ -300,6 +332,7 @@ def main():
                         sleep(1)
                     if os.path.exists(STOP_RUN_FLAG):
                         print('[stop] Stop-run requested during pause — ending run.')
+                        _log('STOP_REQUESTED', run=config.run_name, when='during pause')
                         break
                     print('[pause] Resumed.')
                 sub_run_name = sub_run['sub_run_name']
@@ -318,6 +351,8 @@ def main():
                     weiner_ok = check_weiner_lv_status(config.weiner_ps_info)
                     if not weiner_ok:
                         print(f'Weiner Power Supply check failed, skipping sub run {sub_run_name}')
+                        _log('WEINER_CHECK_FAILED', run=config.run_name,
+                             sub_run=sub_run_name, action='skipping sub-run')
                         continue
 
                 # Emit the status line before ramping so the flask daq_control card shows the
@@ -351,6 +386,8 @@ def main():
                             hv.receive()
                             hv.receive()
                         print('[stop] Stop requested while applying N1081B config — ending run.')
+                        _log('STOP_REQUESTED', run=config.run_name,
+                             when='while applying N1081B config', sub_run=sub_run_name)
                         break
 
                     print(f'Prepping DAQs for {sub_run_name}')
@@ -404,12 +441,18 @@ def main():
                         print(f'[data] !! Sub run {sub_run_name} recorded ZERO data bytes '
                               f'— NOT marking it complete (a resume will re-take it). '
                               f'Check the crate: python3 feu_health.py')
+                        _log('SUBRUN_EMPTY', run=config.run_name, sub_run=sub_run_name,
+                             recorded_bytes=recorded_bytes,
+                             action='not marked complete (a resume re-takes it)')
                         if count_empty:
                             empty_subruns += 1
                             if empty_subruns >= MAX_EMPTY_SUBRUNS:
                                 print(f'[data] !! {empty_subruns} consecutive sub-runs recorded '
                                       f'nothing — ABORTING the run rather than burning the rest '
                                       f'of the grid on empty points. Fix the DAQ and resume.')
+                                _log('RUN_ABORTED', run=config.run_name,
+                                     reason=f'{empty_subruns} consecutive empty sub-runs',
+                                     last_sub_run=sub_run_name)
                                 break
                         else:
                             print(f'[data] (stopped manually before any data arrived — not '
@@ -442,12 +485,15 @@ def main():
                     # move on to the next sub-run instead of aborting the whole run —
                     # leaving it unmarked so a resume run re-tries it.
                     print(f'[hv] Ramp failed for {sub_run_name}: {res} — skipping this sub-run.')
+                    _log('HV_RAMP_FAILED', run=config.run_name, sub_run=sub_run_name,
+                         reply=res, action='skipping sub-run (left unmarked for resume)')
                     if config.hv_info['hv_monitoring']:
                         hv.send('End Monitoring')
                         hv.receive()  # Stopping monitoring
                         hv.receive()  # Finished monitoring
         except KeyboardInterrupt as e:
             print(f'Run stoppping.')
+            _log('STOP', run=config.run_name, reason='KeyboardInterrupt')
 
             if config.hv_info['hv_monitoring']:
                 hv.send('End Monitoring')
@@ -463,6 +509,7 @@ def main():
             if scan_ctl is not None:
                 scan_ctl.restore()
         print('Run complete, closing down subsystems')
+        _log('RUN_END', run=config.run_name)
         if config.power_off_hv_at_end:
             hv.send('Power Off')
             hv.receive()  # Starting power off
@@ -596,4 +643,10 @@ def check_weiner_lv_status(weiner_ps_info):
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:  # noqa: BLE001
+        # Durable second copy only — re-raised so the tmux pane still shows the live
+        # traceback and the process still exits non-zero.
+        _log('CRASH', error=repr(e), traceback=traceback.format_exc())
+        raise

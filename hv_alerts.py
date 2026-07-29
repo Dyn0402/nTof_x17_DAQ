@@ -58,10 +58,22 @@ import time
 
 import requests
 
+from common_functions import log_event
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 ALERT_CONFIG_PATH = os.path.join(_HERE, "config", "hv_alert_config.json")
 MONITOR_CONFIG_PATH = os.path.join(_HERE, "config", "monitor_config.json")
 TELEGRAM_URL = "https://api.telegram.org/bot{token}/{method}"
+
+# Durable event log for the hv_control process. The alerter shares hv_control's file
+# because it runs inside it — an alert and the ramp that provoked it belong on one
+# timeline. Defined here (rather than in hv_control) so importing this module never
+# depends on the import direction. Telegram tells you NOW; this says what/when after.
+HV_LOG_FILE = os.path.join(_HERE, "logs", "hv_control.log")
+
+
+def _log(event, **details):
+    log_event(HV_LOG_FILE, event, 'hv_alerts', **details)
 
 # Card (a.k.a. slot) -> electrode class. This is the physical crate wiring:
 # DREAM uses card 5 for resist meshes and card 9 for drift cathodes.
@@ -451,7 +463,9 @@ class HVAlerter:
             self._last_sent[key] = now
         stamped = f"{text}\n(sub-run {self._sub_run})" if self._sub_run else text
         print(f"[hv_alerts] {stamped}")
+        _log('ALERT', key=key, sub_run=self._sub_run or '-', text=text)
         if not (self.token and self.chat_id):
+            _log('TELEGRAM_SKIPPED', key=key, reason='no token/chat_id configured')
             return
         threading.Thread(target=self._send_telegram, args=(stamped,), daemon=True).start()
 
@@ -463,3 +477,6 @@ class HVAlerter:
             r.raise_for_status()
         except Exception as e:  # noqa: BLE001 — send failures must stay silent to the loop
             print(f"[hv_alerts] telegram send failed: {e}")
+            # Previously swallowed entirely: an alert that never reached anyone left
+            # no trace at all. It still must not raise — only now it is recorded.
+            _log('TELEGRAM_FAILED', error=repr(e), text=text)

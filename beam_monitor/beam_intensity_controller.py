@@ -42,7 +42,9 @@ import json
 import re
 import signal
 import subprocess
+import sys
 import time
+import traceback
 from datetime import datetime, timedelta
 
 # Shared file paths for the watcher/Flask split (resolved relative to the repo so
@@ -50,6 +52,39 @@ from datetime import datetime, timedelta
 # session; Flask only reads BEAM_STATE_PATH and the CSVs.
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_DIR = os.path.dirname(_MODULE_DIR)
+
+# common_functions is stdlib-only, so it imports fine under this watcher's SEPARATE
+# NXCALS venv (~/venvs/nxcals/bin/python) as well as under the DAQ venv that Flask uses.
+sys.path.insert(0, _REPO_DIR)
+from common_functions import log_event
+
+# Durable event log for the beam_watcher process. Events only (session up/down,
+# Kerberos, query failures) — the per-day CSVs below are intensity DATA.
+BEAM_EVENT_LOG = os.path.join(_REPO_DIR, "logs", "beam_watcher.log")
+
+
+def _log(event, **details):
+    log_event(BEAM_EVENT_LOG, event, 'beam_watcher', **details)
+
+
+# The failure paths here repeat on every poll (12 s) for as long as the outage lasts,
+# and a Kerberos outage can run for days. Throttle them so this stays an event log:
+# the first line of an episode always gets through, then at most one per interval,
+# carrying how many were suppressed.
+_LOG_THROTTLE_S = 900
+_last_logged = {}      # key -> (last write time, suppressed count)
+
+
+def _log_throttled(key, event, **details):
+    now = time.time()
+    last, suppressed = _last_logged.get(key, (0.0, 0))
+    if now - last < _LOG_THROTTLE_S:
+        _last_logged[key] = (last, suppressed + 1)
+        return
+    _last_logged[key] = (now, 0)
+    if suppressed:
+        details['suppressed_since_last'] = suppressed
+    _log(event, **details)
 # Per-day intensity CSVs live with the other slow-control logs (gas, 3He pressure)
 # under ~/beam_july/slow_control/ on the data disk, not in the repo.
 BEAM_LOG_DIR = os.path.expanduser("~/beam_july/slow_control/beam_intensity")
@@ -153,11 +188,14 @@ class BeamIntensityMonitor:
             self.connected = True
             self.last_error = None
             self.log("NXCALS session up")
+            _log('NXCALS_UP')
         except Exception as e:
             self.db = None
             self.connected = False
             self.last_error = f"NXCALS connect failed: {e}"
             self.log(self.last_error)
+            _log_throttled('connect_failed', 'NXCALS_CONNECT_FAILED',
+                           error=str(e)[:300])
         return self.connected
 
     # ---------------- Kerberos upkeep ----------------
@@ -196,8 +234,12 @@ class BeamIntensityMonitor:
             else:
                 self.log(f"kinit -R failed: {r.stderr.strip()} — "
                          f"manual `kinit dneff@CERN.CH` needed before expiry")
+                _log_throttled('krb_renew', 'KERBEROS_RENEW_FAILED',
+                               stderr=r.stderr.strip()[:200],
+                               note='manual kinit needed before expiry')
         except Exception as e:
             self.log(f"kinit -R error: {e}")
+            _log_throttled('krb_renew', 'KERBEROS_RENEW_ERROR', error=repr(e))
 
     # ---------------- query + state ----------------
 
@@ -388,6 +430,8 @@ class BeamIntensityMonitor:
         signal.signal(signal.SIGTERM, lambda *a: setattr(self, "_stop", True))
         self.log(f"beam watcher starting ({BEAM_VARIABLE}, poll {self.poll_s}s, "
                  f"beam-off gap {BEAM_OFF_GAP_S}s)")
+        _log('START', variable=BEAM_VARIABLE, poll=f'{self.poll_s}s',
+             beam_off_gap=f'{BEAM_OFF_GAP_S}s', csv_dir=self.log_dir)
         while not self._stop:
             if not self.connected and not self._connect():
                 self._write_error_state()
@@ -405,12 +449,15 @@ class BeamIntensityMonitor:
                 # Renew the ticket now and rebuild the session on the next pass.
                 self.last_error = f"query failed: {e}"
                 self.log(self.last_error)
+                _log_throttled('query_failed', 'QUERY_FAILED', error=str(e)[:300],
+                               action='renewing ticket, rebuilding session next pass')
                 self._write_error_state()
                 self._renew_kerberos(force=True)
                 self.connected = False
                 self.db = None
             self._sleep(self.poll_s)
         self.log("beam watcher stopped")
+        _log('STOP')
 
     def _sleep(self, seconds):
         end = time.time() + seconds

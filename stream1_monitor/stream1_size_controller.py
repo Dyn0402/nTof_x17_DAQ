@@ -57,6 +57,7 @@ import re
 import signal
 import struct
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -64,6 +65,17 @@ from datetime import datetime, timedelta, timezone
 # agree). The stream1_watcher process writes; Flask only reads.
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_DIR = os.path.dirname(_MODULE_DIR)
+
+sys.path.insert(0, _REPO_DIR)
+from common_functions import log_event
+
+# Durable event log: lifecycle plus the fault-state transitions the classifier finds.
+# Transitions only — the per-poll size lines stay in the pane and the CSV.
+STREAM1_EVENT_LOG = os.path.join(_REPO_DIR, "logs", "stream1_watcher.log")
+
+
+def _log(event, **details):
+    log_event(STREAM1_EVENT_LOG, event, 'stream1', **details)
 # Per-day CSVs live with the other slow-control logs on the data disk, not in the repo.
 STREAM1_LOG_DIR = os.path.expanduser("~/beam_july/slow_control/stream1_filesize")
 STREAM1_STATE_PATH = os.path.join(_REPO_DIR, "config", "stream1_filesize_state.json")
@@ -1635,10 +1647,21 @@ class Stream1SizeMonitor:
                  + (f"every {self.waveform_min_interval_s:.0f}s, nominal "
                     + ("loaded" if self._nominal else "not yet adopted")
                     if self.waveform_enabled else "disabled") + ")")
+        _log('START', poll=f'{self.poll_s:.0f}s',
+             reduced_ratio=f'{self.reduced_ratio:.2f}', eos_base=self.eos_base,
+             seeded_files=len(self._hist),
+             waveform_layer='on' if self.waveform_enabled else 'off')
+        last_state = None      # only fault-state CHANGES are worth persisting
         while not self._stop:
             try:
                 state = self._poll_once()
                 self._write_state(state)
+                if state["state"] != last_state:
+                    _log('STATE_CHANGE', was=last_state or '(startup)',
+                         now=state["state"], run=state.get("latest_run"),
+                         size_gib=state.get("latest_size_gib"),
+                         ratio=state.get("latest_ratio"))
+                    last_state = state["state"]
                 if state["new_files_this_poll"]:
                     self.log(f"+{state['new_files_this_poll']} files  "
                              f"run {state['latest_run']}  "
@@ -1650,9 +1673,15 @@ class Stream1SizeMonitor:
                 self.connected = False
                 self.last_error = f"EOS listing failed: {e}"
                 self.log(self.last_error)
+                # Transition-only: an expired Kerberos ticket fails every poll, so
+                # this fires once per outage, not once per poll.
+                if last_state != 'listing_failed':
+                    _log('LISTING_FAILED', error=str(e)[:300])
+                    last_state = 'listing_failed'
                 self._write_error_state()
             self._sleep(self.poll_s)
         self.log("stream1 file-size watcher stopped")
+        _log('STOP')
 
     def _sleep(self, seconds):
         end = time.time() + seconds

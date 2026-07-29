@@ -89,10 +89,14 @@ import json
 import os
 import signal
 import socket
+import sys
 import threading
 import time
 from collections import OrderedDict
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common_functions import log_event
 
 # Import-safe: the Flask app imports this module for the path constants below and
 # must boot even where the SDK / websocket stack is absent.
@@ -137,6 +141,14 @@ N1081B_TT_LOG_DIR = os.path.expanduser("~/beam_july/slow_control/n1081b_timetag"
 N1081B_TT_STATE_PATH = os.path.join(_REPO_DIR, "config", "n1081b_timetag_state.json")
 N1081B_TT_CONFIG_PATH = os.path.join(_REPO_DIR, "config", "n1081b_timetag_config.json")
 BEAM_STATE_PATH = os.path.join(_REPO_DIR, "config", "beam_state.json")
+# Durable event log for the watcher process: start, alarm, and — the one that matters
+# for board health — whether the exit restore actually put .244 back to counters.
+# Purely additive: nothing here is in the board path (see n1081b/CLAUDE.md).
+N1081B_TT_EVENT_LOG = os.path.join(_REPO_DIR, "logs", "n1081b_timetag_watcher.log")
+
+
+def _log(event, **details):
+    log_event(N1081B_TT_EVENT_LOG, event, 'n1081b_tt', **details)
 
 NS_PER_S = 1e9               # board TT clock: 1 ns ticks (MEASURED 2026-07-18 vs
                              # host over 6 h, exactly 1000.0 MHz; the older docs'
@@ -622,6 +634,7 @@ class N1081BTimeTagController:
             if self.alarm:
                 self.connected = False
                 self.log(f"ALARM: {self.alarm}")
+                _log('ALARM', phase=phase, detail=self.alarm)
                 self._publish()
                 return
             if verdict == "stop" or self._stop.is_set() or self._expired():
@@ -646,6 +659,7 @@ class N1081BTimeTagController:
                               "probe gently with tt_probe_v2.py)")
                 self.connected = False
                 self.log(f"ALARM: {self.alarm}")
+                _log('ALARM', phase='silent-despite-gate', detail=self.alarm)
                 self._publish()
                 return
 
@@ -686,19 +700,25 @@ class N1081BTimeTagController:
                 ok = all(names[self._SEC[c].value] == "counter" for c in self.letters)
                 if ok:
                     self.log(f"restored sections to counter: {names}")
+                    _log('RESTORE_OK', attempt=attempt, sections=names)
                     return True
                 self.log(f"restore attempt {attempt}: readback {names} "
                          f"not all counter; retrying")
             except (BoardQuarantinedError, BoardWedgedError) as e:
                 self.log(f"restore blocked — board must rest ({e}); "
                          f"run --restore after it recovers")
+                _log('RESTORE_BLOCKED', attempt=attempt, error=repr(e),
+                     note='board must rest; rerun --restore after it recovers')
                 return False
             except Exception as e:
                 self.log(f"restore attempt {attempt} failed ({e!r})")
+                _log('RESTORE_ATTEMPT_FAILED', attempt=attempt, error=repr(e))
             time.sleep(2.0)
         self.log("RESTORE FAILED after retries -- .244 may be left in wire/time_tag "
                  "mode; run `python n1081b_timetag_watcher.py --restore` when the "
                  "board is reachable")
+        _log('RESTORE_FAILED', attempts=attempts,
+             note='.244 may be left in wire/time_tag — run --restore when reachable')
         return False
 
     # ---------------- lifecycle ----------------
@@ -722,6 +742,10 @@ class N1081BTimeTagController:
                  f"{self.gate_hz:.0f} Hz, cycle {self.gate_period_s / 60:.0f} min, "
                  f"dwell {self.dwell_s:.0f}s"
                  + (f", duration {duration_s:.0f}s" if self.deadline else "") + ")")
+        _log('START', ip=self.ip, counters=self.letters, tt_candidates=self.tt_letters,
+             gate_hz=f'{self.gate_hz:.0f}', cycle_s=f'{self.gate_period_s:.0f}',
+             dwell_s=f'{self.dwell_s:.0f}',
+             duration_s=f'{duration_s:.0f}' if self.deadline else 'until signal')
         try:
             self._run()
         finally:
@@ -730,3 +754,4 @@ class N1081BTimeTagController:
             self._publish()
             self.log("N1081B time-tag watcher stopped"
                      + (f" -- ALARM: {self.alarm}" if self.alarm else ""))
+            _log('STOP', alarm=self.alarm or 'none', cycles=self._cycles)

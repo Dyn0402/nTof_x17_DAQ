@@ -106,6 +106,10 @@ cover/
 
 # Django stuff:
 *.log
+# Retired log files kept aside under a dated suffix (see
+# docs/PLAN_2026-07-29_watcher_logging.md) — *.log alone does not catch these, and
+# one of them is 84 MB.
+*.log.stale_*
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
