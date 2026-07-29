@@ -169,6 +169,7 @@ class DaqMonitor:
     _RECOVERY_MESSAGES = {
         "rule_dream_daq_session_dead": "dream_daq tmux session is back up.",
         "rule_daq_control_session_dead": "daq_control tmux session is back up.",
+        "rule_no_active_run": "a run is active again — the DAQ is taking data.",
         "rule_hv_control_monitoring": "hv_control is monitoring HV again.",
         "rule_dream_daq_unknown_state": "dream_daq state is back to normal.",
         "rule_daq_control_unknown_state": "daq_control state is back to normal.",
@@ -214,6 +215,7 @@ class DaqMonitor:
             "rule_subrun_no_data",
         ]),
         ("Run lifecycle", [
+            "rule_no_active_run",
             "rule_run_ended",
             "rule_long_run_warning",
         ]),
@@ -249,6 +251,7 @@ class DaqMonitor:
         # State for the edge/event rules (see _EVENT_RULES).
         self._prev_daq_status = None    # last daq_control status seen by rule_run_ended
         self._long_run_warned = set()   # run names already given the 10-min warning
+        self._last_beam_off_severity = None  # held verdict, see rule_beam_off / _beam_off_hold
 
         self._thread = None
         self._stop_event = threading.Event()
@@ -738,6 +741,15 @@ class DaqMonitor:
         beam can legitimately read ~62 s. The old 1 min setting sat right on that edge:
         no false alarm was ever observed from it, but it was only evaluated once a
         minute, and the 15 s fast lane samples those peaks four times as often.
+
+        ⚠ A missing/stale reading is held at its last known severity via
+        _beam_off_hold, NEVER treated as "recovered". 2026-07-29: beam_watcher.py
+        restarted mid-episode (its own NXCALS session churn) and briefly wrote
+        seconds_since_pulse: null before its first fresh pulse — with a bare `return
+        False` there, that read as "beam on" and fired a false "beam is back" the
+        moment it landed, clearing a real, still-active beam-off alert. A data gap is
+        not evidence beam came back — same principle as mode_watcher.decide()'s
+        beam == 'UNKNOWN' handling ("a glitch must not trigger a changeover").
         """
         opts = self.config.get("rule_options", {}).get("rule_beam_off", {})
         thresholds = opts.get("thresholds") or {"warning": opts.get("off_minutes", 10)}
@@ -745,12 +757,13 @@ class DaqMonitor:
             with open(BEAM_STATE_FILE) as f:
                 st = json.load(f)
         except Exception:
-            return False, "beam state not available (watcher not running)"
+            return self._beam_off_hold("beam state not available (watcher not running)")
         if not st.get("connected"):
-            return False, "beam watcher disconnected (covered by rule_beam_watcher_dead)"
+            return self._beam_off_hold(
+                "beam watcher disconnected (covered by rule_beam_watcher_dead)")
         gap = st.get("seconds_since_pulse")
         if gap is None:
-            return False, "no beam pulse seen yet since the watcher started"
+            return self._beam_off_hold("no beam pulse seen yet since the watcher started")
         gap_min = gap / 60
 
         # Highest severity whose minute threshold has been reached.
@@ -758,9 +771,19 @@ class DaqMonitor:
         for sev, thr in sorted(thresholds.items(), key=lambda kv: kv[1]):
             if gap_min >= float(thr):
                 severity = sev
+        self._last_beam_off_severity = severity
         if severity:
             return severity, f"n_TOF beam has been OFF for {gap_min:.0f} min."
         return False, f"beam on (last pulse {gap:.0f}s ago)"
+
+    def _beam_off_hold(self, reason):
+        """Replay rule_beam_off's last known severity instead of clearing it when the
+        current reading is missing/stale/disconnected — see the warning in its
+        docstring. Returns (False, reason) if there was nothing active to hold."""
+        sev = self._last_beam_off_severity
+        if sev:
+            return sev, f"n_TOF beam still OFF (unconfirmed: {reason})"
+        return False, reason
 
     def rule_stream1_watcher_dead(self):
         """Alert if the stream1 file-size watcher is not running or not producing fresh
@@ -1427,6 +1450,33 @@ class DaqMonitor:
             return get_daq_control_status()["status"] in self._DAQ_ACTIVE_STATUSES
         except Exception:
             return False
+
+    def rule_no_active_run(self):
+        """Alert if daq_control is not actively taking data, for any reason at all —
+        tmux session dead, an unrecognised state, or simply sitting idle ("Run
+        Complete" / "WAITING") with nothing next queued.
+
+        This is the general backstop the other daq_control rules don't cover between
+        them, and it does not defer to them (it fires on ERROR/UNKNOWN STATE too) so
+        it still works if those more specific, cause-attributing rules are disabled.
+        It is what should have caught 2026-07-29: mode_watcher's beam->cosmics
+        changeover failed underneath a board-lock guard and daq_control sat idle,
+        correctly reporting a coherent "Run Complete" status the whole time, for
+        16 minutes before anyone noticed.
+
+        Tunable via rule_options.rule_no_active_run:
+          min_duration_seconds — default 300 (5 min); rides out a normal beam<->
+                                 cosmics changeover (run_103's took 19s; the stop
+                                 and cfg-verify steps each carry their own multi-
+                                 minute timeout in switch_mode.py, so this is not
+                                 generous, just enough to not nag on the common case)
+        """
+        info = get_daq_control_status()
+        status = info["status"]
+        if status in self._DAQ_ACTIVE_STATUSES:
+            return False, f"daq_control: {status}"
+        return True, (f'⏸️ <b>No run is active</b> — daq_control reports "{status}", '
+                     f"not taking data.")
 
     def rule_feu_unreachable(self):
         """Alert when any FEU (or the TCM) stops answering on the DREAM subnet.
