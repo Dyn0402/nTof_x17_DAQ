@@ -17,6 +17,10 @@ logs/space_scan_hint.json
 # verified view with its age instead of discarding it. Pure cache (~18 MB here),
 # rebuilt by any safety check, and meaningless on another machine.
 config/space_remote_cache.json
+# Each run's kind (beam / cosmics / pulser), cached from its own run_config.json so
+# the Disk Space tab can still name a run after the run has been deleted, plus any
+# hand-set overrides. Host-local state, rebuilt from the runs on this disk.
+config/run_labels.json
 config/current_run_state.json
 config/gas_state.json
 config/gas_command.json

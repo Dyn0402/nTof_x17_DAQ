@@ -459,6 +459,49 @@
         .ds-chip.empty     { opacity: 0.45; cursor: not-allowed; }
         .ds-chip.empty:hover { border-color: var(--border); }
 
+        /* ---------- Disk Space: run classification ---------- */
+        /* What KIND of run this is, from run_config.json's beam_type. The whole
+           point of clearing the disk is "keep beam, drop the rest", so the class
+           gets its own colour and its own filter — green is the one you keep. */
+        .ds-class {
+            display: inline-block; border: 1px solid currentColor; border-radius: 6px;
+            padding: 0 0.42rem; font-size: 0.72rem; font-weight: 700;
+            letter-spacing: 0.03em; text-transform: uppercase; white-space: nowrap;
+            background: rgba(255,255,255,0.03);
+        }
+        .ds-class[data-c="beam"]     { color: var(--ok); }
+        .ds-class[data-c="cosmics"]  { color: #6fb6ff; }
+        .ds-class[data-c="pulser"]   { color: var(--warn); }
+        .ds-class[data-c="pedestal"] { color: #8fa6bd; }
+        .ds-class[data-c="other"]    { color: #c08bd8; }
+        .ds-class[data-c="unknown"]  { color: var(--muted); }
+        .ds-class.editable           { cursor: pointer; }
+        .ds-class.editable:hover     { background: rgba(255,255,255,0.10); }
+        /* A hand-pinned class must be visibly different from one read off the run
+           config, or an override becomes invisible the moment you scroll away. */
+        .ds-class.manual             { border-style: dashed; }
+        .ds-class-inline             { margin-left: 0.4rem; }
+        .ds-class-sel {
+            background: var(--panel-2); color: var(--text); border: 1px solid var(--sec);
+            border-radius: 6px; font-size: 0.74rem; padding: 0.05rem 0.2rem;
+        }
+
+        /* Class filter: which kinds of run the table shows. Unlike the component
+           chips above, "on" here means VISIBLE, not "will be deleted" — so an
+           active chip is neutral-bright and an inactive one is struck out. */
+        .ds-fchip {
+            display: inline-flex; align-items: baseline; gap: 0.4rem;
+            border: 1px solid var(--border); border-radius: 999px;
+            padding: 0.24rem 0.7rem; cursor: pointer; user-select: none;
+            background: var(--panel-2); font-size: 0.78rem;
+            transition: border-color .12s, opacity .12s;
+        }
+        .ds-fchip .n      { font-weight: 700; }
+        .ds-fchip .s      { font-family: var(--mono); color: var(--muted); font-size: 0.74rem; }
+        .ds-fchip.off     { opacity: 0.4; text-decoration: line-through; }
+        .ds-fchip:hover   { border-color: var(--sec); }
+        .ds-fchip.empty   { display: none; }
+
         /* Component columns. .sel marks a column whose chip is active, i.e. bytes
            that would actually go if the row is ticked.
            Red (.sel) means staged AND verified safe — it will really be deleted.

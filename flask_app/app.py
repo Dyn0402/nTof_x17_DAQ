@@ -2935,6 +2935,44 @@ def space_scan():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/space/labels")
+def space_labels():
+    """Every known run's class (beam / cosmics / pulser / …) and where it came
+    from. The scans already carry this per run; this is the standalone view, and
+    it also covers runs no longer on disk."""
+    try:
+        runs = sorted(set(space_manager.list_runs("hdd"))
+                      | set(space_manager.list_runs("ssd"))
+                      | set(space_manager._read_run_labels()))
+        return jsonify({
+            "runs": space_manager.run_classes(runs),
+            "classes": {k: dict(space_manager.RUN_CLASSES[k], key=k)
+                        for k in space_manager.RUN_CLASS_ORDER},
+            "class_order": space_manager.RUN_CLASS_ORDER,
+            "path": space_manager.RUN_LABELS_PATH,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/space/label", methods=["POST"])
+def space_label():
+    """Pin a run's class by hand when run_config.json's beam_type does not match
+    what the run was really for. class='auto' drops the override. Writes only to
+    config/run_labels.json — never to the run data itself."""
+    data = request.get_json(silent=True) or {}
+    run = data.get("run")
+    klass = data.get("class")
+    try:
+        res = space_manager.set_run_label(run, klass)
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+    if not res.get("success"):
+        return jsonify(res), 400
+    log_event("SPACE_LABEL", "disk_space", run=run, cls=klass)
+    return jsonify(res)
+
+
 # --- Background jobs for the long space operations -------------------------
 # The EOS-backed operations take ~25 s (one whole-tree listing plus the local
 # walk) to minutes (deleting), which is too long to hold a request open and gives

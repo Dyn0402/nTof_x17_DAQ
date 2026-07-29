@@ -1290,6 +1290,27 @@
         </div>
         <div class="btn-group-block mb-0 ms-auto text-muted" id="ds-restore-meta" style="font-size:0.8rem;"></div>
       </div>
+
+      <!-- Run-type filter. Shared by all three modes: it decides which runs the
+           table below lists at all, so "Select all safe" can never reach a run
+           whose kind is filtered out. -->
+      <div id="ds-class-bar" class="mt-3" style="display:none;">
+        <div class="d-flex align-items-baseline gap-2 mb-1" style="flex-wrap:wrap;">
+          <label class="form-label mb-0">Run type</label>
+          <span class="text-muted" style="font-size:0.78rem;">
+            read from each run's <span class="font-monospace">run_config.json</span>
+            (<span class="font-monospace">beam_type</span>). Click a type to hide it —
+            hidden runs are not listed and cannot be selected. Click a badge in the table
+            to correct a run's type by hand.</span>
+        </div>
+        <div class="d-flex gap-2 align-items-center" style="flex-wrap:wrap;">
+          <div id="ds-class-chips" class="d-flex gap-2" style="flex-wrap:wrap;"></div>
+          <button class="btn btn-outline-secondary btn-sm ds-class-preset ms-2"
+                  data-preset="nonbeam">Only non-beam</button>
+          <button class="btn btn-outline-secondary btn-sm ds-class-preset"
+                  data-preset="all">Show all</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1353,6 +1374,8 @@
       <span id="ds-summary" class="panel-header-note"></span>
       <div class="ms-auto d-flex gap-2 align-items-center">
         <button id="ds-select-safe" class="btn btn-outline-secondary btn-sm">Select all safe</button>
+        <button id="ds-select-nonbeam" class="btn btn-outline-secondary btn-sm"
+                title="Tick every safe run that is not beam data (cosmics, pulser, other)">Select safe non-beam</button>
         <button id="ds-clear-sel" class="btn btn-outline-secondary btn-sm">Clear</button>
         <button id="ds-delete" class="btn btn-danger btn-sm" disabled>Delete selected…</button>
       </div>
@@ -1360,13 +1383,16 @@
     <div class="panel-body">
       <p class="text-muted mb-2" style="font-size:0.8rem;">
         Tip: tick a checkbox, then <b>Shift-click</b> another to select every safe run in
-        between (like a file list). Use <b>Select all safe</b> to grab them all at once.</p>
+        between (like a file list). Use <b>Select all safe</b> to grab them all at once, or
+        <b>Select safe non-beam</b> to tick every safe cosmics / pulser / other run and leave
+        the beam data alone. <b>Type</b> comes from the run's own
+        <span class="font-monospace">run_config.json</span>; click a badge to correct it.</p>
       <div class="table-responsive">
         <table class="table table-dark table-sm align-middle mb-0" id="ds-table">
           <thead>
             <tr>
               <th style="width:2.2rem;"></th>
-              <th>Run</th><th class="text-end">Size</th>
+              <th>Run</th><th>Type</th><th class="text-end">Size</th>
               <th>Backup status</th><th>Safe to delete</th>
             </tr>
           </thead>
@@ -5209,6 +5235,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   let modeGen = 0;
   const stale = (gen) => gen !== modeGen;
   let lastScan = null;           // last /space/scan (delete side)
+  let lastLocal = null;          // last /space/local (unverified listing)
   let lastRestore = null;        // last /space/restore_scan
   const delSel = new Set();      // runs selected for deletion
   const resSel = new Set();      // runs selected for restore
@@ -5263,10 +5290,173 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
         sync();
       });
     });
+    sync();     // adopt whatever the renderer pre-ticked (selection survives a re-render)
     return {
       all()   { cbs.forEach(c => c.checked = true);  lastIdx = cbs.length ? cbs.length - 1 : null; sync(); },
       clear() { cbs.forEach(c => c.checked = false); lastIdx = null; sync(); },
+      sync,
     };
+  }
+
+  // ================= RUN CLASSIFICATION =================
+  // Freeing the disk is nearly always "keep the beam runs, drop the rest", and
+  // every run dir already answers that: run_config.json carries the beam_type the
+  // run was taken with (neutrons / cosmics / pulser). The server turns that into
+  // a class and remembers it in config/run_labels.json, so the label outlives the
+  // run_config.json it came from and the Restore tab can still name what is on
+  // EOS. This is a VIEW aid only — the delete guards (EOS verification, active
+  // run, newest-N) are unchanged and still decide what may actually go.
+  let classDefs = null;             // {key: {label, keep, hint}} from the server
+  let classOrder = [];
+  const classHide = new Set();      // classes switched OFF, i.e. not listed at all
+
+  const CLASS_FALLBACK = { label: "Unknown", keep: true, hint: "" };
+  const classDef = (c) => (classDefs && classDefs[c]) || CLASS_FALLBACK;
+  const classOf = (r) => r.class || "unknown";
+  // Filtering happens at RENDER time, so a hidden run has no checkbox at all and
+  // "Select all safe" can never reach it. That is the property worth having: what
+  // you see is exactly what a bulk select can touch.
+  const visibleRuns = (runs) => (runs || []).filter(r => !classHide.has(classOf(r)));
+
+  function classTip(r) {
+    const src = r.class_source === "manual"
+        ? "type set by hand (config/run_labels.json) — click to change"
+      : r.class_source === "run_config"
+        ? `from run_config.json: beam_type = ${r.beam_type || "?"}`
+      : r.class_source === "cached"
+        ? `remembered from run_config.json (beam_type = ${r.beam_type || "?"}) — the run is no longer on disk`
+        : "no run_config.json and no stored label";
+    return [classDef(classOf(r)).hint, src,
+            r.start_time ? `started ${r.start_time}` : "", r.trigger]
+             .filter(Boolean).join("\n\n");
+  }
+
+  function classBadge(r, editable) {
+    const c = classOf(r);
+    return `<span class="ds-class${r.class_source === "manual" ? " manual" : ""}`
+         + `${editable ? " editable" : ""}" data-c="${esc(c)}" data-run="${esc(r.run)}"`
+         + ` title="${esc(classTip(r))}">${esc(classDef(c).label)}</span>`;
+  }
+
+  // An empty table means two very different things — no runs at all, or every
+  // run filtered out — and only the second one has an obvious fix.
+  function showEmpty(id, runs) {
+    const el = $(id);
+    el.textContent = (runs && runs.length)
+      ? `All ${runs.length} run(s) here are hidden by the run-type filter — click "Show all" above.`
+      : "No runs found.";
+    el.classList.remove("d-none");
+  }
+
+  // "showing 12 of 37" — without it a filtered table looks like runs vanished.
+  function filterNote(runs) {
+    const shown = visibleRuns(runs).length, total = (runs || []).length;
+    return shown === total ? "" :
+      ` · <span style="color:var(--warn);">showing ${shown} of ${total}</span>`;
+  }
+
+  function renderClassBar(data) {
+    const bar = $("ds-class-bar");
+    if (!data || !data.class_order) { bar.style.display = "none"; return; }
+    classDefs = data.classes; classOrder = data.class_order;
+    const tot = data.class_totals || {};
+    bar.style.display = "";
+    $("ds-class-chips").innerHTML = classOrder.map(c => {
+      const t = tot[c] || { runs: 0, bytes_h: "0 B", safe_bytes: 0 };
+      // Only a verified scan knows what is actually reclaimable; before that the
+      // safe totals are all zero and printing them would read as "nothing to gain".
+      const free = (data.verified && t.safe_bytes)
+        ? ` <span class="s" style="color:var(--bad);">${esc(t.safe_bytes_h)} free-able</span>` : "";
+      return `<div class="ds-fchip${classHide.has(c) ? " off" : ""}${t.runs ? "" : " empty"}"
+                   data-c="${esc(c)}" title="${esc(classDef(c).hint)}">
+                <span class="n" style="color:var(--text);">${esc(classDef(c).label)}</span>
+                <span class="s">${t.runs} run(s) · ${esc(t.bytes_h)}</span>${free}</div>`;
+    }).join("");
+    $("ds-class-chips").querySelectorAll(".ds-fchip").forEach(el =>
+      el.addEventListener("click", () => {
+        const c = el.dataset.c;
+        if (classHide.has(c)) classHide.delete(c); else classHide.add(c);
+        rerenderCurrent();
+      }));
+  }
+
+  // Re-paint whichever table is on screen from the data already in hand — no
+  // refetch, because a filter toggle changes nothing on the server.
+  function rerenderCurrent() {
+    if (mode === "free") {
+      const d = lastScan || lastLocal;
+      if (!d) return;
+      renderClassBar(d);
+      if (lastScan) { renderDeleteRows(lastScan); updateFreeSummary(lastScan, true); }
+      else          { renderLocalRows(lastLocal); updateFreeSummary(lastLocal, false); }
+    } else if (mode === "prune") {
+      if (!pruneData) return;
+      renderClassBar(pruneData); renderPruneTable(); recalcPrune();
+    } else if (mode === "restore") {
+      if (!lastRestore) return;
+      renderClassBar(lastRestore); renderRestoreRows(lastRestore);
+    }
+  }
+
+  // ---- correcting a run's type by hand ----
+  // beam_type says what the beam WAS, not always what the run was FOR: a
+  // systematics scan taken while the beam happened to be up is tagged
+  // `neutrons`. Overrides go to config/run_labels.json only — never into the run
+  // directory, so nothing here can touch data.
+  function wireClassEditors(root) {
+    root.querySelectorAll(".ds-class.editable").forEach(el =>
+      el.addEventListener("click", (e) => { e.stopPropagation(); openClassEditor(el); }));
+  }
+
+  function openClassEditor(el) {
+    const run = el.dataset.run;
+    const sel = document.createElement("select");
+    sel.className = "ds-class-sel";
+    sel.innerHTML = `<option value="auto">auto (run_config.json)</option>`
+      + classOrder.filter(c => c !== "unknown").map(c =>
+          `<option value="${c}">${esc(classDef(c).label)}</option>`).join("");
+    sel.value = el.classList.contains("manual") ? el.dataset.c : "auto";
+    el.replaceWith(sel);
+    sel.focus();
+    let done = false;
+    const finish = () => { if (!done) { done = true; rerenderCurrent(); } };
+    sel.addEventListener("blur", finish);
+    sel.addEventListener("change", async () => {
+      done = true;
+      try {
+        const r = await fetch("/space/label", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ run: run, class: sel.value }) });
+        const d = await r.json();
+        if (!r.ok || d.success === false) throw new Error(d.message || "failed");
+      } catch (e) {
+        alert(`Could not set the type of ${run}: ${e.message}`);
+      }
+      // Re-read rather than patching the row: the class totals in the chips are
+      // computed server-side and would otherwise drift out of step with the table.
+      refreshFreeView();
+    });
+  }
+
+  async function refreshFreeView() {
+    const gen = modeGen, disk = diskSel.value;
+    try {
+      if (lastScan) {
+        const r = await fetch(`/space/scan?disk=${encodeURIComponent(disk)}&cached=1`);
+        const d = await r.json();
+        if (stale(gen)) return;
+        if (r.ok && d.success !== false && d.verified) {
+          lastScan = d; renderClassBar(d); renderDeleteRows(d); updateFreeSummary(d, true);
+          return;
+        }
+      }
+      const r = await fetch(`/space/local?disk=${encodeURIComponent(disk)}`);
+      const d = await r.json();
+      if (stale(gen) || !r.ok || d.success === false) return;
+      if (lastScan) return;     // replay hiccup — keep the verified view, don't downgrade it
+      lastLocal = d;
+      renderClassBar(d); renderLocalRows(d); updateFreeSummary(d, false);
+    } catch (e) { /* keep the current view rather than blanking it */ }
   }
 
   // ================= FREE SPACE (delete) =================
@@ -5276,25 +5466,33 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     b.textContent = delSel.size ? `Delete selected (${delSel.size})…` : "Delete selected…";
   }
   function renderDeleteRows(scan) {
-    const tb = $("ds-tbody"); tb.innerHTML = ""; delSel.clear();
-    if (!scan.runs.length) { $("ds-empty").classList.remove("d-none"); updateDelBtn(); return; }
+    const tb = $("ds-tbody");
+    // A re-render (filter toggle, type edit) must not silently drop what is
+    // already ticked — re-tick anything still on screen.
+    const prev = new Set(delSel);
+    tb.innerHTML = ""; delSel.clear();
+    const rows = visibleRuns(scan.runs);
+    if (!rows.length) { showEmpty("ds-empty", scan.runs); updateDelBtn(); return; }
     $("ds-empty").classList.add("d-none");
-    for (const r of scan.runs) {
+    for (const r of rows) {
       const tr = document.createElement("tr");
       const badge = r.active ? `<span class="shift-flag-na">● acquiring</span>`
         : r.safe ? `<span class="shift-flag-ok">✓ SAFE</span>`
                  : `<span class="shift-flag-bad">✗ not safe</span>`;
       tr.innerHTML = `
-        <td>${r.safe ? `<input type="checkbox" class="form-check-input ds-cb" data-run="${r.run}">`
+        <td>${r.safe ? `<input type="checkbox" class="form-check-input ds-cb" data-run="${r.run}"${prev.has(r.run) ? " checked" : ""}>`
                      : `<input type="checkbox" class="form-check-input" disabled title="not safe to delete">`}</td>
         <td><button class="btn btn-link btn-sm p-0 ds-expand" data-run="${r.run}"
                     title="Show subruns" style="text-decoration:none; width:1.2rem;">▸</button>
             <b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}${r.newest && !r.active ? ' <span class="text-muted">(newest)</span>' : ''}</td>
+        <td>${classBadge(r, true)}</td>
         <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
         <td style="font-size:0.82rem; color:var(--muted);">${r.reason}</td>
         <td>${badge}</td>`;
       tb.appendChild(tr);
     }
+    wireClassEditors(tb);
+    setBulkEnabled(true);
     delTable = wireTable(tb, "ds-cb", delSel, updateDelBtn);
     // Per-run dropdown: expand to prune individual subruns (needed for one long run
     // that is too big / still-acquiring to delete whole).
@@ -5422,9 +5620,10 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   // view.
   function renderLocalRows(d) {
     const tb = $("ds-tbody"); tb.innerHTML = ""; delSel.clear(); delTable = null;
-    if (!d.runs.length) { $("ds-empty").classList.remove("d-none"); updateDelBtn(); return; }
+    const rows = visibleRuns(d.runs);
+    if (!rows.length) { showEmpty("ds-empty", d.runs); updateDelBtn(); return; }
     $("ds-empty").classList.add("d-none");
-    for (const r of d.runs) {
+    for (const r of rows) {
       const tr = document.createElement("tr");
       const badge = r.active ? `<span class="shift-flag-na">● acquiring</span>`
         : (r.newest || r.incomplete) ? `<span class="shift-flag-bad">✗ not safe</span>`
@@ -5432,12 +5631,34 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       tr.innerHTML = `
         <td><input type="checkbox" class="form-check-input" disabled title="run the safety check first"></td>
         <td><b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}${r.newest && !r.active ? ' <span class="text-muted">(newest)</span>' : ''}</td>
+        <td>${classBadge(r, true)}</td>
         <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
         <td style="font-size:0.82rem; color:var(--muted);">${r.note}</td>
         <td>${badge}</td>`;
       tb.appendChild(tr);
     }
+    wireClassEditors(tb);
+    setBulkEnabled(false);
     updateDelBtn();
+  }
+
+  // Nothing is selectable until the EOS check has said what is safe, so the bulk
+  // buttons are dead in the unverified view — better off than silently doing
+  // nothing when clicked.
+  function setBulkEnabled(on) {
+    $("ds-select-safe").disabled = !on;
+    $("ds-select-nonbeam").disabled = !on;
+  }
+
+  // The one place the free-space summary line is written, so the filter note is
+  // consistent whether the view came from a check, a reload replay or a re-render.
+  function updateFreeSummary(d, verified) {
+    $("ds-summary").innerHTML = verified
+      ? `${d.n_safe}/${d.n_runs} safe · would free <b>${d.safe_bytes_h}</b>`
+        + (d.active_run ? ` · active: ${d.active_run}` : "") + filterNote(d.runs)
+      : `${d.n_runs} runs · <b>${d.total_h}</b> on disk`
+        + (d.active_run ? ` · active: ${d.active_run}` : "")
+        + ` — run the safety check to see what is safe to delete` + filterNote(d.runs);
   }
   async function loadLocal() {
     if (mode !== "free") return;
@@ -5455,10 +5676,9 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       if (rc.ok && dc.success !== false && dc.verified && !lastScan) {
         lastScan = dc;
         $("ds-results-panel").style.display = "";
+        renderClassBar(dc);
         renderDeleteRows(dc);
-        $("ds-summary").innerHTML =
-          `${dc.n_safe}/${dc.n_runs} safe · would free <b>${dc.safe_bytes_h}</b>` +
-          (dc.active_run ? ` · active: ${dc.active_run}` : "");
+        updateFreeSummary(dc, true);
         $("ds-scan-meta").innerHTML =
           `${dc.n_runs} run(s) verified against EOS &mdash; good as of `
           + `<b${dc.checked_stale ? ' style="color:var(--warn);"' : ''}>`
@@ -5476,12 +5696,11 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       if (!r.ok || d.success === false) throw new Error(d.message || "listing failed");
       if (stale(gen)) return;
       if (lastScan) return;   // an EOS-verified scan is on screen — don't downgrade it
+      lastLocal = d;
       $("ds-results-panel").style.display = "";
+      renderClassBar(d);
       renderLocalRows(d);
-      $("ds-summary").innerHTML =
-        `${d.n_runs} runs · <b>${d.total_h}</b> on disk` +
-        (d.active_run ? ` · active: ${d.active_run}` : "") +
-        ` — run the safety check to see what is safe to delete`;
+      updateFreeSummary(d, false);
       $("ds-scan-meta").textContent =
         `Disk contents as of ${d.scanned_at} (not yet verified against EOS)`;
     } catch (e) {
@@ -5506,10 +5725,9 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       if (stale(gen)) return;          // operator moved to another mode meanwhile
       lastScan = d;
       $("ds-results-panel").style.display = "";
+      renderClassBar(d);
       renderDeleteRows(d);
-      $("ds-summary").innerHTML =
-        `${d.n_safe}/${d.n_runs} safe · would free <b>${d.safe_bytes_h}</b>` +
-        (d.active_run ? ` · active: ${d.active_run}` : "");
+      updateFreeSummary(d, true);
       $("ds-scan-meta").textContent = `Scanned ${d.n_runs} runs at ${d.scanned_at}`;
       loadUsage();
     } catch (e) {
@@ -5536,14 +5754,16 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   }
   function renderRestoreRows(scan) {
     const tb = $("ds-restore-tbody"); tb.innerHTML = ""; resSel.clear();
-    if (!scan.runs.length) { $("ds-restore-empty").classList.remove("d-none"); updateResBtn(); return; }
+    const rows = visibleRuns(scan.runs);
+    if (!rows.length) { showEmpty("ds-restore-empty", scan.runs); updateResBtn(); return; }
     $("ds-restore-empty").classList.add("d-none");
-    for (const r of scan.runs) {
+    for (const r of rows) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${r.restorable ? `<input type="checkbox" class="form-check-input ds-rcb" data-run="${r.run}">`
                            : `<input type="checkbox" class="form-check-input" disabled title="nothing to restore">`}</td>
-        <td><b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}</td>
+        <td><b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}
+            <span class="ds-class-inline">${classBadge(r, false)}</span></td>
         <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
         <td>${restoreStatus(r)}</td>
         <td class="text-end" style="font-family:var(--mono);">${r.fetch_files ? r.fetch_h : '—'}</td>`;
@@ -5564,10 +5784,11 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       if (stale(gen)) return;          // operator moved to another mode meanwhile
       lastRestore = d;
       $("ds-restore-panel").style.display = "";
+      renderClassBar(d);
       renderRestoreRows(d);
       $("ds-restore-summary").innerHTML =
         `${d.n_restorable}/${d.n_runs} restorable · would fetch <b>${d.fetch_bytes_total_h}</b>` +
-        (d.active_run ? ` · active: ${d.active_run}` : "");
+        (d.active_run ? ` · active: ${d.active_run}` : "") + filterNote(d.runs);
       $("ds-restore-meta").textContent = `Checked ${d.n_runs} EOS runs at ${d.scanned_at}`;
       loadUsage();
     } catch (e) {
@@ -5753,10 +5974,17 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
 
     const tb = $("ds-prune-tbody");
     tb.innerHTML = "";
-    if (!pruneData.runs.length) { $("ds-prune-empty").classList.remove("d-none"); return; }
+    const prows = visibleRuns(pruneData.runs);
+    // A run hidden by the type filter must not stay ticked: it has no row, so
+    // the operator can neither see nor untick bytes the delete would still take.
+    const shown = new Set(prows.map(r => r.run));
+    for (const k of [...pruneSel]) {
+      if (!shown.has(k.split(" ")[0])) pruneSel.delete(k);
+    }
+    if (!prows.length) { showEmpty("ds-prune-empty", pruneData.runs); return; }
     $("ds-prune-empty").classList.add("d-none");
 
-    for (const r of pruneData.runs) {
+    for (const r of prows) {
       const st = runCheckState(r);
       const open = expanded.has(r.run);
       const tr = document.createElement("tr");
@@ -5771,6 +5999,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
              ${st === "all" ? "checked" : ""} ${r.guard ? "disabled" : ""}></td>
          <td class="ds-run-name" data-run="${esc(r.run)}">
            <span class="ds-caret${open ? " open" : ""}">▸</span><b>${esc(r.run)}</b>
+           <span class="ds-class-inline">${classBadge(r, false)}</span>
            ${r.active ? ' <span class="text-muted">(acquiring)</span>' : ""}
            ${r.newest && !r.active ? ' <span class="text-muted">(newest)</span>' : ""}
            <span class="text-muted" style="font-family:var(--mono); font-size:0.78rem;"> ${r.size_h}</span>
@@ -5971,6 +6200,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
         if (!r2 || !r2.subruns.some(s => s.subrun === sub)) pruneSel.delete(k);
       }
       $("ds-prune-panel").style.display = "";
+      renderClassBar(d);
       renderChips(); renderPruneTable(); recalcPrune();
       $("ds-prune-meta").innerHTML = d.unverifiable
         ? `<span style="color:var(--bad);">Could not reach EOS — nothing can be marked safe</span>`
@@ -6403,7 +6633,28 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   $("ds-check").addEventListener("click", runCheck);
   $("ds-delete").addEventListener("click", openDelete);
   $("ds-select-safe").addEventListener("click", () => { if (delTable) delTable.all(); });
+  // The button this whole feature exists for: tick every safe run that is NOT
+  // beam data, so a full disk can be cleared without hunting run by run. Only
+  // rows on screen are touched, and only ones the server already called safe.
+  $("ds-select-nonbeam").addEventListener("click", () => {
+    if (!delTable || !lastScan) return;
+    const byRun = new Map(lastScan.runs.map(r => [r.run, r]));
+    $("ds-tbody").querySelectorAll(".ds-cb").forEach(cb => {
+      const r = byRun.get(cb.dataset.run);
+      cb.checked = !!(r && classDef(classOf(r)).keep === false);
+    });
+    delTable.sync();
+  });
   $("ds-clear-sel").addEventListener("click", () => { if (delTable) delTable.clear(); });
+
+  document.querySelectorAll(".ds-class-preset").forEach(b =>
+    b.addEventListener("click", () => {
+      classHide.clear();
+      if (b.dataset.preset === "nonbeam") {
+        classOrder.filter(c => classDef(c).keep).forEach(c => classHide.add(c));
+      }
+      rerenderCurrent();
+    }));
   diskSel.addEventListener("change", () => {
     $("ds-results-panel").style.display = "none"; lastScan = null; loadLocal(); });
 
@@ -6413,15 +6664,18 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     b.addEventListener("click", () => applyPreset(b.dataset.preset)));
   $("ds-prune-expand").addEventListener("click", () => {
     if (!pruneData) return;
-    const openAll = expanded.size < pruneData.runs.length;
+    const rows = visibleRuns(pruneData.runs);
+    const openAll = expanded.size < rows.length;
     expanded.clear();
-    if (openAll) pruneData.runs.forEach(r => expanded.add(r.run));
+    if (openAll) rows.forEach(r => expanded.add(r.run));
     $("ds-prune-expand").textContent = openAll ? "Collapse all" : "Expand all";
     renderPruneTable();
   });
+  // Bulk select stays inside the type filter — same rule as the free-space table:
+  // nothing off screen may be selected.
   $("ds-prune-select").addEventListener("click", () => {
     if (!pruneData) return;
-    for (const r of pruneData.runs) {
+    for (const r of visibleRuns(pruneData.runs)) {
       if (r.guard) continue;
       for (const s of r.subruns) if (!s.guard) pruneSel.add(skey(r.run, s.subrun));
     }

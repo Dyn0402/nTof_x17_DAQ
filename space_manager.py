@@ -606,6 +606,224 @@ def _local_tree() -> dict:
     return tree
 
 
+# --- Run classification ----------------------------------------------------
+# "Which of these runs is beam data?" is the question that decides what may be
+# deleted when the disk fills, and it is already answered on disk: every run dir
+# carries a run_config.json whose `beam_type` field was set by the run config
+# that took it (neutrons / cosmics / pulser). No new label file is needed for
+# the runs we have — but two things are, and this is what run_labels.json adds:
+#   1. the class must SURVIVE the run being deleted, so the Restore tab (and any
+#      later look at EOS) can still say what a run was after its run_config.json
+#      has gone with the rest of the run. Every successful lookup is cached.
+#   2. a run whose beam_type does not match what the run was actually FOR (a
+#      systematics scan tagged `neutrons` because the beam happened to be on)
+#      needs a manual override, and the operator must be able to set it without
+#      editing data directories.
+RUN_LABELS_PATH = os.path.join(BASE_DIR, 'config', 'run_labels.json')
+
+# The classes the GUI groups by, in display order. 'keep' is advisory only —
+# it drives the default filter and colour, never the delete guards.
+RUN_CLASSES = {
+    'beam':     {'label': 'Beam',     'keep': True,
+                 'hint': 'neutron beam data — the physics runs'},
+    'cosmics':  {'label': 'Cosmics',  'keep': False,
+                 'hint': 'beam-off cosmic-ray runs'},
+    'pulser':   {'label': 'Pulser',   'keep': False,
+                 'hint': 'electronics/DAQ tests driven by the pulser'},
+    'pedestal': {'label': 'Pedestal', 'keep': False,
+                 'hint': 'pedestal-only acquisition'},
+    'other':    {'label': 'Other',    'keep': False,
+                 'hint': 'not beam data (tests, calibration, unclassified type)'},
+    'unknown':  {'label': 'Unknown',  'keep': True,
+                 'hint': 'no run_config.json and no label — treated as keep'},
+}
+RUN_CLASS_ORDER = ['beam', 'cosmics', 'pulser', 'pedestal', 'other', 'unknown']
+
+# run_config.json `beam_type` -> class. Anything present but unrecognised falls
+# to 'other'; anything ABSENT falls to 'unknown', which is deliberately in the
+# keep column — an unclassifiable run must never look disposable.
+_BEAM_TYPE_CLASS = {
+    'neutrons': 'beam',   'neutron': 'beam',   'beam': 'beam',
+    'protons': 'beam',    'proton': 'beam',
+    'cosmics': 'cosmics', 'cosmic': 'cosmics', 'cosmic rays': 'cosmics',
+    'pulser': 'pulser',   'pulse': 'pulser',
+    'pedestal': 'pedestal', 'pedestals': 'pedestal',
+    'none': 'other',      'off': 'other',      'test': 'other',
+}
+
+# run -> (stat signature, meta) so a scan does not re-parse 37 x ~86 kB of JSON
+# on every poll. Keyed on (mtime, size) so an edited config is picked up.
+_run_meta_cache = {}
+
+
+def _run_config_path(run: str) -> Path:
+    return HDD_RUNS_DIR / run / 'run_config.json'
+
+
+def _run_config_meta(run: str) -> dict:
+    """beam_type / start_time / trigger blurb from a run's run_config.json, or {}
+    when there is none (deleted run, SSD-only staging, hand-made directory)."""
+    p = _run_config_path(run)
+    try:
+        st = p.stat()
+    except OSError:
+        return {}
+    sig = (st.st_mtime, st.st_size)
+    hit = _run_meta_cache.get(run)
+    if hit and hit[0] == sig:
+        return hit[1]
+    try:
+        with open(p) as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    trig = str(cfg.get('trigger') or '').strip().replace('\n', ' ')
+    meta = {
+        'beam_type': str(cfg.get('beam_type') or '').strip(),
+        'target_type': str(cfg.get('target_type') or '').strip(),
+        'start_time': str(cfg.get('start_time') or '').strip(),
+        'n_subruns': len(cfg.get('sub_runs') or []),
+        'trigger': (trig[:237] + '…') if len(trig) > 240 else trig,
+    }
+    _run_meta_cache[run] = (sig, meta)
+    return meta
+
+
+def _read_run_labels() -> dict:
+    try:
+        with open(RUN_LABELS_PATH) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    runs = d.get('runs')
+    return runs if isinstance(runs, dict) else {}
+
+
+def _write_run_labels(runs: dict):
+    """Atomic rewrite — the watcher and Flask both classify, and a torn file here
+    would silently lose the labels of runs that no longer exist on disk."""
+    tmp = RUN_LABELS_PATH + '.tmp'
+    try:
+        os.makedirs(os.path.dirname(RUN_LABELS_PATH), exist_ok=True)
+        with open(tmp, 'w') as f:
+            json.dump({'updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                       'runs': runs}, f, indent=1, sort_keys=True)
+        os.replace(tmp, RUN_LABELS_PATH)
+    except OSError:
+        pass
+
+
+def classify_run(run: str, labels: dict = None) -> dict:
+    """What kind of run this is, and where that answer came from.
+
+    Resolution order: a manual override always wins; otherwise the run's own
+    run_config.json; otherwise the cached class from the last time the config
+    WAS readable (this is what keeps a deleted run labelled); otherwise unknown.
+    """
+    stored = (labels if labels is not None else _read_run_labels()).get(run) or {}
+    if stored.get('manual') and stored.get('class') in RUN_CLASSES:
+        klass, source = stored['class'], 'manual'
+        meta = _run_config_meta(run) or stored
+    else:
+        meta = _run_config_meta(run)
+        bt = (meta.get('beam_type') or '').lower()
+        if bt:
+            klass, source = _BEAM_TYPE_CLASS.get(bt, 'other'), 'run_config'
+        elif stored.get('class') in RUN_CLASSES:
+            klass, source = stored['class'], 'cached'
+            meta = stored
+        else:
+            klass, source = 'unknown', 'none'
+    return {
+        'class': klass,
+        'class_label': RUN_CLASSES[klass]['label'],
+        'keep': RUN_CLASSES[klass]['keep'],
+        'source': source,
+        'beam_type': meta.get('beam_type', ''),
+        'start_time': meta.get('start_time', ''),
+        'trigger': meta.get('trigger', ''),
+    }
+
+
+def run_classes(runs) -> dict:
+    """Classify a list of runs in one pass and refresh the persistent cache, so
+    the label outlives the run_config.json it was read from."""
+    labels = _read_run_labels()
+    out, dirty = {}, False
+    for run in runs:
+        info = classify_run(run, labels)
+        out[run] = info
+        if info['source'] in ('run_config', 'manual'):
+            keep = {k: info[k] for k in
+                    ('class', 'beam_type', 'start_time', 'trigger') if info[k]}
+            keep['manual'] = info['source'] == 'manual'
+            if labels.get(run) != keep:
+                labels[run] = keep
+                dirty = True
+    if dirty:
+        _write_run_labels(labels)
+    return out
+
+
+def set_run_label(run: str, klass) -> dict:
+    """Pin (or clear) a run's class by hand. klass None/'' /'auto' drops the
+    override and lets run_config.json decide again."""
+    if not RUN_NAME_RE.match(run or ''):
+        return {'success': False, 'message': f'bad run name {run!r}'}
+    labels = _read_run_labels()
+    if klass in (None, '', 'auto'):
+        cur = labels.get(run)
+        if cur and cur.get('manual'):
+            cur.pop('manual', None)
+            cur.pop('class', None)
+            labels[run] = cur
+        _write_run_labels(labels)
+    elif klass in RUN_CLASSES:
+        entry = dict(labels.get(run) or {})
+        entry['class'] = klass
+        entry['manual'] = True
+        entry['labelled_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        labels[run] = entry
+        _write_run_labels(labels)
+    else:
+        return {'success': False, 'message': f'unknown class {klass!r}'}
+    return {'success': True, 'run': run, 'label': classify_run(run)}
+
+
+def _attach_classes(runs_out: list):
+    """Stamp class/class_label/beam_type onto each run dict of a scan result and
+    return the per-class byte rollup the GUI's filter chips display."""
+    cls = run_classes([r['run'] for r in runs_out])
+    totals = {k: {'runs': 0, 'bytes': 0, 'safe_runs': 0, 'safe_bytes': 0}
+              for k in RUN_CLASS_ORDER}
+    for r in runs_out:
+        info = cls.get(r['run'], {})
+        r.update({k: info.get(k) for k in
+                  ('class', 'class_label', 'beam_type', 'start_time', 'trigger')})
+        # 'source' is renamed on the way out: a bare key that generic would be
+        # too easy to collide with something else the scan wants to report.
+        r['class_source'] = info.get('source', 'none')
+        t = totals[info.get('class', 'unknown')]
+        t['runs'] += 1
+        t['bytes'] += r.get('size', 0)
+        # "Reclaimable" means the whole run in the free-space view, but only the
+        # EOS-verified components in the prune view — the two scans carry
+        # different verdicts and the chip totals must match what each can free.
+        if 'safe' in r:
+            if r['safe']:
+                t['safe_runs'] += 1
+                t['safe_bytes'] += r.get('size', 0)
+        elif 'components' in r:
+            got = sum(v.get('safe_size', 0) for v in r['components'].values())
+            t['safe_bytes'] += got
+            if got:
+                t['safe_runs'] += 1
+    for t in totals.values():
+        t['bytes_h'] = human(t['bytes'])
+        t['safe_bytes_h'] = human(t['safe_bytes'])
+    return totals
+
+
 # --- Helpers ---------------------------------------------------------------
 
 def _run_num(name: str) -> int:
@@ -1167,9 +1385,13 @@ def local_scan(disk: str) -> dict:
             r['note'] = 'not yet verified against EOS'
         results.append(r)
     total = sum(r['size'] for r in results)
+    class_totals = _attach_classes(results)
     return {
         'disk': disk, 'label': DISKS[disk]['label'],
         'runs': results, 'n_runs': len(results),
+        'classes': {k: dict(RUN_CLASSES[k], key=k) for k in RUN_CLASS_ORDER},
+        'class_order': RUN_CLASS_ORDER,
+        'class_totals': class_totals,
         'total_bytes': total, 'total_h': human(total),
         'active_run': act, 'newest_run': newest,
         'usage': disk_usage().get(disk, {}),
@@ -1207,11 +1429,15 @@ def scan(disk: str, runs=None, force: bool = True, progress=None,
         results.append(v)
     progress('verify', len(names), len(names), 'verification complete')
     safe_bytes = sum(r['size'] for r in results if r['safe'])
+    class_totals = _attach_classes(results)
     return {
         'disk': disk, 'label': DISKS[disk]['label'],
         'runs': results,
         'n_runs': len(results),
         'n_safe': sum(1 for r in results if r['safe']),
+        'classes': {k: dict(RUN_CLASSES[k], key=k) for k in RUN_CLASS_ORDER},
+        'class_order': RUN_CLASS_ORDER,
+        'class_totals': class_totals,
         'safe_bytes': safe_bytes, 'safe_bytes_h': human(safe_bytes),
         'active_run': act, 'newest_run': newest,
         'usage': disk_usage().get(disk, {}),
@@ -1386,10 +1612,14 @@ def component_scan(verify: bool = True, force: bool = False, progress=None,
 
     grand = sum(r['size'] for r in runs_out)
     safe_total = sum(v['safe_size'] for v in totals.values())
+    class_totals = _attach_classes(runs_out)
     return {
         'runs': runs_out, 'n_runs': len(runs_out),
         'components': {c: dict(COMPONENTS[c], key=c) for c in COMPONENT_ORDER},
         'component_order': COMPONENT_ORDER,
+        'classes': {k: dict(RUN_CLASSES[k], key=k) for k in RUN_CLASS_ORDER},
+        'class_order': RUN_CLASS_ORDER,
+        'class_totals': class_totals,
         'totals': totals,
         'total_bytes': grand, 'total_h': human(grand),
         'safe_bytes': safe_total, 'safe_bytes_h': human(safe_total),
@@ -1961,14 +2191,21 @@ def scan_restore() -> dict:
         status = 'complete' if fetch_files == 0 else ('missing' if not local else 'partial')
         restorable = fetch_files > 0 and not r['active']
         r.update(status=status, restorable=restorable, eos_bytes=eos_bytes,
-                 size_h=human(eos_bytes), total=total, have=have,
+                 size=eos_bytes, size_h=human(eos_bytes), total=total, have=have,
                  fetch_files=fetch_files, fetch_bytes=fetch_bytes, fetch_h=human(fetch_bytes))
         if restorable:
             fetch_total += fetch_bytes
         results.append(r)
+    # Runs deleted locally have no run_config.json left to read — the persisted
+    # label from when they were on disk is the only thing that can still say
+    # whether the run on EOS is beam data.
+    class_totals = _attach_classes(results)
     return {
         'runs': results, 'n_runs': len(results),
         'n_restorable': sum(1 for r in results if r['restorable']),
+        'classes': {k: dict(RUN_CLASSES[k], key=k) for k in RUN_CLASS_ORDER},
+        'class_order': RUN_CLASS_ORDER,
+        'class_totals': class_totals,
         'fetch_bytes_total': fetch_total, 'fetch_bytes_total_h': human(fetch_total),
         'active_run': act, 'usage': disk_usage().get('hdd', {}),
         'scanned_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
