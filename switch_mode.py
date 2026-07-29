@@ -213,17 +213,27 @@ def live_run_pids():
     return out
 
 
-def board_holders():
+def board_holders(ips=None):
+    """Holders under ACCESS_DIR, optionally restricted to a set of board IPs.
+
+    A changeover only ever touches M4 (.243) via trigger_mode.py/set_ps_trigger_delay.py.
+    Other boards run their own long-lived sessions (e.g. the M5/.244 trigger-timestamp
+    stream, held 24/7) that have nothing to do with this switch and must not block it —
+    an unfiltered check refused every changeover the moment that stream went permanent.
+    """
     if not os.path.isdir(ACCESS_DIR):
         return []
     held = []
     for fn in sorted(os.listdir(ACCESS_DIR)):
-        if fn.endswith('.holder.json'):
-            try:
-                with open(os.path.join(ACCESS_DIR, fn)) as f:
-                    held.append((fn, json.load(f)))
-            except Exception:  # noqa: BLE001
-                held.append((fn, None))
+        if not fn.endswith('.holder.json'):
+            continue
+        if ips is not None and fn[:-len('.holder.json')].replace('_', '.') not in ips:
+            continue
+        try:
+            with open(os.path.join(ACCESS_DIR, fn)) as f:
+                held.append((fn, json.load(f)))
+        except Exception:  # noqa: BLE001
+            held.append((fn, None))
     return held
 
 
@@ -464,14 +474,18 @@ def main():
     else:
         print('[guard] no daq_control.py running — OK')
 
-    # ---------- guard 2: boards must be free ----------
-    held = board_holders()
+    # ---------- guard 2: the board this changeover touches must be free ----------
+    # Only M4 (.243, trigger_mode.py / set_ps_trigger_delay.py) is ever written here.
+    # Checking every board would false-refuse on unrelated long-lived holders — e.g. the
+    # M5/.244 trigger-timestamp stream, which is held 24/7 and has nothing to do with
+    # the beam<->cosmics trigger flip.
+    held = board_holders(ips={'192.168.10.243'})
     if held:
-        print('!! REFUSING: another process holds an N1081B board lock:')
+        print('!! REFUSING: another process holds the N1081B board lock this changeover needs:')
         for fn, info in held:
             print(f'   {fn}: {info}')
         return 2
-    print('[guard] no N1081B holder — OK')
+    print('[guard] M4 (.243) free — OK')
 
     # ---------- guard 3: beam must match the mode ----------
     on, since, note = beam_now()
