@@ -101,15 +101,36 @@ fills the gap left by the `kill-session`.
 |---|---|---|
 | `n1081b/timetag_watcher_controller.py` | `logs/n1081b_timetag_watcher.log` | instrumented, but **retired the same day** by commit `9ba3244`: the M5 stream was re-enabled 2026-07-29 pointing at `n1081b/tt_stream_supervisor.py --section C` instead (the rotation watcher is what wedged .244; the supervisor is what ran clean for 6 h on 07-18). Its lines only appear if that path is ever run again |
 
-**⚠ Gap opened after this plan was written**
+**⏳ `n1081b/tt_stream_supervisor.py` — added after the fact**
 
-`n1081b/tt_stream_supervisor.py` is now a standing process — it runs 24/7 in the
-`n1081b_timetag_watcher` tmux session — and it is **not instrumented**. This plan's
-audit predates the repoint, so the supervisor never appears in the table above. It is
-the one board-touching standing process left with no durable log, and per
-`n1081b/CLAUDE.md` nothing in its board path should be edited casually. Worth a small
-follow-up pass: `START` / `STOP` / segment-boundary restore outcome / alarm, at the
-points where it already prints.
+The supervisor became a standing process on 2026-07-29 (commit `9ba3244`), after this
+plan's audit, so it never appeared in the table above. Two corrections to a first
+reading of it, both in its favour:
+
+* **It already had a durable log** — `logs/n1081b_tt_stream.log`, and unlike the two
+  fossils this one is *size-rotated* (20 MB, one backup). At the measured 1.1 MB/day
+  it retains about five weeks of full narrative. It was never a gap.
+* **It does no board I/O at all.** It is a process supervisor: it spawns
+  `tt_stream_qualify.py` and `tt_probe_v2.py` as subprocesses and reads their stdout
+  and `stats.json`. The `n1081b/CLAUDE.md` session rules bind the child harness, not
+  this file, so instrumenting it carries none of the wedge risk that editing a
+  board-path file would.
+
+What it did lack is a place for the *events* to live once the 10 s heartbeat rotates
+them out, and consistency with every other watcher. So it now ALSO writes
+`logs/n1081b_timetag_watcher.log` in the shared convention — `START`, `SEGMENT_START`,
+`SEGMENT_DONE` (edges/gaps/restored), `SILENT_START`, `RESTORE_UNVERIFIED`,
+`STALL_STRIKE`, `HARNESS_ALARM`, `PROBE_RECOVERED`, `PROBE_SILENT`, `DISK_GUARD`,
+`ALARM_STOP`, `TELEGRAM_FAILED`, `STOP`, `CRASH`. About 10 lines/day, so it never
+rotates. `log()` is unchanged and still carries the full narrative; `event()` is
+called alongside it, never instead of it.
+
+Same filename as the retired controller above, deliberately: whichever implementation
+owns .244 writes one continuous M5 history, and the `source` column says which.
+
+Verified: `event()` cannot raise (unwritable path, and a detail whose `__str__`
+throws, both survive) — which is what makes it safe to call from anywhere in the
+segment loop. Awaiting the supervisor's next restart to appear.
 
 **Not touched** (already had working event logs): `qa_watcher`, `pedestal_watcher`.
 

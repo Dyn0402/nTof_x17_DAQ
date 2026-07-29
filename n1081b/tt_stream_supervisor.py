@@ -68,6 +68,8 @@ _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_DIR = os.path.dirname(_MODULE_DIR)
 sys.path.insert(0, _REPO_DIR)
 
+from common_functions import log_event
+
 PYTHON = os.path.join(_REPO_DIR, ".venv", "bin", "python")
 HARNESS = os.path.join(_MODULE_DIR, "tt_stream_qualify.py")
 PROBE = os.path.join(_MODULE_DIR, "tt_probe_v2.py")
@@ -75,6 +77,17 @@ MONITOR_CONFIG = os.path.join(_REPO_DIR, "config", "monitor_config.json")
 STATE_PATH = os.path.join(_REPO_DIR, "config", "n1081b_timetag_state.json")
 STOP_FILE = os.path.join(_REPO_DIR, "config", "tt_stream_supervisor.stop")
 LOG_PATH = os.path.join(_REPO_DIR, "logs", "n1081b_tt_stream.log")
+# SECOND, much smaller log — events only, in the shared convention (see
+# common_functions.log_event and docs/PLAN_2026-07-29_watcher_logging.md). This is not
+# redundant with LOG_PATH: that one is the full narrative including a t+ progress line
+# every 10 s, which at ~1.1 MB/day means its 20 MB x 2 rotation retains about five
+# weeks. Segment boundaries, stalls, strikes and alarms are ~10 lines/day, so keeping
+# them apart makes them greppable next to every other watcher AND keeps them for years
+# instead of rotating out behind the heartbeat.
+#
+# Named for the tmux session rather than this file, so whichever implementation owns
+# .244 writes one continuous M5 history; the source column says which one it was.
+EVENT_LOG_PATH = os.path.join(_REPO_DIR, "logs", "n1081b_timetag_watcher.log")
 OUT_BASE = os.path.expanduser("~/beam_july/slow_control/n1081b_timetag/stream")
 
 SILENT_START_S = 90.0      # zero edges this long after stream-open => stall
@@ -109,6 +122,16 @@ def log(msg):
     except Exception:
         pass
     _log_to_file(line)
+
+
+def event(name, **details):
+    """Record one line in the shared event log (EVENT_LOG_PATH).
+
+    Call this ALONGSIDE log(), never instead of it — log() keeps the human narrative
+    in the pane and the rotating chain log; this keeps the same fact greppable and
+    permanent. log_event never raises, so this is safe anywhere in the loop.
+    """
+    log_event(EVENT_LOG_PATH, name, 'tt_super', **details)
 
 
 def _log_to_file(line):
@@ -147,6 +170,7 @@ def telegram(text):
                       timeout=10)
     except Exception as e:
         log(f"telegram send failed (non-fatal): {e!r}")
+        event('TELEGRAM_FAILED', error=repr(e))
 
 
 def gzip_segment(out_dir):
@@ -304,6 +328,8 @@ class Supervisor:
                "--baseline-sections", "ABCD",
                "--rates-csv"]
         log(f"segment {self.seg_index}: {' '.join(cmd[2:])}")
+        event('SEGMENT_START', seg=self.seg_index, section=self.section,
+              label=label, duration_s=int(self.segment_s))
         self.child = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                       stderr=subprocess.STDOUT, text=True, bufsize=1)
         pre_hz = None
@@ -337,6 +363,8 @@ class Supervisor:
                     stalled = True
                     log(f"SILENT START: 0 edges through t+{t_s}s with input at "
                         f"{pre_hz:.0f} Hz -- stopping segment (stall)")
+                    event('SILENT_START', seg=self.seg_index, silent_through_s=t_s,
+                          input_hz=f'{pre_hz:.0f}', action='stopping segment (stall)')
                     self.child.send_signal(signal.SIGTERM)
             self._publish()
             if self._stop_requested() and self.child.poll() is None:
@@ -357,6 +385,12 @@ class Supervisor:
                 f"{st.get('stream_seconds', 0):.0f}s, finished={st.get('finished')}, "
                 f"restored={st.get('restored')}, max gap {st.get('max_packet_gap_s')}s, "
                 f"gaps>thresh {len(st.get('gaps') or [])}")
+            event('SEGMENT_DONE', seg=self.seg_index,
+                  edges=st.get('edges_total', 0),
+                  stream_s=f"{st.get('stream_seconds', 0):.0f}",
+                  finished=st.get('finished'), restored=st.get('restored'),
+                  max_gap_s=st.get('max_packet_gap_s'),
+                  gaps_over_thresh=len(st.get('gaps') or []))
             for c, r in (st.get("post_rates_all_hz")
                          or st.get("pre_rates_all_hz") or {}).items():
                 log(f"    counters SEC_{c}: {r} Hz (agg {sum(r):.0f})")
@@ -365,6 +399,10 @@ class Supervisor:
                 # the board is left in wire/time_tag; say so loudly, but keep going —
                 # the next segment's ensure_counter is the actual repair
                 log("WARNING: segment did not verify the restore to counters")
+                # The one board-state fact worth keeping permanently: .244 was left in
+                # wire/time_tag rather than counters at this boundary.
+                event('RESTORE_UNVERIFIED', seg=self.seg_index,
+                      note='.244 left in wire/time_tag; next segment ensure_counter repairs')
                 telegram("segment ended without a verified restore to counters; "
                          "next segment's ensure_counter should repair it")
 
@@ -417,6 +455,8 @@ class Supervisor:
             return True
         log(f"DISK GUARD: {gb:.1f} GB free at {self.out_base} "
             f"(floor {MIN_FREE_GB:.0f} GB) — not starting a segment")
+        event('DISK_GUARD', free_gb=f'{gb:.1f}', floor_gb=f'{MIN_FREE_GB:.0f}',
+              action=f'resting {DISK_REST_S / 60:.0f} min, no segment started')
         telegram(f"disk guard: only {gb:.1f} GB free; TT streaming paused "
                  f"(floor {MIN_FREE_GB:.0f} GB). Free space or lower MIN_FREE_GB.")
         prune_segments(self.out_base)
@@ -431,6 +471,9 @@ class Supervisor:
             f"{self.segment_s / 3600:.1f} h, out {self.out_base} "
             f"({free_gb(self.out_base):.0f} GB free), "
             f"policy strikes/rest/probe per docstring")
+        event('START', section=self.section,
+              segment_h=f'{self.segment_s / 3600:.1f}', out_base=self.out_base,
+              free_gb=f'{free_gb(self.out_base):.0f}')
         telegram(f"supervisor started (section {self.section}, "
                  f"{self.segment_s / 3600:.0f}h segments)")
         prune_segments(self.out_base)
@@ -453,9 +496,13 @@ class Supervisor:
                     msg = ("STOPPED: two consecutive harness alarms -- needs a "
                            "human (check board state gently, see chain log)")
                     log(f"ALARM: {msg}")
+                    event('ALARM_STOP', reason='two consecutive harness alarms',
+                          segments_ok=self.segments_ok, detail=msg)
                     telegram(msg)
                     return 1
                 log("harness alarm; resting then ONE fresh attempt")
+                event('HARNESS_ALARM', strike=self.alarm_strikes,
+                      action=f'resting {ALARM_REST_S / 60:.0f} min then ONE fresh attempt')
                 telegram("harness alarm; resting 10 min then one fresh attempt")
                 self._rest(ALARM_REST_S, "post-alarm")
                 continue
@@ -463,6 +510,7 @@ class Supervisor:
             self.silent_strikes += 1
             if self.silent_strikes == 1:
                 log("stall strike 1: one immediate clean retry")
+                event('STALL_STRIKE', strike=1, action='one immediate clean retry')
                 time.sleep(SEG_GAP_S)
                 continue
             # strike >= 2: rest + probe cycles
@@ -475,12 +523,16 @@ class Supervisor:
                     break
                 if self.probe_streams():
                     log("probe streams -- resuming segments")
+                    event('PROBE_RECOVERED', after_rest_min=f'{rest / 60:.0f}',
+                          action='resuming segments')
                     telegram("TT engine recovered after rest; resuming")
                     self.probe_fails = 0
                     self.silent_strikes = 0
                     break
                 self.probe_fails += 1
                 log(f"probe silent ({self.probe_fails}/{PROBE_MAX})")
+                event('PROBE_SILENT', fails=f'{self.probe_fails}/{PROBE_MAX}',
+                      next_rest_min=f'{rest * REST_GROW / 60:.0f}')
                 if self.probe_fails >= PROBE_MAX:
                     self._status = "stopped-alarm"
                     self._publish(force=True)
@@ -488,6 +540,8 @@ class Supervisor:
                            "TT engine not recovering; leave .244 alone and "
                            "investigate at next access")
                     log(f"ALARM: {msg}")
+                    event('ALARM_STOP', reason=f'{PROBE_MAX} rest+probe cycles failed',
+                          segments_ok=self.segments_ok, detail=msg)
                     telegram(msg)
                     return 1
                 rest *= REST_GROW
@@ -495,6 +549,7 @@ class Supervisor:
         self._publish(force=True)
         log(f"supervisor stopped cleanly after {self.segments_ok} good segment(s), "
             f"{self.edges_total} edges")
+        event('STOP', segments_ok=self.segments_ok, edges_total=self.edges_total)
         telegram("supervisor stopped (clean)")
         return 0
 
@@ -515,4 +570,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:  # noqa: BLE001
+        # Durable second copy only — re-raised so the pane still shows the live
+        # traceback and the process still exits non-zero. Worth recording: if the
+        # supervisor dies, the M5 record stops with it.
+        import traceback as _tb
+        event('CRASH', error=repr(e), traceback=_tb.format_exc())
+        raise
