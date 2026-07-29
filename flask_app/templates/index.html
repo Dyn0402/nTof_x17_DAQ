@@ -5,40 +5,57 @@
      no controls except Emergency Stop. Shifters (view-only) land here. -->
 <div class="tab-pane fade {% if not authorized %}show active{% endif %}" id="shift">
 
-  <!-- Contact ribbon: who to reach if anything looks wrong -->
-  <div class="shift-contact-ribbon">
-    Any questions — message or call <strong>Dylan Neff</strong> on WhatsApp
-    <a href="https://wa.me/18594861792">+1&nbsp;859&nbsp;486&nbsp;1792</a>
+  <!-- Contact ribbon + Emergency Stop: the stop is a bare small button, not
+       another card — it should read as a last-resort control, not something to
+       casually click, and shouldn't compete visually with the ribbon. -->
+  <div class="shift-top-row">
+    <div class="shift-contact-ribbon">
+      Any questions — message or call <strong>Dylan Neff</strong> on WhatsApp
+      <a href="https://wa.me/18594861792">+1&nbsp;859&nbsp;486&nbsp;1792</a>
+    </div>
+    <div class="shift-estop-box">
+      <button id="shift-estop" class="estop-btn-sm">
+        Emergency Stop
+        <span class="estop-sub">stops gas · run · HV</span>
+      </button>
+      <div id="shift-estop-note" class="shift-note"></div>
+    </div>
   </div>
 
-  <!-- Run-state banner + Emergency Stop -->
+  <!-- Run-state banner + Beam + System: the three things worth reading the
+       instant you land on the tab, side by side at one compact height. The
+       banner's stats are a single row (not stacked) so the banner's height
+       matches its own title+substate block instead of ballooning past it —
+       that in turn keeps the whole row down to System's height. Beam is a
+       narrow strip since it only ever shows two short numbers. -->
   <div class="row g-3">
-    <div class="col-12 col-lg-9">
+    <div class="col-12 col-lg-6">
       <div class="shift-banner lv-idle h-100" id="shift-banner">
-        <div>
+        <div class="shift-banner-title">
+          <span class="ds-class shift-run-class-badge" id="shift-run-class" data-c="unknown" style="display:none;">—</span>
           <div class="shift-state" id="shift-state">…</div>
           <div class="shift-substate" id="shift-substate">connecting…</div>
         </div>
-        <div class="shift-stats">
+        <div class="shift-stats shift-stats-grid">
           <div class="stat">
             <div class="stat-label">Run</div>
-            <div class="stat-value" id="shift-run" style="font-size:1.15rem;">—</div>
+            <div class="stat-value" id="shift-run" style="font-size:1.3rem;">—</div>
           </div>
           <div class="stat">
             <div class="stat-label">Subrun</div>
-            <div class="stat-value" id="shift-subrun" style="font-size:1.15rem;">—</div>
+            <div class="stat-value" id="shift-subrun" style="font-size:1.3rem;">—</div>
           </div>
           <div class="stat">
             <div class="stat-label">Progress</div>
-            <div class="stat-value" id="shift-progress" style="font-size:1.15rem;">—</div>
+            <div class="stat-value" id="shift-progress" style="font-size:1.3rem;">—</div>
           </div>
           <div class="stat">
             <div class="stat-label">Events</div>
-            <div class="stat-value" id="shift-events" style="font-size:1.15rem;">—</div>
+            <div class="stat-value" id="shift-events" style="font-size:1.3rem;">—</div>
           </div>
           <div class="stat">
             <div class="stat-label">Trigger rate</div>
-            <div class="stat-value" id="shift-rate" style="font-size:1.15rem;">—</div>
+            <div class="stat-value" id="shift-rate" style="font-size:1.3rem;">—</div>
           </div>
           <div class="stat">
             <div class="stat-label">Time</div>
@@ -47,18 +64,7 @@
         </div>
       </div>
     </div>
-    <div class="col-12 col-lg-3">
-      <button id="shift-estop" class="estop-btn">
-        Emergency Stop
-        <span class="estop-sub">stops gas · run · HV</span>
-      </button>
-      <div id="shift-estop-note" class="shift-note text-center"></div>
-    </div>
-  </div>
-
-  <!-- Health cards: beam / gas / HV / 3He / system -->
-  <div class="row g-3 mt-0">
-    <div class="col-12 col-md-6 col-xl">
+    <div class="col-12 col-lg-2-5">
       <div class="shift-card lv-idle" id="shift-beam-card">
         <div class="shift-card-head">
           <span class="shift-card-title"><span style="text-transform: lowercase;">n</span>_TOF Beam</span>
@@ -68,38 +74,7 @@
         <div class="shift-note" id="shift-beam-note"></div>
       </div>
     </div>
-    <div class="col-12 col-md-6 col-xl">
-      <div class="shift-card lv-idle" id="shift-gas-card">
-        <div class="shift-card-head">
-          <span class="shift-card-title">Gas Mixer</span>
-          <span class="shift-card-state" id="shift-gas-state">—</span>
-        </div>
-        <div id="shift-gas-body" class="shift-rows"></div>
-        <div class="shift-note" id="shift-gas-note"></div>
-      </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl">
-      <div class="shift-card lv-idle" id="shift-hv-card">
-        <div class="shift-card-head">
-          <span class="shift-card-title">High Voltage</span>
-          <span class="shift-card-state" id="shift-hv-state">—</span>
-        </div>
-        <div id="shift-hv-body" class="shift-rows"></div>
-        <div class="shift-note" id="shift-hv-note"></div>
-      </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl">
-      <div class="shift-card lv-idle" id="shift-he3-card">
-        <div class="shift-card-head">
-          <span class="shift-card-title">3He Pressure</span>
-          <span class="shift-card-state" id="shift-he3-state">—</span>
-        </div>
-        <div id="shift-he3-body" class="shift-rows"></div>
-        <div id="shift-he3-plot" style="width:100%;height:187px;margin-top:6px;display:none;"></div>
-        <div class="shift-note" id="shift-he3-note"></div>
-      </div>
-    </div>
-    <div class="col-12 col-md-6 col-xl">
+    <div class="col-12 col-lg-3-5">
       <div class="shift-card lv-idle" id="shift-sys-card">
         <div class="shift-card-head">
           <span class="shift-card-title">System</span>
@@ -108,6 +83,60 @@
         <div id="shift-sys-body" class="sys-rows"></div>
         <div class="shift-note">DAQ machine. If the SSD (system) or HDD (run data) fills up,
           data taking stops — if one passes 80&#37;, warn the expert.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Health + progress row: Gas & 3He stacked in one narrow column, leaving
+       most of the row for the cumulative-triggers-vs-projection plot — the
+       same comparison pushed to the public page, drawn in Plotly to match the
+       rest of the dashboard instead of an embedded image. -->
+  <div class="row g-3 mt-0">
+    <div class="col-12 col-xl-4">
+      <div class="shift-card-stack">
+        <div class="shift-card lv-idle shift-card-short" id="shift-gas-card">
+          <div class="shift-card-head">
+            <span class="shift-card-title">Gas Mixer</span>
+            <span class="shift-card-state" id="shift-gas-state">—</span>
+          </div>
+          <div id="shift-gas-body" class="shift-rows"></div>
+          <div class="shift-note" id="shift-gas-note"></div>
+        </div>
+        <div class="shift-card lv-idle shift-card-tall" id="shift-he3-card">
+          <div class="shift-card-head">
+            <span class="shift-card-title">3He Pressure</span>
+            <span class="shift-card-state" id="shift-he3-state">—</span>
+          </div>
+          <div id="shift-he3-body" class="shift-rows"></div>
+          <div id="shift-he3-plot" style="width:100%;height:195px;margin-top:6px;display:none;"></div>
+          <div class="shift-note" id="shift-he3-note"></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-8">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Statistics progress</span>
+          <span class="panel-header-note" id="shift-progress-note">same comparison as the public page</span>
+        </div>
+        <div class="panel-body" style="padding:0.4rem 0.6rem;">
+          <div id="shift-progress-plot" style="width:100%;height:420px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- High Voltage: full width, one column per detector wall so 20 channels
+       read at a glance instead of scrolling a single narrow card. -->
+  <div class="row g-3 mt-0">
+    <div class="col-12">
+      <div class="shift-card lv-idle" id="shift-hv-card">
+        <div class="shift-card-head">
+          <span class="shift-card-title">High Voltage</span>
+          <span class="shift-card-state" id="shift-hv-state">—</span>
+        </div>
+        <div id="shift-hv-body" class="shift-hv-grid"></div>
+        <div class="shift-note" id="shift-hv-note"></div>
       </div>
     </div>
   </div>
@@ -137,7 +166,7 @@
     <div class="col-12 col-xl-4">
       <div class="panel">
         <div class="panel-header">
-          <span class="panel-title">HV voltages — current subrun</span>
+          <span class="panel-title">HV voltages (Micromegas) — current subrun</span>
         </div>
         <div class="panel-body" style="padding:0.4rem 0.6rem;">
           <div id="shift-hv-plot" style="width:100%;height:230px;"></div>
@@ -275,11 +304,11 @@
     <!-- Status cards populated dynamically -->
   </div>
 
-  <!-- HV Monitor -->
+  <!-- HV Monitor (Micromegas: resist + drift) -->
   <div class="panel mt-3">
     <div class="panel-header">
-      <span class="panel-title">HV Monitor</span>
-      <span class="panel-header-note">latest voltage and current readings from HV control</span>
+      <span class="panel-title">HV Monitor — Micromegas</span>
+      <span class="panel-header-note">resist &amp; drift voltage/current readings from HV control</span>
       <span class="ms-auto d-flex align-items-center gap-2">
         <label for="hv-subrun-select" class="text-muted small mb-0">Subrun</label>
         <select id="hv-subrun-select" class="form-select form-select-sm" style="width:auto;">
@@ -325,6 +354,24 @@
     </div>
     <div class="panel-body">
       <div id="beam-plot-overview" style="width:100%;height:300px;"></div>
+    </div>
+  </div>
+
+  <!-- Scintillator HV Monitor (plastic bars + liquid cells, bias V/I) -->
+  <div class="panel mt-3">
+    <div class="panel-header">
+      <span class="panel-title">Scintillator HV Monitor</span>
+      <span class="panel-header-note">bias voltage and current — plastic bars &amp; liquid cells, same subrun as the HV Monitor above</span>
+    </div>
+    <div class="panel-body">
+      <div class="row g-3">
+        <div class="col-12 col-xl-6">
+          <div id="hv-scint-voltage-plot" style="width:100%;height:380px;"></div>
+        </div>
+        <div class="col-12 col-xl-6">
+          <div id="hv-scint-current-plot" style="width:100%;height:380px;"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1704,6 +1751,17 @@ function hvTraceColor(name) {
     return (electrode || "").toLowerCase() === "drift" ? _hvLighten(base, 0.42) : base;
 }
 
+// Scintillator labels are "Wall_L" (liquid) or "Wall_P_Side" (plastic bar) — color by
+// wall (same palette as MM) and vary line dash by type/side so same-wall traces stay
+// distinguishable even though they share a color.
+function scintTraceStyle(name) {
+    const parts = name.split("_");
+    const color = HV_DET_COLOR[parts[0]] || "#8b96a5";
+    let dash = "solid";
+    if (parts[1] === "P") dash = (parts[2] === "R") ? "dot" : "dash";
+    return { color, dash };
+}
+
 async function updateHVPlots() {
     try {
         const data = await fetchHVData();
@@ -1729,6 +1787,22 @@ async function updateHVPlots() {
             mode: 'lines',
             name: key,
             line: { color: hvTraceColor(key), width: 2 }
+        }));
+
+        const scintVoltageTraces = Object.entries(data.voltage_scint || {}).map(([key, values]) => ({
+            x: time,
+            y: values,
+            mode: 'lines',
+            name: key,
+            line: { ...scintTraceStyle(key), width: 2 }
+        }));
+
+        const scintCurrentTraces = Object.entries(data.current_scint || {}).map(([key, values]) => ({
+            x: time,
+            y: values,
+            mode: 'lines',
+            name: key,
+            line: { ...scintTraceStyle(key), width: 2 }
         }));
 
         // uirevision keyed to run/subrun: Plotly preserves zoom/pan/legend state across
@@ -1775,6 +1849,21 @@ async function updateHVPlots() {
         // newPlot), so combined with a stable uirevision the current zoom/pan is kept.
         Plotly.react('hv-voltage-plot', voltageTraces, voltageLayout, plotConfig);
         Plotly.react('hv-current-plot', currentTraces, currentLayout, plotConfig);
+
+        const scintVoltageLayout = {
+            ...commonLayout,
+            xaxis: { ...axisStyle },
+            yaxis: { title: { text: 'Voltage (V)', font: yTitleFont }, ...axisStyle }
+        };
+
+        const scintCurrentLayout = {
+            ...commonLayout,
+            xaxis: { ...axisStyle },
+            yaxis: { title: { text: 'Current (µA)', font: yTitleFont }, ...axisStyle }
+        };
+
+        Plotly.react('hv-scint-voltage-plot', scintVoltageTraces, scintVoltageLayout, plotConfig);
+        Plotly.react('hv-scint-current-plot', scintCurrentTraces, scintCurrentLayout, plotConfig);
 
     } catch (err) {
         console.error("HV update failed:", err);
@@ -4736,13 +4825,30 @@ function shiftRenderBanner(d) {
   shSetLevel(banner, r.color);
   document.getElementById("shift-state").textContent = r.label;
 
-  let sub = `DAQ: ${r.daq_status} · Dream: ${r.dream_status} · HV: ${d.hv.state}`;
-  if (r.state === "TRANSITION") {
-    sub += ` — no data for ${shFmtGap(r.gap_s)} (normal up to ${shFmtGap(r.gap_ok_s)} between sub-runs)`;
-  } else if (r.state === "STALLED") {
-    sub += ` — NO DATA for ${shFmtGap(r.gap_s)} — get help / call the expert`;
+  // Same class chip the Disk Space tab uses (beam/cosmics/pulser/...), so
+  // "what are we taking" reads identically in both places.
+  const classEl = document.getElementById("shift-run-class");
+  if (r.class && r.class_label) {
+    classEl.style.display = "";
+    classEl.dataset.c = r.class;
+    classEl.textContent = r.class_label;
+  } else {
+    classEl.style.display = "none";
   }
-  document.getElementById("shift-substate").textContent = sub;
+
+  // One line per subsystem — the banner is narrower now, so a single joined
+  // line was wrapping mid-word; stacking reads cleanly at any width.
+  let warn = "";
+  if (r.state === "TRANSITION") {
+    warn = `no data for ${shFmtGap(r.gap_s)} (normal up to ${shFmtGap(r.gap_ok_s)} between sub-runs)`;
+  } else if (r.state === "STALLED") {
+    warn = `NO DATA for ${shFmtGap(r.gap_s)} — get help / call the expert`;
+  }
+  document.getElementById("shift-substate").innerHTML = `
+    <div>DAQ: ${r.daq_status}</div>
+    <div>Dream: ${r.dream_status}</div>
+    <div>HV: ${d.hv.state}</div>
+    ${warn ? `<div class="shift-flag-bad">${warn}</div>` : ""}`;
 
   document.getElementById("shift-run").textContent = r.run_name;
   document.getElementById("shift-subrun").textContent =
@@ -4817,11 +4923,26 @@ function shiftRenderHV(h) {
     note.textContent = "no HV monitor data yet — appears once a run's HV monitoring starts";
     return;
   }
-  body.innerHTML = h.channels.map(ch => `
-    <div class="shift-row">
-      <span class="k">${ch.label}</span>
-      <span class="v">${shNum(ch.vmon, 1)} <span class="exp">/ ${ch.v0 == null ? "man" : shNum(ch.v0, 0)} V</span>
-        ${shFlag(ch.ok)}</span>
+  // one column per wall (A/B/C/D), unmapped channels fall into "Other" and sort last
+  const walls = new Map();
+  for (const ch of h.channels) {
+    const w = ch.wall || "Other";
+    if (!walls.has(w)) walls.set(w, []);
+    walls.get(w).push(ch);
+  }
+  const order = [...walls.keys()].sort((a, b) =>
+    (a === "Other") - (b === "Other") || a.localeCompare(b));
+  body.innerHTML = order.map(w => `
+    <div class="shift-hv-col">
+      <div class="shift-hv-col-head">${w === "Other" ? "Other" : "Wall " + w}</div>
+      <div class="shift-rows">
+        ${walls.get(w).map(ch => `
+          <div class="shift-row">
+            <span class="k">${ch.label}</span>
+            <span class="v">${shNum(ch.vmon, 1)} <span class="exp">/ ${ch.v0 == null ? "man" : shNum(ch.v0, 0)} V</span>
+              ${shFlag(ch.ok)}</span>
+          </div>`).join("")}
+      </div>
     </div>`).join("");
   const age = h.age_s != null ? `${shFmtGap(h.age_s)} old` : "";
   note.textContent = h.level === "stale"
@@ -4867,19 +4988,21 @@ function shiftRenderBeam(b) {
     shSetLevel(card, "idle");
     state.textContent = "NOT RUNNING";
     body.innerHTML = `
-      <div class="shift-row"><span class="k">Last pulse</span><span class="v">—</span></div>`;
+      <div class="shift-row"><span class="k">Pulse</span><span class="v">—</span></div>`;
     note.textContent = (b && b.last_error) || "beam watcher not running";
     return;
   }
   shSetLevel(card, b.level);
   state.textContent = { ok: "BEAM ON", warn: "BEAM OFF", stale: "STALE" }[b.level] || b.level;
 
+  // Card is narrow (just two numbers) — short labels/units so each row stays
+  // on one line instead of wrapping and pushing the card's height around.
   const pulseAge = b.seconds_since_pulse != null ? ` · ${shFmtGap(b.seconds_since_pulse)} ago` : "";
   body.innerHTML = `
-    <div class="shift-row"><span class="k">Last pulse</span>
+    <div class="shift-row"><span class="k">Pulse</span>
       <span class="v">${p(b.last_pulse_e10)}<span class="exp">${pulseAge}</span></span></div>
-    <div class="shift-row"><span class="k">Last 10 min</span>
-      <span class="v">${p(b.protons_10min_e10)}<span class="exp"> · ${b.pulses_10min ?? "—"} pulses</span></span></div>`;
+    <div class="shift-row"><span class="k">10 min</span>
+      <span class="v">${p(b.protons_10min_e10)}<span class="exp"> · ${b.pulses_10min ?? "—"} pls</span></span></div>`;
 
   if (b.level === "stale") {
     note.textContent = `no fresh NXCALS data (${shFmtGap(b.age_s)} old) — check the beam watcher / Kerberos`;
@@ -4888,7 +5011,7 @@ function shiftRenderBeam(b) {
   } else if (b.level === "warn") {
     note.textContent = "no protons on target — check the n_TOF status displays / CCC";
   } else {
-    note.textContent = "FTN BCT477 (last BCT before target) via NXCALS";
+    note.textContent = "FTN BCT477 via NXCALS";
   }
 }
 
@@ -5016,6 +5139,84 @@ async function shiftRenderPlots() {
     }
   } catch (e) { /* best-effort */ }
 
+  // Statistics progress: cumulative recorded triggers vs the frozen projection —
+  // the same comparison pushed to the public CERN page, drawn here in Plotly
+  // (rather than embedding that page's matplotlib PNG) so it matches the rest
+  // of the dashboard's dark styling.
+  try {
+    const r = await (await fetch("/shift/progress_data")).json();
+    const pd = r && r.success ? r.data : null;
+    const noteEl = document.getElementById("shift-progress-note");
+    if (pd) {
+      const M = 1e6;
+      const shapes = (pd.downtime || []).map(([a, b]) => ({
+        type: "rect", xref: "x", yref: "paper", x0: a, x1: b, y0: 0, y1: 1,
+        fillcolor: "rgba(139,150,165,0.14)", line: { width: 0 }, layer: "below",
+      }));
+      const annotations = [];
+      const traces = [];
+
+      (pd.projections || []).forEach(p => {
+        traces.push({
+          x: p.t, y: p.events.map(v => v / M), mode: "lines",
+          name: `Projection ${p.name} (${Math.round((p.efficiency || 0) * 100)}% eff.)`,
+          line: { color: "#c98500", width: p.newest ? 2.4 : 1.4, dash: "dash" },
+          opacity: p.newest ? 1.0 : 0.4,
+        });
+        if (p.newest && p.events_at_100pct && p.events_at_100pct.length) {
+          traces.push({
+            x: p.t, y: p.events_at_100pct.map(v => v / M), mode: "lines",
+            name: "Same rate at 100% efficiency", opacity: 0.4,
+            line: { color: "#c98500", width: 1, dash: "dot" },
+            fill: "tonexty", fillcolor: "rgba(201,133,0,0.10)",
+          });
+        }
+        if (p.newest && p.t.length) {
+          annotations.push({
+            x: p.t[p.t.length - 1], y: p.events[p.events.length - 1] / M,
+            text: `${(p.final_events / M).toFixed(1)}M`, showarrow: false,
+            xanchor: "right", yanchor: "bottom", yshift: 6,
+            font: { color: "#c98500", size: 13 },
+          });
+        }
+      });
+
+      if (pd.recorded && pd.recorded.t.length) {
+        const rt = pd.recorded.t, rc = pd.recorded.cumulative.map(v => v / M);
+        traces.push({ x: rt, y: rc, mode: "lines", name: "Recorded (beam runs)",
+                      line: { color: "#4dabe8", width: 2.6 } });
+        traces.push({ x: [rt[rt.length - 1]], y: [rc[rc.length - 1]], mode: "markers",
+                      showlegend: false, hoverinfo: "skip",
+                      marker: { color: "#4dabe8", size: 8,
+                                line: { color: "#151a21", width: 1.5 } } });
+        annotations.push({
+          x: rt[rt.length - 1], y: rc[rc.length - 1],
+          text: `${rc[rc.length - 1].toFixed(2)}M`, showarrow: false,
+          xanchor: "right", yanchor: "bottom", yshift: 8,
+          font: { color: "#4dabe8", size: 13 },
+        });
+      }
+
+      Plotly.react("shift-progress-plot", traces, {
+        ...base, uirevision: "shift-progress", shapes, annotations,
+        legend: { orientation: "h", y: -0.09, yanchor: "top" },
+        margin: { t: 10, r: 20, b: 26, l: 62 },
+        // No year in the ticks: the range never spans more than a few weeks, so
+        // it's implied, and dropping it frees a line of the (limited) height.
+        xaxis: { ...axis, range: [pd.t_lo, pd.t_end], tickformat: "%d %b" },
+        yaxis: { title: { text: "Cumulative triggers (M)", font: { size: 12, color: "#8b96a5" } },
+                 ...axis, rangemode: "tozero" },
+      }, cfg);
+
+      if (noteEl && pd.events_per_pulse != null) {
+        const fitted = (pd.rate_runs || []).length > 3
+          ? `${pd.rate_runs.length} runs` : ((pd.rate_runs || []).join(", ") || "?");
+        noteEl.textContent = `counting ${pd.counted} · forward rate from ${fitted}: `
+          + `${pd.events_per_pulse.toFixed(0)} events/pulse × ${pd.pulses_per_hour.toFixed(0)} pulses/h`;
+      }
+    }
+  } catch (e) { /* best-effort */ }
+
   // 3He pressure: compact trend inside the 3He health card, under the value.
   // Hidden until there is data (gauge not connected -> keep the card clean).
   const he3PlotEl = document.getElementById("shift-he3-plot");
@@ -5029,7 +5230,8 @@ async function shiftRenderPlots() {
         Plotly.react("shift-he3-plot", traces, {
           ...base, uirevision: "shift-he3", showlegend: false,
           margin: { t: 8, r: 10, b: 44, l: 46 },
-          xaxis: { ...axis, automargin: true },
+          // No year in the ticks: this window is weeks-long at most, so it's implied.
+          xaxis: { ...axis, automargin: true, tickformat: "%d %b" },
           yaxis: { title: { text: `Pressure (${h.unit || "bar"})`, font: { size: 13, color: "#4dabe8" } }, ...axis },
         }, cfg);
       } else {

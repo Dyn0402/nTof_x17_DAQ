@@ -353,15 +353,32 @@
         .table-dark { --bs-table-bg: var(--panel-2); border-color: var(--border); }
 
         /* ---------- Shift Overview ---------- */
-        /* Contact ribbon: full-width strip at the top of the Shift tab. */
+        /* Half-column widths Bootstrap doesn't ship: Beam at col-lg-2 (16.7%)
+           was cramped, col-lg-3 (25%) ran a bit wide — 2.5/12 splits the
+           difference. System absorbs the other half so the row still sums to
+           12. Same breakpoint as col-lg-* so they stack to col-12 together. */
+        @media (min-width: 992px) {
+            .col-lg-2-5 { flex: 0 0 auto; width: 20.8333333%; }
+            .col-lg-3-5 { flex: 0 0 auto; width: 29.1666667%; }
+        }
+        /* Ribbon + Emergency Stop: two independent thin bars side by side. Kept
+           as siblings (not one nested in the other) so the estop button's
+           two-line label can't stretch the ribbon's own height — align-items is
+           flex-start rather than stretch for the same reason. */
+        .shift-top-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            margin-bottom: 0.9rem;
+        }
         .shift-contact-ribbon {
+            flex: 1 1 auto;
             border-radius: 8px;
             border: 1px solid var(--border);
             border-left: 4px solid var(--accent);
             background: var(--panel-2);
             color: var(--text);
-            padding: 0.55rem 1.1rem;
-            margin-bottom: 0.9rem;
+            padding: 0.5rem 1.1rem;
             text-align: center;
             font-size: 0.95rem;
             letter-spacing: 0.01em;
@@ -373,21 +390,54 @@
             white-space: nowrap;
         }
         .shift-contact-ribbon a:hover { text-decoration: underline; }
+        /* No card/border here on purpose: it's a bare button, not another
+           panel to draw the eye — deliberately the least prominent thing in
+           the top row, since it's a last-resort control, not a casual one. */
+        .shift-estop-box {
+            flex: none;
+            display: flex; align-items: center; gap: 0.55rem;
+            padding: 0.15rem 0;
+        }
+        .shift-estop-box .shift-note { margin: 0; font-size: 0.68rem; }
+        .estop-btn-sm {
+            flex: none;
+            border-radius: 6px; border: 1.5px solid var(--bad);
+            background: rgba(239, 91, 91, 0.10); color: var(--bad);
+            font-size: 0.62rem; font-weight: 800; letter-spacing: 0.02em;
+            line-height: 1.2;
+            text-transform: uppercase; cursor: pointer;
+            padding: 0.2rem 0.55rem;
+            white-space: nowrap;
+        }
+        .estop-btn-sm .estop-sub {
+            font-size: 0.52rem; font-weight: 500; letter-spacing: 0.01em;
+            text-transform: none; display: block; margin-top: 1px; opacity: 0.8;
+        }
+        .estop-btn-sm:hover { background: rgba(239, 91, 91, 0.22); }
+        .estop-btn-sm.armed { background: var(--bad); color: #fff; animation: estop-pulse 0.7s ease-in-out infinite; }
+        .estop-btn-sm:disabled { opacity: 0.55; cursor: wait; animation: none; }
 
-        /* Big glanceable banner: the whole strip takes the run-state color. */
+        /* Big glanceable banner: the whole strip takes the run-state color.
+           The title block has a capped width so the (long) substate line
+           wraps under it instead of stretching wide. */
         .shift-banner {
             border-radius: 10px;
             border: 1px solid var(--border);
             border-left-width: 6px;
             background: var(--panel);
-            padding: 0.8rem 1.2rem;
+            padding: 0.65rem 1.1rem;
             display: flex;
             align-items: center;
-            gap: 1.6rem;
+            gap: 1.2rem;
             flex-wrap: wrap;
         }
-        .shift-banner .shift-state { font-size: 1.9rem; font-weight: 700; letter-spacing: 0.02em; line-height: 1.1; }
-        .shift-banner .shift-substate { color: var(--muted); font-size: 0.85rem; }
+        .shift-banner-title { max-width: 230px; }
+        /* Class badge sits on its own line above the title — the title block
+           has headroom (Beam/System are the tall ones in this row), so this
+           doesn't add to the row's overall height. */
+        .shift-run-class-badge { margin-bottom: 2px; }
+        .shift-banner .shift-state { font-size: 1.45rem; font-weight: 700; letter-spacing: 0.02em; line-height: 1.15; }
+        .shift-banner .shift-substate { color: var(--muted); font-size: 0.72rem; line-height: 1.25; }
         .shift-banner.lv-ok   { border-left-color: var(--ok);   } .shift-banner.lv-ok   .shift-state { color: var(--ok); }
         .shift-banner.lv-warn { border-left-color: var(--warn); } .shift-banner.lv-warn .shift-state { color: var(--warn); }
         .shift-banner.lv-bad  { border-left-color: var(--bad);  animation: shift-alarm 1.2s ease-in-out infinite; }
@@ -397,8 +447,14 @@
             0%, 100% { background: var(--panel); }
             50%      { background: rgba(239, 91, 91, 0.14); }
         }
-        .shift-banner .shift-stats { display: flex; gap: 1.8rem; flex-wrap: wrap; margin-left: auto; }
-        .shift-clock { font-family: var(--mono); font-size: 1.5rem; color: var(--muted); }
+        .shift-banner .shift-stats { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-left: auto; }
+        /* 2 rows x 3 cols, bigger type — readable at a glance, still narrow
+           enough to share the row with Beam and System. */
+        .shift-banner .shift-stats.shift-stats-grid {
+            display: grid; grid-template-columns: repeat(3, auto);
+            grid-auto-flow: row; gap: 0.4rem 1.6rem; margin-left: auto;
+        }
+        .shift-clock { font-family: var(--mono); font-size: 1.2rem; color: var(--muted); }
 
         /* Cards: same skin as status-card, colored by the section's health. */
         .shift-card {
@@ -435,10 +491,40 @@
         .shift-row .k { color: var(--muted); white-space: nowrap; }
         .shift-row .v { white-space: nowrap; }
         .shift-row .exp { color: var(--muted); }
+        /* Beam card is deliberately narrow (it only ever shows two numbers).
+           A smaller font gets each row's label + value onto one line at that
+           width in the common case; letting the value wrap (rather than the
+           default nowrap) is the fallback so a rare long value wraps onto a
+           second line instead of overflowing the card. */
+        #shift-beam-body { font-size: 0.78rem; }
+        #shift-beam-body .shift-row .v { white-space: normal; text-align: right; }
         .shift-flag-ok   { color: var(--ok); }
         .shift-flag-bad  { color: var(--bad); font-weight: 700; }
         .shift-flag-na   { color: var(--muted); }
         .shift-note { color: var(--muted); font-size: 0.75rem; margin-top: 0.45rem; }
+
+        /* Gas + 3He stacked in one narrow column, next to the wide statistics
+           plot. The row's default flex-stretch sets the column's total height;
+           .shift-card normally claims height:100% for itself (single-card
+           columns elsewhere), so here that's overridden to split the stack
+           instead — unevenly, since 3He carries a trend plot and Gas doesn't. */
+        .shift-card-stack { display: flex; flex-direction: column; gap: 1rem; height: 100%; }
+        .shift-card-stack .shift-card { height: auto; flex: 1 1 0; min-height: 0; }
+        .shift-card-stack .shift-card-short { flex-grow: 0.75; }
+        .shift-card-stack .shift-card-tall  { flex-grow: 1.5; }
+
+        /* HV card: full width, one column per detector wall (A/B/C/D + Other) so
+           ~20 channels read at a glance instead of scrolling one narrow card. */
+        .shift-hv-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0 1.4rem;
+        }
+        .shift-hv-col { border-left: 1px solid var(--border); padding-left: 1rem; }
+        .shift-hv-col:first-child { border-left: none; padding-left: 0; }
+        .shift-hv-col-head {
+            font-weight: 700; font-size: 0.72rem; text-transform: uppercase;
+            letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.35rem;
+        }
 
         /* ---------- Disk Space: prune-parts (component) view ---------- */
         /* The "what to delete" axis: one toggle chip per component. Selecting a

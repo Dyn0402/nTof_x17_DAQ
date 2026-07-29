@@ -21,9 +21,26 @@ import os
 from datetime import datetime
 
 import run_stats
+import schedule as sched_mod
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SAVED_DIR = os.path.join(HERE, "saved")
+
+
+def load_projections(saved_dir=SAVED_DIR):
+    """Every frozen projection, oldest first. Duplicated from plot_progress.py
+    rather than imported from it: that module pulls in matplotlib, which this
+    page's Flask process should not have to carry just to read some JSON."""
+    out = []
+    for path in sorted(glob.glob(os.path.join(saved_dir, "projection_*.json"))):
+        try:
+            with open(path) as f:
+                p = json.load(f)
+            p["_name"] = os.path.basename(path)[len("projection_"):-len(".json")]
+            out.append(p)
+        except Exception as e:
+            print(f"[live] Skipping {path}: {e}")
+    return out
 
 
 def latest_projection(saved_dir=SAVED_DIR):
@@ -122,6 +139,65 @@ def summary(first_run=None, now=None, rate_first_run=None):
         "pct_complete": round(100.0 * recorded / final, 1) if final else None,
     }
     return out
+
+
+def cumulative_series(first_run=None, rate_first_run=None):
+    """The full cumulative-triggers-vs-projection curves as plain JSON-able
+    series — everything projections/plot_progress.py's top panel draws, minus
+    the drawing. Lets the Shift tab render it with Plotly to match the
+    dashboard's own dark styling instead of embedding a matplotlib PNG."""
+    sched = sched_mod.load_schedule()
+    if rate_first_run is None:
+        rate_first_run = sched.get("rate_first_run")
+    stats = run_stats.summarise(first_run=first_run, rate_first_run=rate_first_run)
+    beam = stats["beam"]
+    if not len(beam):
+        return None
+
+    t_end = sched_mod._parse(sched["run_end"])
+    t_lo = beam.t_start.min().to_pydatetime()
+
+    downtime = []
+    for a, b in sched_mod.downtime_intervals(sched):
+        a, b = max(a, t_lo), min(b, t_end)
+        if b > a:
+            downtime.append([a.isoformat(), b.isoformat()])
+
+    projections = load_projections()
+    proj_out = []
+    for i, p in enumerate(projections):
+        pts = p.get("points") or []
+        proj_out.append({
+            "name": p["_name"],
+            "newest": i == len(projections) - 1,
+            "efficiency": p.get("efficiency"),
+            "final_events": p.get("final_events"),
+            "t": [pt["t"] for pt in pts],
+            "events": [pt["events"] for pt in pts],
+            "events_at_100pct": [pt.get("events_at_100pct") for pt in pts],
+        })
+
+    bt, bc = run_stats.cumulative(beam)
+    rate = stats.get("rate") or {}
+    rate_runs = stats.get("rate_runs") or []
+
+    def _f(x):
+        return float(x) if x is not None else None
+
+    return {
+        "t_lo": t_lo.isoformat(),
+        "t_end": t_end.isoformat(),
+        "downtime": downtime,
+        "projections": proj_out,
+        # numpy scalars (from pandas aggregation) aren't all JSON-serializable —
+        # int64 in particular, unlike float64, doesn't subclass the builtin type.
+        "recorded": {"t": [t.isoformat() for t in bt], "cumulative": [int(c) for c in bc]},
+        "counted": f"run_{first_run}+" if first_run else "all recorded runs",
+        "rate_runs": rate_runs,
+        "events_per_pulse": _f(rate.get("events_per_pulse")),
+        "pulses_per_hour": _f(rate.get("pulses_per_hour")),
+        "events_per_beam_hour": _f(rate.get("events_per_beam_hour")),
+    }
 
 
 def main():

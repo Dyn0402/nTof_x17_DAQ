@@ -44,6 +44,8 @@ SURFACE = "#fcfcfb"
 ACTUAL = "#2a78d6"       # categorical slot 1
 PROJECTION = "#eb6834"   # categorical slot 2
 COSMIC = "#1baf7a"       # categorical slot 3
+ACTUAL_DOWN = "#e34948"  # categorical slot 8 (red) — measured beam-off, kept off
+                         # the blue/orange/aqua already claimed by data lines above
 MILLION = 1e6
 
 
@@ -62,7 +64,10 @@ def load_projections(saved_dir=SAVED_DIR):
 
 def _style(ax):
     ax.set_facecolor(SURFACE)
-    ax.grid(True, color=GRID, linewidth=0.8, alpha=0.9)
+    # No gridlines at all: day-spaced verticals read as beam stoppages at a glance
+    # (the confusion the downtime shading below is trying to avoid), and the
+    # horizontals competed with the scheduled/actual bands for the same space.
+    ax.grid(False)
     ax.set_axisbelow(True)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
@@ -74,15 +79,39 @@ def _style(ax):
         lbl.set_color(INK2)
 
 
-def shade_downtime(ax, sched, t_lo, t_hi, label=True):
+# Scheduled gets the top sliver, actual (the one worth seeing clearly) gets the
+# larger bottom band. A deliberate overlap band (0.62-0.70) lets a stop that
+# happened on schedule show its own blended tint, while a stop that wasn't on the
+# schedule (or a scheduled one the beam skipped) still reads as "only one band
+# present" outside that strip.
+SCHED_YSPAN = (0.62, 1.0)
+ACTUAL_YSPAN = (0.0, 0.70)
+
+
+def shade_downtime(ax, sched, t_lo, t_hi, label=True, yspan=SCHED_YSPAN):
     """Grey out scheduled beam-off periods so flat stretches in the curves are
     visibly explained rather than looking like a DAQ fault."""
     first = True
     for a, b in sched_mod.downtime_intervals(sched):
         if b <= t_lo or a >= t_hi:
             continue
-        ax.axvspan(max(a, t_lo), min(b, t_hi), color=MUTED, alpha=0.13, linewidth=0,
+        ax.axvspan(max(a, t_lo), min(b, t_hi), ymin=yspan[0], ymax=yspan[1],
+                   color=MUTED, alpha=0.22, linewidth=0,
                    label="Scheduled beam off / access" if (first and label) else None)
+        first = False
+
+
+def shade_actual_downtime(ax, intervals, t_lo, t_hi, label=True, yspan=ACTUAL_YSPAN):
+    """Red-tint MEASURED beam-off periods (from the beam-intensity pulse record),
+    stacked below the grey scheduled band rather than overlaid on it, so the two
+    are readable as two separate strips instead of a blended tint."""
+    first = True
+    for a, b in intervals:
+        if b <= t_lo or a >= t_hi:
+            continue
+        ax.axvspan(max(a, t_lo), min(b, t_hi), ymin=yspan[0], ymax=yspan[1],
+                   color=ACTUAL_DOWN, alpha=0.24, linewidth=0,
+                   label="Actual beam off (measured)" if (first and label) else None)
         first = False
 
 
@@ -106,6 +135,8 @@ def main():
     projections = load_projections()
     t_end = sched_mod._parse(sched["run_end"])
     t_lo = beam.t_start.min().to_pydatetime()
+    # Measured stops only exist up to now, never into the projected future.
+    actual_downtime = run_stats.load_actual_downtime(t_lo, min(t_end, datetime.now()))
 
     fig, (ax, axr, axc) = plt.subplots(
         3, 1, figsize=(11.5, 10.4), height_ratios=[3.0, 1.5, 1.2], sharex=True,
@@ -113,6 +144,7 @@ def main():
     fig.patch.set_facecolor(SURFACE)
 
     shade_downtime(ax, sched, t_lo, t_end)
+    shade_actual_downtime(ax, actual_downtime, t_lo, t_end)
 
     # --- projections, oldest first so the newest draws on top ---
     for i, p in enumerate(projections):
@@ -169,6 +201,7 @@ def main():
 
     # --- expected vs actual instantaneous rate ---
     shade_downtime(axr, sched, t_lo, t_end, label=False)
+    shade_actual_downtime(axr, actual_downtime, t_lo, t_end, label=False)
     newest = projections[-1] if projections else None
     if newest:
         ts = [datetime.fromisoformat(pt["t"]) for pt in newest["points"]]
@@ -210,6 +243,7 @@ def main():
 
     # --- the little cosmics counter ---
     shade_downtime(axc, sched, t_lo, t_end, label=False)
+    shade_actual_downtime(axc, actual_downtime, t_lo, t_end, label=False)
     if newest and newest.get("final_cosmics"):
         ts = [datetime.fromisoformat(pt["t"]) for pt in newest["points"]]
         axc.plot(ts, [pt.get("cosmics", 0) / MILLION for pt in newest["points"]],

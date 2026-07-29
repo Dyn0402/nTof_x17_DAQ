@@ -1082,19 +1082,52 @@ def _hv_run_dir(cfg, hv_file="hv_monitor.csv"):
     return primary if (primary and os.path.isdir(primary)) else None
 
 
-@app.route("/get_subruns")
-def get_subruns():
+def _current_run_cfg():
+    """cfg for the run _current_run_cache points at, read from that run's own
+    run_config.json snapshot (written into run_out_dir by daq_control.py at run
+    start). This is what the HV Monitor should key off: every run — whether
+    started manually or by the beam<->cosmics auto-changeover — gets its own
+    freshly-named config file in CONFIG_RUN_DIR (see /run/prepare), so pinning
+    the panel to one fixed filename goes stale the moment anything else starts a
+    run, and the panel looks "stuck" on whichever run last actually used that
+    file. _current_run_cache is already kept in sync from the daq_control log
+    regardless of which config started the run, so it doesn't have this problem.
+    None if there's no current run yet, or its snapshot hasn't been written."""
+    run_name = _current_run_cache
+    if not run_name:
+        return None
+    cfg_path = os.path.join(RUN_DIR, run_name, "run_config.json")
+    try:
+        with open(cfg_path) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _legacy_hv_cfg():
+    """Fallback only: resolve cfg from a config/json_run_configs/<file> named by the
+    'run' query param, for the (now rare) case _current_run_cfg() has nothing yet,
+    e.g. right after a server restart before any run has been seen."""
     run_name = request.args.get("run")
     if not run_name:
-        return jsonify([])
-
+        return None
     config_path = os.path.join(CONFIG_RUN_DIR, run_name)
     if not os.path.isfile(config_path):
+        return None
+    try:
+        with open(config_path) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+@app.route("/get_subruns")
+def get_subruns():
+    cfg = _current_run_cfg() or _legacy_hv_cfg()
+    if cfg is None:
         return jsonify([])
 
     try:
-        with open(config_path) as f:
-            cfg = json.load(f)
         run_dir = _hv_run_dir(cfg)
         if not run_dir:
             return jsonify([])
@@ -1131,35 +1164,59 @@ def get_run_name():
 
 
 def _hv_channel_labels(cfg):
-    """{'slot:channel' -> 'A_Drift'} from a run config's detectors[].hv_channels.
-    Detector label = the name suffix after the last '_' (mx17_A -> A); electrode
-    capitalized (drift -> Drift, resist -> Resist, bias -> Bias)."""
+    """{'slot:channel' -> (label, category)} from a run config's detectors[].hv_channels.
+
+    category 'mm' = micromegas (det_type 'mx17'): label = detector letter + capitalized
+    electrode, e.g. 'A_Drift', 'A_Resist' (two electrodes worth distinguishing).
+
+    category 'scint' = scintillator PMTs (det_type 'scintillator_PMT', names
+    'liquid_<Wall>' / 'plastic_<Wall>_<Side>'): label = 'Wall_Type_Side', e.g. 'A_L'
+    for liquid A, 'A_P_R' for plastic A right. Only one electrode (bias) exists so
+    it's dropped from the label rather than always appending '_Bias'.
+
+    Anything else falls back to the old generic 'suffix_Electrode' scheme under
+    category 'other', grouped with 'mm' in the HV response."""
     labels = {}
     for det in cfg.get("detectors", []):
-        name  = str(det.get("name", ""))
-        short = name.rsplit("_", 1)[-1] or name
-        for electrode, ch in (det.get("hv_channels") or {}).items():
+        name = str(det.get("name", ""))
+        det_type = str(det.get("det_type", ""))
+        parts = name.split("_")
+        hv_channels = det.get("hv_channels") or {}
+
+        base = None
+        if det_type == "mx17":
+            short = parts[-1] or name
+            category = "mm"
+        elif det_type == "scintillator_PMT" and parts[:1] == ["liquid"] and len(parts) >= 2:
+            category = "scint"
+            base = f"{parts[1]}_L"
+        elif det_type == "scintillator_PMT" and parts[:1] == ["plastic"] and len(parts) >= 3:
+            category = "scint"
+            base = f"{parts[1]}_P_{parts[2]}"
+        else:
+            short = parts[-1] or name
+            category = "other"
+
+        for electrode, ch in hv_channels.items():
             try:
                 slot, channel = ch
             except (TypeError, ValueError):
                 continue
-            labels[f"{slot}:{channel}"] = f"{short}_{str(electrode).title()}"
+            label = base if base is not None else f"{short}_{str(electrode).title()}"
+            labels[f"{slot}:{channel}"] = (label, category)
     return labels
 
 
 @app.route("/hv_data")
 def hv_data():
     try:
-        run_name = request.args.get("run")
         subrun_name = request.args.get("subrun")
         hv_file_name = request.args.get("hv_file", "hv_monitor.csv")
 
-        config_path = os.path.join(CONFIG_RUN_DIR, run_name)
-        if not os.path.isfile(config_path):
+        cfg = _current_run_cfg() or _legacy_hv_cfg()
+        if cfg is None:
             return jsonify([])
 
-        with open(config_path) as f:
-            cfg = json.load(f)
         # Resolve the same run dir as /get_subruns (with the previous-run fallback),
         # so the subrun the selector offers is found here too.
         output_dir = _hv_run_dir(cfg, hv_file_name)
@@ -1173,33 +1230,39 @@ def hv_data():
         # Extract timestamps
         time = df["timestamp"].astype(str).tolist()
 
-        # Map "slot:channel" -> detector label (e.g. "A_Drift") from the run config's
-        # detectors[].hv_channels. Label = detector name suffix (mx17_A -> A) + the
-        # capitalized electrode (drift -> Drift). Channels absent from the config keep
-        # their raw "slot:channel" name.
+        # Map "slot:channel" -> (label, category) from the run config's
+        # detectors[].hv_channels — see _hv_channel_labels for the naming scheme.
+        # Channels absent from the config keep their raw "slot:channel" name and are
+        # grouped with the MM plot (category "other").
         chan_label = _hv_channel_labels(cfg)
 
-        voltage_data = {}
-        current_data = {}
+        voltage_data, current_data = {}, {}
+        voltage_scint, current_scint = {}, {}
 
         # Loop through columns to find slot:channel prefixes
         for col in df.columns:
             if "vmon" in col:
                 key = col.replace(" vmon", "")
-                voltage_data[chan_label.get(key, key)] = df[col].tolist()
+                label, category = chan_label.get(key, (key, "other"))
+                (voltage_scint if category == "scint" else voltage_data)[label] = df[col].tolist()
             elif "imon" in col:
                 key = col.replace(" imon", "")
-                current_data[chan_label.get(key, key)] = df[col].tolist()
+                label, category = chan_label.get(key, (key, "other"))
+                (current_scint if category == "scint" else current_data)[label] = df[col].tolist()
 
         # Sort by label so each detector's traces group together (A_Drift, A_Resist, …)
         voltage_data = dict(sorted(voltage_data.items()))
         current_data = dict(sorted(current_data.items()))
+        voltage_scint = dict(sorted(voltage_scint.items()))
+        current_scint = dict(sorted(current_scint.items()))
 
         return jsonify({
             "success": True,
             "time": time,
             "voltage": voltage_data,
-            "current": current_data
+            "current": current_data,
+            "voltage_scint": voltage_scint,
+            "current_scint": current_scint
         })
 
     except Exception as e:
@@ -2546,6 +2609,10 @@ def _shift_hv(run_name, daq_subrun, hv_status, exp):
     vals = dict(zip(cols, row))
     keys = sorted({c.rsplit(' ', 1)[0] for c in cols if c.endswith(' vmon')})
     ramping = hv_status.get("status") == "Ramping HV"
+    # category -> display suffix, so "A_Drift" reads "A_Drift MM" and "A_P_L" reads
+    # "A_P_L Scint" instead of the raw ('label', 'category') tuple leaking into the
+    # page as "A_Drift,mm" (Array.toString() joins with a comma in the JS template).
+    cat_suffix = {"mm": "MM", "scint": "Scint"}
     n_bad = 0
     for key in keys:
         v0 = fnum(vals.get(f"{key} v0"))
@@ -2561,11 +2628,18 @@ def _shift_hv(run_name, daq_subrun, hv_status, exp):
             ok = powered and abs(vmon - v0) <= tol
         if ok is False:
             n_bad += 1
+        base_label, category = labels.get(key, (key, "other"))
+        suffix = cat_suffix.get(category, "")
+        wall_m = re.match(r'^([A-Za-z])_', base_label)
         out["channels"].append({
-            "key": key, "label": labels.get(key, key), "v0": v0, "vmon": vmon,
-            "imon": imon, "powered": powered, "ok": ok,
+            "key": key, "label": f"{base_label} {suffix}".strip() if suffix else base_label,
+            "wall": wall_m.group(1).upper() if wall_m else "Other",
+            "v0": v0, "vmon": vmon, "imon": imon, "powered": powered, "ok": ok,
         })
-    out["channels"].sort(key=lambda c: c["label"])
+    cat_by_key = {k: labels.get(k, (k, "other"))[1] for k in keys}
+    cat_rank = {"mm": 0, "scint": 1, "other": 2}
+    out["channels"].sort(key=lambda c: (
+        c["wall"] == "Other", c["wall"], cat_rank.get(cat_by_key.get(c["key"]), 2), c["label"]))
 
     if out["age_s"] is not None and out["age_s"] > stale_s:
         # Monitor only writes during a subrun — stale between subruns is normal.
@@ -2670,6 +2744,37 @@ def _shift_beam():
     return out
 
 
+# Projections only move when a sub-run completes (~hourly) or a new one is
+# frozen, so recomputing on every 15 s poll (it walks every run directory) would
+# be pure waste. No matplotlib involved here — this is data, not a rendered
+# plot — so it's cheap enough to import and cache in-process rather than shell out.
+PROGRESS_DATA_MAX_AGE_S = 120
+_progress_data_cache = {"t": 0.0, "data": None}
+_progress_data_lock = threading.Lock()
+
+
+@app.route("/shift/progress_data")
+def shift_progress_data():
+    """Cumulative-triggers-vs-projection series for the Shift tab's Plotly plot —
+    the same comparison pushed to the public CERN page, as data rather than a
+    pre-rendered image, so it can be styled to match the rest of the dashboard."""
+    now = time.time()
+    if now - _progress_data_cache["t"] > PROGRESS_DATA_MAX_AGE_S:
+        with _progress_data_lock:
+            if now - _progress_data_cache["t"] > PROGRESS_DATA_MAX_AGE_S:
+                try:
+                    projections_dir = os.path.join(BASE_DIR, "projections")
+                    if projections_dir not in sys.path:
+                        sys.path.insert(0, projections_dir)
+                    import live as projection_live
+                    data = projection_live.cumulative_series()
+                    _progress_data_cache.update(t=now, data=data)
+                except Exception as e:
+                    print(f"[shift] progress data failed: {e}")
+    return jsonify({"success": _progress_data_cache["data"] is not None,
+                    "data": _progress_data_cache["data"]})
+
+
 @app.route("/shift/status")
 def shift_status():
     """Everything the Shift Overview page shows, in one poll."""
@@ -2702,6 +2807,10 @@ def shift_status():
     prog = _run_progress(daq_info, dream_info)
     events = (_ondisk_run_events(run_name) + _live_events_from(dream_info)) if run_name else 0
 
+    # Same classifier the Disk Space tab uses (beam/cosmics/pulser/pedestal/...)
+    # so "what are we taking" reads identically in both places.
+    run_class = space_manager.classify_run(run_name) if run_name else None
+
     run = {
         "state": state, "label": label, "color": color,
         "run_name": run_name or "None",
@@ -2716,6 +2825,8 @@ def shift_status():
         "int_rate": _status_field(dream_info, "Int Rate"),
         "gap_s": round(gap_s, 1),
         "gap_ok_s": SHIFT_DATA_GAP_OK_S,
+        "class": (run_class or {}).get("class"),
+        "class_label": (run_class or {}).get("class_label"),
     }
 
     he3 = _he3_pressure_read_state()
@@ -3518,5 +3629,32 @@ def mode_watcher_toggle():
     return jsonify({"success": False, "message": "action must be start/stop/arm/disarm"}), 400
 
 
+# Process-level start marker.
+#
+# It has to be written at IMPORT time, not from the __main__ block below:
+# flask_app/start_flask.sh launches this with `flask run`, which imports this module
+# and never executes __main__, so a line down there would never be written in
+# production. Reaching this point also means the module imported cleanly.
+#
+# But `import app` is NOT the same thing as "the server started" — test harnesses,
+# screenshot servers and one-off tooling import this module too, and each of those
+# would otherwise forge a restart marker in the audit log (observed: 4 phantom
+# STARTs in 90 s). A false restart marker is precisely the confusion this logging
+# pass exists to remove, so gate it on actually being the server process.
+# FLASK_RUN_FROM_CLI is set by flask.cli before the app module is loaded.
+#
+# It reuses log_event/daq_events.log rather than opening a logs/flask_server.log:
+# daq_events.log is already this process's own log, and adding no new machinery to
+# the process that serves every button is the conservative choice. Button auditing
+# (STOP_RUN, GAS_SET, ...) is unchanged.
+def _log_process_start(launched_by):
+    log_event("START", "flask_server", pid=os.getpid(), launched_by=launched_by,
+              base_dir=BASE_DIR)
+
+
+if os.environ.get("FLASK_RUN_FROM_CLI"):
+    _log_process_start("flask-cli")
+
 if __name__ == "__main__":
+    _log_process_start("socketio.run")
     socketio.run(app, host="0.0.0.0", port=5001)
