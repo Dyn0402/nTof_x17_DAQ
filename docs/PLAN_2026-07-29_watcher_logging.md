@@ -53,90 +53,52 @@ Corrections to this plan, found while implementing:
 * Housekeeping renames were verified safe first — nothing in the repo (`.py`, `.sh`,
   templates, `daq_status.py`, `monitor.py`) reads either fossil.
 
-### Rollout checklist (state as of 2026-07-29 11:35)
+### Rollout: COMPLETE, verified 2026-07-29 18:20
 
-A process only picks this up when it **restarts** — every one below was already running
-on the old code when the edit landed. `logs/<name>.log` staying absent is expected until
-then, and is not a fault.
+Every standing process has restarted onto the new code and written its first lines.
+Verified by field-width diff against `logs/qa_watcher.log` — all 14 event logs share
+the convention exactly.
 
-Verify with: `tail -1 logs/<name>.log` → a `START` line dated after the restart.
-
-**✅ Upgraded + verified end-to-end**
-
-| Process | Log | Evidence |
+| Process | Log | Verified |
 |---|---|---|
-| `flask_server` | `logs/daq_events.log` | restarted 11:29:31 on the new code; real `START` line present. ⚠ Written by the pre-11:33 version — restart again to pick up the import-gate fix (next line will carry `launched_by=flask-cli`) |
+| `hv_control` | `hv_control.log` | 14:21 START |
+| `dream_daq` | `dream_daq_control.log` | 14:20 START |
+| `daq_control` | `daq_control.log` | 14:24 START + FEU_PREFLIGHT_OK for run_103 |
+| `backup_watcher` | `backup_watcher.log` | 15:58 START; see the wedge numbers below |
+| `flask_server` | `daq_events.log` | 17:53 START, `launched_by=flask-cli` |
+| `stats_page_watcher` | `stats_page_watcher.log` | 15:59 START |
+| `processor_watcher` | `processor_watcher.log` | 18:11 START |
+| `gas_watcher` | `gas_watcher.log` | 18:11 START + BUS_CONNECTED |
+| `he3_pressure_watcher` | `he3_pressure_watcher.log` | 18:11 START + GPIB_CONNECTED |
+| `system_stats_watcher` | `system_stats_watcher.log` | 18:11 START |
+| `beam_watcher` | `beam_watcher.log` | 18:11 START + NXCALS_UP (11 s, not the ~1 min feared) |
+| `stream1_watcher` | `stream1_watcher.log` | 18:11 START + STATE_CHANGE -> no_beam |
+| `space_watcher` | `space_watcher.log` | 18:12 START |
+| `mode_watcher` | `mode_watcher.log` | 18:11 START, carrying its live decision |
+| `n1081b_timetag_watcher` | `n1081b_timetag_watcher.log` | 18:17 START + SEGMENT_START |
 
-**⏳ Upgraded, awaiting a restart to verify — safe to restart any time**
+The M5 supervisor needed a deliberate restart: it chains 6 h segments *internally*, so
+unlike every other watcher it has no natural restart and would have sat on the old code
+indefinitely. Stopped with SIGTERM (never SIGKILL, `n1081b/CLAUDE.md` rule 4), which
+forwards TERM to the harness — segment 2 closed with `restored=True`, no alarm, max gap
+0.4 s, its 24 786 edges kept and gzipped, and the new segment came back at the same
+~25 Hz. Board never quarantined.
 
-These own no hardware in the run path, or hold state in hardware across a restart.
+**It paid for itself within two hours.** backup_watcher's first session logged
+**188 XRDCP_WEDGED, 180 XRDCP_RECOVERED, 1 XRDCP_GAVE_UP** — the 5-8 % wedge rate from
+memory `eos-xrdcp-wedge-stalls-backup` is now a number you can trend rather than an
+impression, and 95.7 % clearing on retry is measured rather than recalled.
 
-| Process | Log | Restart |
-|---|---|---|
-| `stats_page_watcher` | `logs/stats_page_watcher.log` | `tmux kill-session -t stats_page_watcher && bash_scripts/start_servers.sh` |
-| `system_stats_watcher` | `logs/system_stats_watcher.log` | same pattern |
-| `stream1_watcher` | `logs/stream1_watcher.log` | same pattern |
-| `he3_pressure_watcher` | `logs/he3_pressure_watcher.log` | same pattern (read-only GPIB) |
-| `gas_watcher` | `logs/gas_watcher.log` | same pattern — does NOT zero setpoints on exit, gas keeps flowing |
-| `space_watcher` | `logs/space_watcher.log` | same pattern |
-| `beam_watcher` | `logs/beam_watcher.log` | same pattern; ~1 min Spark spin-up gap, `beam_on: null` during it means UNKNOWN and every consumer treats that as "do nothing" |
-| `backup_watcher` | `logs/backup_watcher.log` | same pattern; an in-flight xrdcp is retried next poll |
-| `processor_watcher` | `logs/processor_watcher.log` | same pattern; a killed decode re-runs next pass |
-| `mode_watcher` | `logs/mode_watcher.log` | GUI Run Mode card → Stop, then Start. The disarm flag is a file and survives |
+### Still open (not part of this pass)
 
-`start_servers.sh` leaves any session that is already up alone, so re-running it only
-fills the gap left by the `kill-session`.
-
-**⛔ Upgraded, but do NOT restart during a run — wait for a boundary**
-
-| Process | Log | Why |
-|---|---|---|
-| `daq_control` | `logs/daq_control.log` | relaunched per run by `start_run.sh`; **verifies itself on the next run start**, no action needed |
-| `hv_control` | `logs/hv_control.log` | holds the CAEN session and serves daq_control on port 1100 — killing it mid-run breaks the run |
-| `dream_daq` | `logs/dream_daq_control.log` | the DAQ server itself |
-
-**🚫 Instrumented but now off the live path**
-
-| Process | Log | Why |
-|---|---|---|
-| `n1081b/timetag_watcher_controller.py` | `logs/n1081b_timetag_watcher.log` | instrumented, but **retired the same day** by commit `9ba3244`: the M5 stream was re-enabled 2026-07-29 pointing at `n1081b/tt_stream_supervisor.py --section C` instead (the rotation watcher is what wedged .244; the supervisor is what ran clean for 6 h on 07-18). Its lines only appear if that path is ever run again |
-
-**⏳ `n1081b/tt_stream_supervisor.py` — added after the fact**
-
-The supervisor became a standing process on 2026-07-29 (commit `9ba3244`), after this
-plan's audit, so it never appeared in the table above. Two corrections to a first
-reading of it, both in its favour:
-
-* **It already had a durable log** — `logs/n1081b_tt_stream.log`, and unlike the two
-  fossils this one is *size-rotated* (20 MB, one backup). At the measured 1.1 MB/day
-  it retains about five weeks of full narrative. It was never a gap.
-* **It does no board I/O at all.** It is a process supervisor: it spawns
-  `tt_stream_qualify.py` and `tt_probe_v2.py` as subprocesses and reads their stdout
-  and `stats.json`. The `n1081b/CLAUDE.md` session rules bind the child harness, not
-  this file, so instrumenting it carries none of the wedge risk that editing a
-  board-path file would.
-
-What it did lack is a place for the *events* to live once the 10 s heartbeat rotates
-them out, and consistency with every other watcher. So it now ALSO writes
-`logs/n1081b_timetag_watcher.log` in the shared convention — `START`, `SEGMENT_START`,
-`SEGMENT_DONE` (edges/gaps/restored), `SILENT_START`, `RESTORE_UNVERIFIED`,
-`STALL_STRIKE`, `HARNESS_ALARM`, `PROBE_RECOVERED`, `PROBE_SILENT`, `DISK_GUARD`,
-`ALARM_STOP`, `TELEGRAM_FAILED`, `STOP`, `CRASH`. About 10 lines/day, so it never
-rotates. `log()` is unchanged and still carries the full narrative; `event()` is
-called alongside it, never instead of it.
-
-Same filename as the retired controller above, deliberately: whichever implementation
-owns .244 writes one continuous M5 history, and the `source` column says which.
-
-Verified: `event()` cannot raise (unwritable path, and a detail whose `__str__`
-throws, both survive) — which is what makes it safe to call from anywhere in the
-segment loop. Awaiting the supervisor's next restart to appear.
-
-**Not touched** (already had working event logs): `qa_watcher`, `pedestal_watcher`.
-
-⚠ Unrelated finding while checking this: **`qa_watcher` has been down since
-2026-07-23 11:36** — no tmux session, no process. Its last line is a `QA_LAUNCH` at
-`mem_pct=80.7%`, i.e. right at `memory_kill_pct`. Nothing restarted it in 6 days.
+* `qa_watcher` has been down since 2026-07-23 11:36 — no session, no process. Its last
+  line is a `QA_LAUNCH` at `mem_pct=80.7 %`, right at `memory_kill_pct`. Deliberately
+  left down 07-29: worth understanding why it died at the threshold before restarting
+  it into the same conditions.
+* `mode_watcher`'s last changeover before this pass **FAILED with rc=2** (14:08:43,
+  recorded in `config/mode_watcher_state.json`). The DAQ ended up on cosmics anyway, so
+  it was resolved by hand. Nothing logged it, because mode_watcher was still on the old
+  code at the time — exactly the blind spot this pass closes.
 
 ## Why
 
