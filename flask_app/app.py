@@ -899,8 +899,13 @@ def start_backup():
         subprocess.run(["tmux", "kill-session", "-t", BACKUP_TMUX], capture_output=True)
         # sys.executable (flask's venv python), not bare "python": the tmux
         # login shell resets PATH and drops the venv, so "python" may not resolve.
+        # Routed through supervise_watcher.sh so a crash (e.g. the 2026-07-29
+        # space_watcher/backup_watcher HDD-delete race) restarts automatically
+        # instead of leaving the session up with a dead process inside it;
+        # Ctrl-C / stop_backup's kill-session still stop it for good.
         subprocess.Popen([
             "tmux", "new-session", "-d", "-s", BACKUP_TMUX,
+            f"{BASE_DIR}/bash_scripts/supervise_watcher.sh",
             sys.executable, f"{BASE_DIR}/backup_watcher.py", BACKUP_CONFIG_PATH
         ])
         return jsonify({"success": True, "message": "Backup watcher started"})

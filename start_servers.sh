@@ -27,7 +27,7 @@ VENV_PY="$PWD/.venv/bin/python"
 # mirroring exactly what the Flask /start_processor|/start_qa|/start_backup buttons do.
 # If the generator fails we skip the watcher rather than starting it on a stale config.
 start_watcher_with_config () {
-    local session=$1 script=$2 generator=$3 config=$4 hist=${5:-5000}
+    local session=$1 script=$2 generator=$3 config=$4 hist=${5:-5000} supervise=${6:-false}
     # Check the session BEFORE regenerating anything, so re-running this script to fill
     # a gap is a true no-op for whatever is already up (it must not rewrite a live
     # watcher's config out from under it).
@@ -39,7 +39,14 @@ start_watcher_with_config () {
         echo "[start_servers] WARNING: $generator failed — $session NOT started"
         return 1
     fi
-    bash_scripts/start_tmux.sh "$session" "$VENV_PY $PWD/$script $PWD/$config" "$hist"
+    local run_cmd="$VENV_PY $PWD/$script $PWD/$config"
+    if [ "$supervise" = true ]; then
+        # Re-runs the watcher on an unexpected crash (backoff, capped); a clean
+        # Ctrl-C or `tmux kill-session` still stops it for good. See
+        # bash_scripts/supervise_watcher.sh.
+        run_cmd="bash_scripts/supervise_watcher.sh $VENV_PY $PWD/$script $PWD/$config"
+    fi
+    bash_scripts/start_tmux.sh "$session" "$run_cmd" "$hist"
 }
 
 # Start sessions. 3rd arg = tmux scrollback cap in LINES (memory-saving).
@@ -94,7 +101,7 @@ bash_scripts/start_tmux.sh stream1_watcher "python stream1_watcher.py" 5000
 # the kinit above (it needs the same Kerberos ticket as the EOS mirror).
 # To go back to manual start, comment out the relevant line — the GUI buttons are
 # unchanged and still kill/restart these sessions.
-start_watcher_with_config backup_watcher    backup_watcher.py    backup_config.py    config/backup_config.json
+start_watcher_with_config backup_watcher    backup_watcher.py    backup_config.py    config/backup_config.json 5000 true
 start_watcher_with_config processor_watcher processor_watcher.py processor_config.py config/processor_config.json
 start_watcher_with_config qa_watcher        qa_watcher.py        qa_config.py        config/qa_config.json
 # SSD space watcher: keeps the raw staging disk (/home/mx17/july_dream/dream_run) above a
