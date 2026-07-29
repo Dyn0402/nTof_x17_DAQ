@@ -296,6 +296,7 @@ n1081b/logs/
 # Public stats page: local config holds the Cloudflare ingest token.
 config/stats_page_config.json
 config/stats_page_history.json
+config/stats_page_state.json
 
 # Projection plots are regenerable; frozen projections in saved/ ARE kept.
 projections/plots/

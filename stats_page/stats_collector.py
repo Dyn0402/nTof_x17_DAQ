@@ -39,6 +39,11 @@ from datetime import datetime
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(REPO_DIR, "config", "stats_page_config.json")
 HISTORY_PATH = os.path.join(REPO_DIR, "config", "stats_page_history.json")
+# Last-push outcome, for the Flask dashboard's status card (flask_app/daq_status.py
+# get_stats_page_watcher_status). Separate from HISTORY_PATH because history keeps
+# updating locally even when the EOS push itself is failing (e.g. an expired
+# Kerberos ticket) — the dashboard needs to see THAT, not just "the loop is alive".
+STATE_PATH = os.path.join(REPO_DIR, "config", "stats_page_state.json")
 BEAM_STATE = os.path.join(REPO_DIR, "config", "beam_state.json")
 BEAM_CSV_DIR = "/home/mx17/beam_july/slow_control/beam_intensity"
 SPS_STATE = os.path.join(REPO_DIR, "config", "sps_state.json")
@@ -431,6 +436,17 @@ def append_history(payload, history):
     return history
 
 
+def _write_state(connected, msg):
+    """Persist the last push outcome, atomically, for the dashboard card."""
+    try:
+        tmp = STATE_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"connected": connected, "msg": msg, "timestamp": datetime.now().isoformat()}, f)
+        os.replace(tmp, STATE_PATH)
+    except Exception as e:
+        print(f"[stats_page] Could not persist state: {e}", file=sys.stderr)
+
+
 def _xrdcp(local_path, remote_path, cfg):
     """Copy one file to EOS, overwriting. Returns (ok, message)."""
     # Double slash is required: root://host//abs/path. A single slash makes xrootd
@@ -535,6 +551,7 @@ def run_blocking(cfg):
         # Re-upload the page itself on the first push of a session, so an edit to
         # page.html goes live on restart without a separate deploy step.
         ok, msg = push_eos(cfg, payload, history, with_page=first, png=take_fresh_png())
+        _write_state(ok, msg)
         if ok:
             if fails:
                 print(f"[stats_page] Recovered after {fails} failed push(es)")

@@ -32,7 +32,7 @@ from daq_status import (get_dream_daq_status, get_hv_control_status,
                         get_pedestal_watcher_status,
                         get_gas_watcher_status, get_he3_pressure_watcher_status,
                         get_beam_watcher_status, get_n1081b_timetag_watcher_status,
-                        get_stream1_watcher_status,
+                        get_stream1_watcher_status, get_stats_page_watcher_status,
                         get_n1081b_access_status, N1081B_ACCESS_DIR)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Add parent dir to path
@@ -266,7 +266,7 @@ def auth_status():
 
 TMUX_SESSIONS = ["daq_control", "dream_daq", "hv_control", "processor_watcher", "qa_watcher", "backup_watcher",
                  "pedestal_watcher", "gas_watcher", "he3_pressure_watcher",
-                 "beam_watcher", "stream1_watcher", "n1081b_timetag_watcher"]
+                 "beam_watcher", "stream1_watcher", "n1081b_timetag_watcher", "stats_page_watcher"]
 sessions = {}
 
 @app.route("/")
@@ -430,6 +430,8 @@ def status_all():
             info = get_stream1_watcher_status()
         elif s == "n1081b_timetag_watcher":
             info = get_n1081b_timetag_watcher_status()
+        elif s == "stats_page_watcher":
+            info = get_stats_page_watcher_status()
         else:
             info = {"status": "READY", "color": "secondary", "fields": []}
 

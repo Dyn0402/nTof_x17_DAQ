@@ -199,6 +199,19 @@
         .s-info      { border-left-color: var(--info); } .s-info .status-state      { color: var(--info); }
         .s-secondary { border-left-color: var(--sec);  } .s-secondary .status-state { color: var(--sec); }
 
+        /* Compact status-only cards (watchers with no fields to show). Own width
+           class instead of Bootstrap's col-*-2 so the count-per-row isn't pinned to
+           a 12-column divisor — as of writing there are 7 of these, and 12/7 isn't
+           a whole column, so a bespoke width lets them all share one row instead of
+           one spilling onto its own. Denser padding/font than a full status-card
+           since these only ever hold a name + one-word state. */
+        .status-card-sm { padding: 0.65rem 0.75rem; }
+        .status-card-sm .status-name { font-size: 0.82rem; line-height: 1.2; }
+        .status-card-sm .status-state { font-size: 1.05rem; }
+        .status-card-col-sm { flex: 0 0 auto; width: 50%; }
+        @media (min-width: 768px)  { .status-card-col-sm { width: 25%; } }
+        @media (min-width: 1200px) { .status-card-col-sm { width: 14.2857%; } }
+
         /* ---------- System resource monitor ---------- */
         #sys-load-avg { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
         /* CPU + Memory share one full-width, vertically-stacked (shared-x) plot on top;

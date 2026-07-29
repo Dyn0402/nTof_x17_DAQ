@@ -31,6 +31,9 @@ SPACE_STATE_FILE = os.path.join(_REPO_DIR, "config", "space_watcher_state.json")
 # N1081B time-tag watcher publishes its state here (see
 # n1081b/timetag_watcher_controller.py).
 N1081B_TIMETAG_STATE_FILE = os.path.join(_REPO_DIR, "config", "n1081b_timetag_state.json")
+# Public stats-page watcher publishes its last-push outcome here (see
+# stats_page/stats_collector.py).
+STATS_PAGE_STATE_FILE = os.path.join(_REPO_DIR, "config", "stats_page_state.json")
 # N1081B board-access runtime state (holder / quarantine markers) written by
 # n1081b/n1081b_session.py's board_session(). Read-only here so the dashboard can
 # show, at a glance, whether a board is in use or resting BEFORE an operator
@@ -518,6 +521,38 @@ def get_beam_watcher_status():
     if age is not None and age > 180:
         return small("Stale", "warning")
     return small("Logging", "success")
+
+
+def get_stats_page_watcher_status():
+    """Compact card for the public webeos stats-page watcher (push-only, no
+    start/stop button in this GUI — see stats_page/README.md). Derived from tmux
+    session existence + the last-push-outcome file the watcher publishes."""
+    def small(status, color):
+        return {"status": status, "color": color, "small": True, "fields": []}
+
+    # No tmux session -> nothing is publishing to the public page at all.
+    alive = subprocess.run(["tmux", "has-session", "-t", "stats_page_watcher"],
+                           capture_output=True).returncode == 0
+    if not alive:
+        return small("STOPPED", "secondary")
+
+    try:
+        with open(STATS_PAGE_STATE_FILE) as f:
+            st = json.load(f)
+    except Exception:
+        return small("Starting", "info")   # session up, no push attempted yet
+
+    if not st.get("connected"):
+        return small("Push Failed", "warning")   # e.g. expired Kerberos ticket
+
+    # Session + last push OK: flag a stale card if pushes have stopped landing.
+    try:
+        age = (datetime.now() - datetime.fromisoformat(st["timestamp"])).total_seconds()
+    except Exception:
+        age = None
+    if age is not None and age > 180:
+        return small("Stale", "warning")
+    return small("Publishing", "success")
 
 
 # ---------------------------------------------------------------------------

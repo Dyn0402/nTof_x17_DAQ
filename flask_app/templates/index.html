@@ -1526,8 +1526,8 @@ function updateStatus() {
                 // Compact card: watchers that only need a running/not indicator
                 if (info.small) {
                     container.innerHTML += `
-                      <div class="col-6 col-md-3 col-xl-2">
-                        <div class="status-card s-${info.color}">
+                      <div class="status-card-col-sm">
+                        <div class="status-card status-card-sm s-${info.color}">
                           <div class="status-name">${info.name}</div>
                           <div class="status-state">${info.status}</div>
                         </div>
