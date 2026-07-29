@@ -3,11 +3,12 @@
 Prepared 2026-07-29 for another model to implement. This is the write-up of the audit +
 design discussed in chat; implement against this doc rather than re-deriving it.
 
-## STATUS: IMPLEMENTED 2026-07-29 (all three tiers)
+## STATUS: IMPLEMENTED AND ROLLED OUT 2026-07-29 (all three tiers)
 
-Code is in; **no watcher was restarted** — a beam run was live — so every new log file
-starts empty and fills on the next natural restart of each process. See "What still
-needs doing" at the bottom.
+Code is in, and all 15 standing processes have restarted onto it and been verified
+writing — see "Rollout" below. The restarts were done in a beam-off window with only a
+cosmics run live; nothing in the run path (`hv_control`, `dream_daq`, `daq_control`) had
+to be touched, because a 14:20 restart had already carried them onto the new code.
 
 Corrections to this plan, found while implementing:
 
