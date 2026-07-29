@@ -92,7 +92,9 @@ def log(msg):
 
 
 def _log(event, **details):
-    log_event(EVENT_LOG, event, 'space_watcher', **details)
+    # 'space', not 'space_watcher': the source column is padded to 12 and a longer
+    # tag pushes the details out of line with every other watcher's log.
+    log_event(EVENT_LOG, event, 'space', **details)
 
 
 def ssd_free() -> int:

@@ -37,6 +37,9 @@ def log_event(log_path, event, source, **details):
     that run's own data directory. This is the lighter, standing "what did this
     process do" trail under the repo's logs/ dir, and the two are unrelated.
 
+    Keep `source` to 12 characters or fewer: it is padded to 12, and a longer tag
+    silently pushes that line's details out of column with every other log.
+
     Never raises. A logging failure must not take down the process it instruments.
     """
     try:
