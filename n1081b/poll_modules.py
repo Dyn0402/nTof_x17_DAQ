@@ -72,7 +72,13 @@ TT_WATCHER_IP = "192.168.10.244"
 POLL_IPS = [f"192.168.10.{n}" for n in (240, 241, 242, 243, 244, 245)]  # .244 back 2026-07-16: touchscreen-rebooted, quarantine cleared, sections restored to counter + verified counting
 PASSWORD = "password"
 RECV_TIMEOUT = 6      # s, per-board socket timeout so one hung board can't stall the rest
-SECTIONS_RANGE = 6    # LEMO inputs / outputs 0-5 per section
+# The N1081B has SIX LEMO inputs (0-5) but only FOUR outputs (0-3) per section
+# (n1081b_module_map.py: `_in` up to range(1,6), `_out` only range(4)). Reading an
+# out-of-range OUTPUT does not error — the board returns uninitialised junk, e.g.
+# M6.C out4 mono_value 16843009 == 0x01010101. Using 6 for both (until 2026-07-22)
+# put that junk in every archived snapshot and made it look like real config.
+INPUT_RANGE = 6       # LEMO inputs 0-5
+OUTPUT_RANGE = 4      # LEMO outputs 0-3
 
 
 def _get(errs, label, s, method, *args):
@@ -130,11 +136,11 @@ def _dump_board(ip):
                 sd["output_configuration"] = _get(errs, f"{sec.name}.output_config", s, "get_output_configuration", sec)
                 sd["input_channels"] = {
                     ch: _get(errs, f"{sec.name}.in_ch{ch}", s, "get_input_channel_configuration", sec, ch)
-                    for ch in range(SECTIONS_RANGE)
+                    for ch in range(INPUT_RANGE)
                 }
                 sd["output_channels"] = {
                     ch: _get(errs, f"{sec.name}.out_ch{ch}", s, "get_output_channel_configuration", sec, ch)
-                    for ch in range(SECTIONS_RANGE)
+                    for ch in range(OUTPUT_RANGE)
                 }
                 board["sections"][sec.name] = sd
     except BoardBusyError as e:

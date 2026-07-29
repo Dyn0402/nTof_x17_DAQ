@@ -20,6 +20,32 @@ runs at compliance, so it alerts only when it sits at over-current for longer
 short window. Transient blips shorter than the window never alert, and a
 "RECOVERED" note is sent when a firing condition clears.
 
+Ramps
+-----
+``daq_control`` starts HV monitoring BEFORE it ramps to the sub-run's setpoints,
+so every sub-run begins with vmon far from v0 — a legitimate ramp, not a fault.
+Rather than blanket-suppressing alerts for a fixed time (which both cried wolf
+on ramps longer than the window and went blind to real faults inside it), the
+alerter runs an explicit *ramp phase* between ``begin_ramp()`` and ``end_ramp()``
+(driven by ``hv_control.set_hvs``). During that phase, per channel:
+
+  * voltage-deviation and over-current alerts are suppressed — both are the
+    normal, expected state of a channel on its way to setpoint;
+  * a **stall detector** replaces them: if |vmon - v0| fails to improve by
+    ``ramp_min_progress_v`` within ``ramp_stall_s``, the ramp is not going to
+    finish and that alerts immediately. (Measured over 639 archived sub-runs, a
+    healthy ramp always advanced >= 26 V per 30 s, so 5 V / 45 s is far below
+    any real ramp yet catches a stall well before the 180 s ramp timeout.)
+  * a **trip** still alerts: once a channel has been seen powered on during the
+    ramp, reading power-off with a setpoint applied fires as usual. The
+    seen-on gate only skips the brief window before ``set_hvs`` powers a
+    previously-off channel on.
+  * ``end_ramp(ok=False)`` — the ramp timed out and ``daq_control`` is skipping
+    the sub-run — always alerts, listing the off-target channels. That failure
+    used to be a silent ``print``.
+  * ``ramp_max_s`` is a dead-man: if ``end_ramp`` is never called, the phase
+    expires, full alerting resumes and a warning is sent.
+
 Thresholds live in ``config/hv_alert_config.json`` and are re-read on mtime
 change, so they can be tuned mid-run without restarting anything.
 """
@@ -44,11 +70,25 @@ CARD_KIND = {5: "resist", 9: "drift"}
 DEFAULT_CONFIG = {
     "enabled": True,
     "resend_interval_minutes": 15,
-    # Suppress all alerts for this long after a sub-run's monitoring starts, so a
-    # legitimate HV ramp (vmon climbing to setpoint over ~20-30 s) is not flagged
-    # as a voltage deviation. In the normal run flow set_hvs already waits for the
-    # ramp before monitoring begins, so this is a belt-and-suspenders guard.
+    # Fallback only: blanket grace after monitoring starts, used when nothing
+    # called begin_ramp() (e.g. an old hv_control). The ramp phase below is what
+    # normally covers ramps, and it does not expire on a timer.
     "ramp_grace_s": 30,
+    # --- ramp phase (see module docstring) ---
+    # A ramp is "making progress" if |vmon - v0| shrinks by at least
+    # ramp_min_progress_v within ramp_stall_s. Real ramps beat this by ~5x.
+    "ramp_stall_s": 45,
+    "ramp_min_progress_v": 5.0,
+    # Dead-man: if end_ramp() never arrives, resume normal alerting after this.
+    # Must exceed the longest real ramp (~105 s observed) plus set_hvs's
+    # ramp_timeout_s (180 s default), or a failed ramp would double-alert.
+    "ramp_max_s": 300,
+    # After a ramp completes, give voltage/current a moment to settle before
+    # deviation and over-current tests resume. Trips still alert immediately.
+    "post_ramp_settle_s": 10,
+    # Note (don't alarm) when a ramp succeeded but took suspiciously long.
+    # 0 disables. Longest healthy ramp observed in the archive: 104 s.
+    "ramp_slow_notice_s": 150,
     # A trip powers the channel off while a setpoint is still applied — urgent,
     # so it fires on its own short window regardless of drift/resist.
     "poweroff_sustain_s": 5,
@@ -108,6 +148,13 @@ class HVAlerter:
         self._sub_run = ""
         self._sub_run_start = None
 
+        # Ramp phase. Mutated from the DAQ thread (begin_ramp/end_ramp) and read
+        # from the HV monitor thread (evaluate), so it lives under a lock.
+        self._ramp_lock = threading.Lock()
+        self._ramp = None            # dict while ramping, else None
+        self._post_ramp_until = 0.0  # settle deadline after a ramp completes
+        self._last_readings = {}     # last poll, for the ramp-failure message
+
     # ---------------------------------------------------------------- config
     def _load_config(self, force=False):
         """(Re)load the alert config if the file changed. Missing/invalid file
@@ -154,6 +201,109 @@ class HVAlerter:
         self._state = {}
         self._i0set = dict(i0set or {})
         self._sub_run_start = None  # set on first evaluate() -> ramp-grace anchor
+        # Monitoring always starts before the sub-run's ramp, so enter the ramp
+        # phase now: set_hvs's begin_ramp() only re-anchors it. Without this the
+        # gap between "Begin Monitoring" and "Start" would be alerted on.
+        self.begin_ramp()
+
+    # ----------------------------------------------------------------- ramp
+    def begin_ramp(self, now=None):
+        """Enter the ramp phase: vmon is expected to be away from v0 and moving.
+        Called by ``hv_control.set_hvs`` before it writes setpoints."""
+        now = now if now is not None else time.time()
+        with self._ramp_lock:
+            self._ramp = {"start": now, "seen_on": set(), "best": {},
+                          "expired": False}
+            self._post_ramp_until = 0.0
+
+    def end_ramp(self, ok=True, detail="", now=None):
+        """Leave the ramp phase. ``ok=False`` means the ramp did not reach
+        setpoint (``HVRampError``) — that always alerts, since ``daq_control``
+        silently skips the sub-run on it."""
+        now = now if now is not None else time.time()
+        with self._ramp_lock:
+            ramp = self._ramp
+            self._ramp = None
+            self._post_ramp_until = now + self._cfg.get("post_ramp_settle_s", 10)
+        if ramp is None:
+            return  # already ended/expired; nothing to report
+        held = now - ramp["start"]
+        if not ok:
+            self._send("ramp", f"⛔ HV RAMP FAILED after {held:.0f} s — sub-run "
+                               f"SKIPPED: {detail}\n{self._off_target_summary()}")
+            return
+        slow = self._cfg.get("ramp_slow_notice_s", 0)
+        if slow and held > slow:
+            self._send("ramp", f"🐢 HV ramp took {held:.0f} s (> {slow:.0f} s) "
+                               f"but reached setpoint")
+
+    def _off_target_summary(self):
+        """One line per drift/resist channel still away from setpoint, from the
+        last poll — context for the ramp-failure alert."""
+        if not self._last_readings:
+            return "  (no HV monitor readings available)"
+        lines = []
+        for (slot, channel), r in sorted(self._last_readings.items()):
+            try:
+                kind = CARD_KIND.get(int(slot))
+            except (TypeError, ValueError):
+                kind = None
+            if kind is None or not (_is_num(r.get("vmon")) and _is_num(r.get("v0"))):
+                continue
+            vmon, v0 = float(r["vmon"]), float(r["v0"])
+            if v0 <= 0 or abs(vmon - v0) <= self._cfg[kind]["v_tol"]:
+                continue
+            label = _detector_letter(kind, channel) or f"{slot}:{channel}"
+            power = r.get("power")
+            off = " POWERED OFF" if power not in ("", None) and int(power) == 0 else ""
+            lines.append(f"  {kind.upper()} {label}: {vmon:.1f} / {v0:.0f} V{off}")
+        return "\n".join(lines) if lines else "  (all channels at setpoint)"
+
+    def _classify_ramping(self, ramp, key, slot, channel, power, vmon, imon, v0, now):
+        """Ramp-phase classification: trips still alert, deviation/over-current
+        are expected, and a ramp that stops making progress alerts."""
+        try:
+            kind = CARD_KIND.get(int(slot))
+        except (TypeError, ValueError):
+            kind = None
+        if kind is None:
+            return (False, None, "")
+
+        cfg = self._cfg[kind]
+        label = _detector_letter(kind, channel)
+        tag = f"{kind.upper()} {label}" if label else f"{kind} {slot}:{channel}"
+        set_on = _is_num(v0) and float(v0) > 0
+        powered = power not in ("", None) and int(power) == 1
+
+        if powered:
+            ramp["seen_on"].add(key)
+        elif set_on and power not in ("", None):
+            # Off with a setpoint applied. Before set_hvs powers the channel on
+            # this is expected; once we've seen it on, it's a trip.
+            if key in ramp["seen_on"]:
+                return (True, "off", f"{tag} TRIPPED DURING RAMP — set {float(v0):.0f} V")
+            return (False, None, "")
+
+        if not (_is_num(vmon) and _is_num(v0)):
+            return None
+        dev = abs(float(vmon) - float(v0))
+        if not set_on or dev <= cfg["v_tol"]:
+            ramp["best"].pop(key, None)
+            return (False, None, "")
+
+        # Stall detection: |dev| must keep shrinking while we're outside tolerance.
+        min_progress = self._cfg.get("ramp_min_progress_v", 5.0)
+        best = ramp["best"].get(key)
+        if best is None or dev <= best[0] - min_progress:
+            ramp["best"][key] = (dev, now)
+            return (False, None, "")
+        stall_s = self._cfg.get("ramp_stall_s", 45)
+        if now - best[1] >= stall_s:
+            return (True, "rampstall",
+                    f"{tag} RAMP STALLED: vmon {float(vmon):.1f} V vs set "
+                    f"{float(v0):.0f} V, < {min_progress:.0f} V progress in "
+                    f"{now - best[1]:.0f} s")
+        return (False, None, "")
 
     # -------------------------------------------------------------- evaluate
     def _classify(self, slot, channel, power, vmon, imon, v0):
@@ -213,21 +363,43 @@ class HVAlerter:
             return
         if now is None:
             now = time.time()
+        self._last_readings = dict(readings)
 
-        # Ramp-settling grace: ignore the first ramp_grace_s of a sub-run so a
-        # legitimate ramp to setpoint is not flagged as a deviation.
-        if self._sub_run_start is None:
-            self._sub_run_start = now
-        if now - self._sub_run_start < self._cfg.get("ramp_grace_s", 30):
-            return
+        with self._ramp_lock:
+            ramp = self._ramp
+            post_ramp_until = self._post_ramp_until
+        if ramp is not None and now - ramp["start"] > self._cfg.get("ramp_max_s", 300):
+            # Dead-man: end_ramp() never arrived. Resume normal alerting rather
+            # than stay blind, and say so once.
+            if not ramp["expired"]:
+                ramp["expired"] = True
+                self._send("ramp", f"⚠️ HV ramp phase expired after "
+                                   f"{now - ramp['start']:.0f} s without completing "
+                                   f"— resuming normal HV alerting")
+            ramp = None
+
+        if ramp is None:
+            # Fallback grace, for the case where nothing ever called begin_ramp().
+            if self._sub_run_start is None:
+                self._sub_run_start = now
+            if now - self._sub_run_start < self._cfg.get("ramp_grace_s", 30):
+                return
 
         for (slot, channel), r in readings.items():
             key = f"{slot}:{channel}"
-            res = self._classify(slot, channel, r.get("power"), r.get("vmon"),
-                                 r.get("imon"), r.get("v0"))
+            if ramp is not None:
+                res = self._classify_ramping(ramp, key, slot, channel, r.get("power"),
+                                             r.get("vmon"), r.get("imon"), r.get("v0"), now)
+            else:
+                res = self._classify(slot, channel, r.get("power"), r.get("vmon"),
+                                     r.get("imon"), r.get("v0"))
             if res is None:
                 continue  # no usable data; hold state
             bad, category, reason = res
+            # Post-ramp settle: hold off the "slow" tests for a few seconds after
+            # a ramp completes. A trip ("off") is never held off.
+            if bad and category in ("vdev", "overcurrent") and now < post_ramp_until:
+                continue
             st = self._state.setdefault(key, {"bad_since": None, "category": None,
                                              "alerted": False})
 
@@ -247,14 +419,19 @@ class HVAlerter:
                 # every resend_interval while the condition persists.
                 held = now - st["bad_since"]
                 self._remember_reason(key, reason)
-                self._send(key, f"⚠️ HV ALERT (ongoing {held:.0f} s): {reason}",
-                           respect_throttle=True, now=now)
+                # A stall reason already carries its own timing; "ongoing 0 s"
+                # (its sustain window is the stall window) would just confuse.
+                prefix = ("⚠️ HV ALERT: " if category == "rampstall"
+                          else f"⚠️ HV ALERT (ongoing {held:.0f} s): ")
+                self._send(key, f"{prefix}{reason}", respect_throttle=True, now=now)
                 st["alerted"] = True
 
     def _remember_reason(self, key, reason):
         self._last_reason[key] = reason
 
     def _sustain_for(self, slot, category):
+        if category == "rampstall":
+            return 0  # the stall window IS the sustain window
         if category == "off":
             return self._cfg.get("poweroff_sustain_s", 5)
         try:

@@ -1,0 +1,87 @@
+{
+  "ip": "192.168.10.245",
+  "section": "SEC_C",
+  "saved": "2026-07-22_21-15-12",
+  "inputs": {
+    "0": {
+      "status": true,
+      "enable_gd": true,
+      "gate": 100,
+      "delay": 1000,
+      "invert": false
+    },
+    "1": {
+      "status": false,
+      "enable_gd": false,
+      "gate": 0,
+      "delay": 0,
+      "invert": false
+    },
+    "2": {
+      "status": false,
+      "enable_gd": true,
+      "gate": 0,
+      "delay": 0,
+      "invert": false
+    },
+    "3": {
+      "status": false,
+      "enable_gd": false,
+      "gate": 0,
+      "delay": 0,
+      "invert": false
+    },
+    "4": {
+      "status": false,
+      "enable_gd": true,
+      "gate": 0,
+      "delay": 0,
+      "invert": false
+    },
+    "5": {
+      "status": true,
+      "enable_gd": false,
+      "gate": 0,
+      "delay": 0,
+      "invert": false
+    }
+  },
+  "outputs": {
+    "0": {
+      "status": true,
+      "enable_mono": true,
+      "mono_value": 1000,
+      "invert": true
+    },
+    "1": {
+      "status": true,
+      "enable_mono": true,
+      "mono_value": 1000,
+      "invert": true
+    },
+    "2": {
+      "status": true,
+      "enable_mono": true,
+      "mono_value": 1000,
+      "invert": true
+    },
+    "3": {
+      "status": true,
+      "enable_mono": true,
+      "mono_value": 1000,
+      "invert": true
+    },
+    "4": {
+      "status": true,
+      "enable_mono": false,
+      "mono_value": 16843009,
+      "invert": false
+    },
+    "5": {
+      "status": true,
+      "enable_mono": false,
+      "mono_value": 0,
+      "invert": false
+    }
+  }
+}

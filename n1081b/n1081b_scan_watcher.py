@@ -124,19 +124,33 @@ def _session_kwargs(sched):
             'require_login': sched.get('require_login', True)}
 
 
+class _ThrSub:
+    """Wrapper so set_input_configuration accepts the raw standard_sub int like an
+    enum (the SDK reads `.value`). Mirrors rate_scan_2d._V — used only to preserve
+    the section's existing sub-standard when re-writing its discriminator threshold."""
+    __slots__ = ('value',)
+
+    def __init__(self, v):
+        self.value = v
+
+
 def _apply_channel(s, section, ch, override):
-    """Apply `override` (any subset of input_status/delay/enable_gd/gate/output_status)
-    to one channel, reading + preserving every other field. Only the requested
-    direction(s) are touched: an input field present -> re-write the input channel;
-    output_status present -> re-write the output channel. Returns (ok, detail) where
-    ok is the read-back verify result. All board I/O goes through the session's
-    `s.call()` (pacing + breaker + clean close).
+    """Apply `override` (any subset of input_status/delay/enable_gd/gate/output_status/
+    threshold) to one channel, reading + preserving every other field. Only the
+    requested direction(s) are touched: an input field present -> re-write the input
+    channel; output_status present -> re-write the output channel; `threshold` present
+    -> re-write the SECTION discriminator threshold (mV, per-section on M1/M2; the same
+    set_input_configuration call ThresholdRig uses — safe in any trigger mode; `ch` is
+    irrelevant to it, so give a threshold target a single channel e.g. [0]). Returns
+    (ok, detail) where ok is the read-back verify result. All board I/O goes through the
+    session's `s.call()` (pacing + breaker + clean close).
 
     NOTE: a `delay` only takes effect when the channel's Gate&Delay is enabled —
     pass `enable_gd` (+ a sane `gate` ≥ the incoming pulse width) alongside it."""
     in_keys = ('input_status', 'delay', 'enable_gd', 'gate')
     touch_in = any(k in override for k in in_keys)
     touch_out = ('output_status' in override)
+    touch_thr = ('threshold' in override)
     ok, detail = True, {}
     if touch_in:
         cin = s.call("get_input_channel_configuration", section, ch)['data']
@@ -162,6 +176,20 @@ def _apply_channel(s, section, ch, override):
         rout = s.call("get_output_channel_configuration", section, ch)['data']
         ok = ok and rout['status'] == new_status
         detail['out_status'] = rout['status']
+    if touch_thr:
+        N1081B = _board_module()
+        cfg = s.call("get_input_configuration", section)['data']
+        new_thr = int(override['threshold'])
+        if cfg['threshold'] != new_thr:
+            s.call("set_input_configuration", section,
+                   N1081B.SignalStandard.STANDARD_DISCRIMINATOR,
+                   _ThrSub(cfg['standard_sub']), new_thr,
+                   N1081B.SignalImpedance.IMPEDANCE_50)
+            rb = s.call("get_input_configuration", section)['data']
+            ok = ok and rb['threshold'] == new_thr
+            detail['threshold'] = rb['threshold']
+        else:
+            detail['threshold'] = cfg['threshold']   # already at target — no write
     return ok, detail
 
 

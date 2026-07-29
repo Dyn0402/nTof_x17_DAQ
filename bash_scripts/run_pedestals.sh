@@ -6,7 +6,7 @@
 # make_dream_ped_cfg.py is implemented to generate that pedestal cfg.
 # python make_dream_ped_cfg.py
 
-python run_config_pedestals.py
+python run_configs/run_config_pedestals.py
 
 CONFIG_PATH="run_config_pedestals.json"
 

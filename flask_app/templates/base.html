@@ -240,6 +240,29 @@
         }
         .sys-diskspace .sys-bar-track { height: 20px; border-radius: 3px; }
         .sys-diskspace .sys-bar-pct { min-width: 3.4em; }
+        /* "Time till full" tiles above the Overview disk-space bars. */
+        .sys-ttf-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        .sys-ttf-tile {
+            flex: 1; min-width: 0;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 6px 10px 7px;
+            text-align: center;
+        }
+        .sys-ttf-tile .ttf-label {
+            font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em;
+            font-weight: 600; color: var(--muted);
+        }
+        .sys-ttf-tile .ttf-value {
+            font-family: var(--mono);
+            font-size: 1.5rem; font-weight: 700; line-height: 1.15;
+            margin: 1px 0 0;
+        }
+        .sys-ttf-tile .ttf-sub {
+            font-size: 0.64rem; color: var(--muted);
+            line-height: 1.25;
+        }
 
         /* ---------- Monitoring strip ---------- */
         .monitor-strip .strip-row {
@@ -260,6 +283,18 @@
             padding: 0.5rem 0.9rem 0.7rem;
             border-top: 1px solid var(--border);
         }
+        /* Section headers grouping the rules in the Setup panel by what they watch. */
+        .monitor-rule-section {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+            margin: 0.85rem 0 0.15rem;
+            padding-bottom: 0.2rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .monitor-rule-section:first-child { margin-top: 0.1rem; }
 
         /* ---------- Plot galleries ---------- */
         .plot-card {
@@ -409,14 +444,72 @@
         .auth-badge.viewonly { color: var(--warn); border: 1px solid rgba(240, 192, 64, 0.4); }
         .auth-badge.viewonly .dot { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
         .view-locked { opacity: 0.45 !important; cursor: not-allowed !important; filter: grayscale(0.55); }
-        #auth-unlock-modal {
-            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);
-            display: none; align-items: center; justify-content: center; z-index: 2000;
+        /* ---------- Popups: one frame for every modal in the GUI ----------
+           .daq-overlay/.daq-modal-box are shared by the themed dialogs below, the
+           unlock box and the Disk Space delete/restore modal, so every popup in the
+           DAQ reads as the same object. Callers still flip inline display to open
+           them, so no `display` is declared on .daq-overlay itself. */
+        .daq-overlay {
+            position: fixed; inset: 0; z-index: 2000;
+            align-items: center; justify-content: center;
+            background: rgba(6, 9, 13, 0.66);
+            backdrop-filter: blur(2px);
+            padding: 1rem;
+            animation: daq-dlg-fade 0.12s ease-out;
         }
-        #auth-unlock-modal .box {
-            background: var(--panel); border: 1px solid var(--border);
-            border-radius: 10px; padding: 1.2rem 1.3rem; width: min(370px, 92vw);
+        @keyframes daq-dlg-fade { from { opacity: 0; } to { opacity: 1; } }
+        .daq-modal-box {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-top: 3px solid var(--accent);
+            border-radius: 10px;
+            max-height: 86vh;
+            box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+            animation: daq-dlg-rise 0.14s cubic-bezier(0.2, 0.8, 0.3, 1);
         }
+        @keyframes daq-dlg-rise { from { transform: translateY(8px) scale(0.985); } to { transform: none; } }
+        .daq-modal-box.danger { border-top-color: var(--bad); }
+        .daq-modal-box.warn   { border-top-color: var(--warn); }
+
+        #auth-unlock-modal { display: none; }
+        #auth-unlock-modal .box { padding: 1.2rem 1.3rem; width: min(370px, 92vw); }
+
+        /* ---------- Themed dialogs (daqConfirm / daqAlert / daqPrompt) ----------
+           Replaces the browser's native confirm()/alert()/prompt() boxes, which
+           ignore the dark theme and render as OS chrome in the middle of the DAQ. */
+        #daq-dialog { display: none; z-index: 2100; }
+        #daq-dialog.open { display: flex; }
+        #daq-dialog .dlg-box {
+            width: min(460px, 94vw);
+            display: flex; flex-direction: column;
+        }
+        #daq-dialog.danger  .dlg-box { border-top-color: var(--bad); }
+        #daq-dialog.warn    .dlg-box { border-top-color: var(--warn); }
+        #daq-dialog .dlg-title {
+            font-size: 0.94rem; font-weight: 600; color: var(--text);
+            padding: 0.85rem 1.1rem 0.55rem;
+            display: flex; align-items: center; gap: 0.55rem;
+        }
+        #daq-dialog .dlg-title .dlg-icon {
+            width: 9px; height: 9px; border-radius: 50%; flex: none;
+            background: var(--accent); box-shadow: 0 0 7px var(--accent);
+        }
+        #daq-dialog.danger .dlg-title .dlg-icon { background: var(--bad);  box-shadow: 0 0 7px var(--bad); }
+        #daq-dialog.warn   .dlg-title .dlg-icon { background: var(--warn); box-shadow: 0 0 7px var(--warn); }
+        #daq-dialog .dlg-body {
+            padding: 0 1.1rem 0.2rem; overflow-y: auto;
+            font-size: 0.86rem; line-height: 1.5; color: #c3ccd8;
+            white-space: pre-wrap;          /* messages are written with real newlines */
+        }
+        #daq-dialog .dlg-body b, #daq-dialog .dlg-body strong { color: var(--text); }
+        #daq-dialog .dlg-input {
+            margin-top: 0.75rem; font-family: var(--mono); font-size: 0.86rem;
+        }
+        #daq-dialog .dlg-foot {
+            display: flex; justify-content: flex-end; gap: 0.5rem;
+            padding: 0.85rem 1.1rem 1rem;
+        }
+        #daq-dialog .dlg-foot .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </style>
 </head>
 <body>
@@ -424,7 +517,7 @@
         <div class="container-fluid flex-wrap">
             <a class="navbar-brand" href="#">
                 <span class="brand-dot"></span>X17 DAQ
-                <span class="brand-sub">nToF</span>
+                <span class="brand-sub">n_TOF</span>
             </a>
             <ul class="nav nav-tabs main-tabs ms-2" id="daqTabs">
                 <li class="nav-item">
@@ -494,8 +587,8 @@
 
     {% block scripts %}{% endblock %}
 
-    <div id="auth-unlock-modal">
-        <div class="box">
+    <div id="auth-unlock-modal" class="daq-overlay">
+        <div class="box daq-modal-box">
             <div style="font-weight:600; margin-bottom:0.6rem;">Unlock control</div>
             <p class="text-muted" style="font-size:0.82rem; margin-bottom:0.7rem;">
                 Enter the control password to enable start/stop and other actions from this browser.</p>
@@ -508,6 +601,124 @@
             </div>
         </div>
     </div>
+
+    <!-- Themed replacement for the native confirm()/alert()/prompt() boxes -->
+    <div id="daq-dialog" class="daq-overlay">
+        <div class="dlg-box daq-modal-box" role="dialog" aria-modal="true" aria-labelledby="daq-dlg-title">
+            <div class="dlg-title" id="daq-dlg-title"><span class="dlg-icon"></span><span class="dlg-title-text"></span></div>
+            <div class="dlg-body">
+                <div class="dlg-msg"></div>
+                <input class="dlg-input form-control" type="text" style="display:none;">
+            </div>
+            <div class="dlg-foot">
+                <button class="btn btn-sm btn-secondary dlg-cancel" type="button">Cancel</button>
+                <button class="btn btn-sm btn-info dlg-ok" type="button">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ===== Themed dialogs ==================================================
+    // daqConfirm / daqAlert / daqPrompt are drop-in async replacements for the
+    // browser's native boxes, which render as unstyled OS chrome. They return a
+    // Promise, so callers must `await` them (native confirm() was synchronous).
+    //
+    //   if (!await daqConfirm("Stop the run?", {danger: true})) return;
+    //
+    // opts: {title, danger, warn, okText, cancelText, value, placeholder}.
+    // Enter confirms, Escape cancels; danger dialogs focus Cancel so a stray
+    // Enter never fires a destructive action. Calls made while one is open are
+    // queued rather than dropped.
+    (function () {
+        const root = document.getElementById("daq-dialog");
+        if (!root) return;
+        const box    = root.querySelector(".dlg-box");
+        const titleE = root.querySelector(".dlg-title-text");
+        const msgE   = root.querySelector(".dlg-msg");
+        const input  = root.querySelector(".dlg-input");
+        const okBtn  = root.querySelector(".dlg-ok");
+        const cxBtn  = root.querySelector(".dlg-cancel");
+
+        let settle = null;                 // resolver for the dialog on screen
+        let chain  = Promise.resolve();    // serialises overlapping calls
+
+        function finish(value) {
+            if (!settle) return;
+            const done = settle;
+            settle = null;
+            root.classList.remove("open", "danger", "warn");
+            document.removeEventListener("keydown", onKey, true);
+            done(value);
+        }
+        function onKey(e) {
+            if (!settle) return;
+            if (e.key === "Escape") { e.preventDefault(); finish(null); }
+            else if (e.key === "Enter" && input.style.display === "none") {
+                // In prompt mode the input's own Enter handler takes it instead.
+                e.preventDefault(); finish(true);
+            }
+        }
+        okBtn.addEventListener("click", () => finish(input.style.display === "none" ? true : input.value));
+        cxBtn.addEventListener("click", () => finish(null));
+        root.addEventListener("click", e => { if (e.target === root) finish(null); });
+        input.addEventListener("keydown", e => {
+            if (e.key === "Enter") { e.preventDefault(); finish(input.value); }
+        });
+
+        function open(cfg) {
+            return new Promise(resolve => {
+                settle = resolve;
+                titleE.textContent = cfg.title;
+                msgE.textContent   = cfg.message || "";
+                msgE.style.display = cfg.message ? "" : "none";
+                root.classList.toggle("danger", !!cfg.danger);
+                root.classList.toggle("warn", !cfg.danger && !!cfg.warn);
+                okBtn.textContent = cfg.okText || "OK";
+                // Same button palette the rest of the GUI uses for these actions.
+                okBtn.className = "btn btn-sm dlg-ok " +
+                    (cfg.danger ? "btn-danger" : cfg.warn ? "btn-warning" : "btn-info");
+                cxBtn.textContent = cfg.cancelText || "Cancel";
+                cxBtn.style.display = cfg.mode === "alert" ? "none" : "";
+                if (cfg.mode === "prompt") {
+                    input.style.display = "";
+                    input.value = cfg.value != null ? String(cfg.value) : "";
+                    input.placeholder = cfg.placeholder || "";
+                } else {
+                    input.style.display = "none";
+                }
+                root.classList.add("open");
+                document.addEventListener("keydown", onKey, true);
+                // Danger actions default to Cancel; everything else to the action.
+                setTimeout(() => {
+                    if (cfg.mode === "prompt") { input.focus(); input.select(); }
+                    else if (cfg.danger) cxBtn.focus();
+                    else okBtn.focus();
+                }, 0);
+            });
+        }
+
+        // Queue so a second call while one is open waits instead of clobbering it.
+        function enqueue(cfg) {
+            const run = chain.then(() => open(cfg));
+            chain = run.catch(() => {});
+            return run;
+        }
+
+        window.daqConfirm = (message, opts = {}) =>
+            enqueue({...opts, message, mode: "confirm",
+                     title: opts.title || (opts.danger ? "Confirm" : "Are you sure?"),
+                     okText: opts.okText || "Confirm"}).then(v => v === true);
+
+        window.daqAlert = (message, opts = {}) =>
+            enqueue({...opts, message, mode: "alert",
+                     title: opts.title || "Notice", okText: opts.okText || "OK"}).then(() => undefined);
+
+        window.daqPrompt = (message, opts = {}) =>
+            enqueue({...opts, message, mode: "prompt",
+                     title: opts.title || "Input", okText: opts.okText || "OK"})
+                .then(v => (typeof v === "string" ? v : null));
+    })();
+    </script>
 
     <script>
     // ===== View-only access control (client side) ==========================

@@ -56,6 +56,16 @@ SYSTEM_STATS_CONFIG_PATH = os.path.join(_REPO_DIR, "config", "system_stats_confi
 
 # Which network interfaces / physical disks to log. KEEP IN SYNC with the same two
 # constants in flask_app/app.py (_NET_IFACES / _DISK_DEVS) — both read the same box.
+#
+# ⚠ THE NAMES SURVIVED THE 2026-07-22 NIC SWAP BUT THEIR ROLES INVERTED. The list below
+# is unchanged and still correct as strings, so nothing here errors — but the CSV columns
+# mean the opposite of what they meant before 2026-07-22 ~15:44:
+#     enp4s0  was I210    / CERN   ->  is now AQC113 (atlantic) / DREAM+FEU, MTU 9000
+#     eno1    was I219-LM / DREAM  ->  is now I219-LM (e1000e)  / CERN, DHCP
+# So net_enp4s0_rx_bps is the FEU readout link TODAY and was CERN idle traffic BEFORE.
+# Analysing an IPD ladder: pre-swap runs need `analyze_link_load.py --iface eno1`,
+# post-swap runs `--iface enp4s0`. Identify NICs by driver/MAC, never by name.
+# Full record: docs/network_upgrade_10g/05_as_built_2026-07-22.md §3.
 NET_IFACES = ["enp4s0", "eno1"]
 DISK_DEVS = {"ssd": "sdb", "hdd": "sda"}   # sdb2 -> /, sda4 -> /mnt/data
 DISK_MOUNTS = {"ssd": "/", "hdd": "/mnt/data"}

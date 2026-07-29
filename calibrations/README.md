@@ -16,10 +16,11 @@ are exported snapshots with provenance — regenerate rather than hand-edit.
 | `pss/` | Plastic PMT gain curves G∝V^n, HV equalization + global gain-slide table | **filled** (run224466 HV scan) |
 | `pss_trigger/` | Plastic trigger thresholds vs the 10 mV discriminator floor: efficiencies + HV-recovery options | **filled** (run224466) |
 | `liq/` | Liquid scintillators (LS): MIP / PSD calibration | placeholder — awaiting LIQ readout |
+| `mm/` | Micromegas tracker HV operating points: per-detector resist-HV fine-scan ranges (drift/resist) | **filled** (run_67 resist zoom) |
 | `flash_timing/` | γ-flash arrival time per channel, referenced to the beam pickup: `t_flash = tof_PKUP + C`. 32 wall constants + LIQ time-base monitor | **filled** (divert-off runs 224356–360, 224464/466) |
 | `gas_bottle/` | Argon bottle pressure vs time, read off photos of the panel gauge. Not a detector constant — an operational log that grows; see its README to add rows | **running** (from 2026-07-07) |
 
-Anticipated later: `sili/` (Si monitor), `mm/` (Micromegas gain/threshold maps).
+Anticipated later: `sili/` (Si monitor), MM gain-vs-HV curves + per-strip threshold maps.
 
 ## Operational quick answer: "we need to drop the trigger rate"
 

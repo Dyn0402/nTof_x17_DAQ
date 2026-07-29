@@ -73,6 +73,37 @@ def _run_dir():
 - dark (black)
 """
 
+# (regex, status, color) for the dream_daq pane. Whichever marker appears LAST
+# in the captured text wins, so the card follows the most recent thing dream_daq
+# printed instead of a fixed priority (the pedestal filenames, for instance,
+# linger in the RunCtrl screen long after the run has started). Ties fall back
+# to this list order.
+DREAM_MARKERS = [
+    (r"_TakePedThr", "Taking Pedestals", "warning"),
+    # Pedestal read-back: FeuDataFileReader chews through the freshly-taken
+    # Mx17_*pedthr*.fdf files (then the suppressed xmgrace *_dat.ace noise plot)
+    # for minutes, printing nothing else recognisable -- that stretch used to
+    # show up as UNKNOWN STATE.
+    #
+    # These two markers are anchored on the "Processing FEU binary file" /
+    # "xmgrace" prefixes ON PURPOSE. Every subrun start prints a big block of
+    #   Checking pedestal file: Mx17_pedestals_pedthr_...fdf
+    #   Copying pedestal fdf file Mx17_pedestals_pedthr_...fdf...
+    # (loading the EXISTING pedestals into the FEUs -- normal prep, not a pedestal
+    # run). A bare "pedthr.*\.(fdf|ace)" match fired on those and flipped the card
+    # to a pedestal status between regular subruns. The prefixes below appear only
+    # during a genuine pedestal pass, never in that prep block.
+    (r"Processing FEU binary file \S*pedthr\S*\.fdf", "Processing Pedestals", "warning"),
+    (r"xmgrace\b[^\n]*pedthr\S*_dat\.ace", "Processing Pedestals", "warning"),
+    (r"Scan trigger thresholds in process", "Scanning Trigger Thresholds", "warning"),
+    (r"_TakeData:", "RUNNING", "success"),
+    (r"Listening on ", "WAITING", "secondary"),
+    (r"Moving data files\.|Waiting for on-the-fly copy thread to finish",
+     "Copying fdfs", "info"),
+    (r"Sent: Dream DAQ stopped", "DAQ Stopped", "info"),
+]
+
+
 def get_dream_daq_status():
     try:
         output = subprocess.check_output(
@@ -87,15 +118,13 @@ def get_dream_daq_status():
         }
 
     fields = []
-    if "_TakePedThr" in output:
-        status = "Taking Pedestals"
-        color = "warning"
-    elif "Scan trigger thresholds in process" in output:
-        status = "Scanning Trigger Thresholds"
-        color = "warning"
-    elif "_TakeData:" in output:
-        status = "RUNNING"
-        color = "success"
+    status, color, last_pos = "UNKNOWN STATE", "danger", -1
+    for pattern, marker_status, marker_color in DREAM_MARKERS:
+        pos = max((m.start() for m in re.finditer(pattern, output)), default=-1)
+        if pos > last_pos:
+            status, color, last_pos = marker_status, marker_color, pos
+
+    if status == "RUNNING":
         m_rt = re.search(r"RunTime\s+(\d+h\s+\d+m\s+\d+s)", output)
         if m_rt: fields.append({"label": "Run Time", "value": m_rt.group(1)})
 
@@ -117,18 +146,6 @@ def get_dream_daq_status():
         #     m = m or "0"
         #     s = s or "0"
         #     fields.append({"label": "Wait For", "value": f"{h}h {m}m {s}s"})
-    elif "Listening on " in output:
-        status = "WAITING"
-        color = "secondary"
-    elif "Moving data files." in output or "Waiting for on-the-fly copy thread to finish" in output:
-        status = "Copying fdfs"
-        color = "info"
-    elif "Sent: Dream DAQ stopped" in output:
-        status = "DAQ Stopped"
-        color = "info"
-    else:
-        status = "UNKNOWN STATE"
-        color = "danger"
 
     return {"status": status, "color": color, "fields": fields}
 

@@ -56,6 +56,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common_functions import create_dir_if_not_exist
 
+# How long to wait for every FEU of a file-group to arrive before giving up and
+# processing it incomplete (with a warning). copy_on_fly streams the FDFs across
+# progressively, so a group is routinely partial for tens of seconds.
+INCOMPLETE_GRACE_S = 900
+
 
 # Decode watchdog defaults (see _decode_file). The decoder can infinite-loop on
 # certain FDFs (100% CPU, input position and output ROOT both frozen — seen on
@@ -138,6 +143,7 @@ def run_watcher(config: dict):
 
     checked_stale_runs: set = set()
     prev_sizes: dict = {}
+    incomplete_since: dict = {}    # key -> first time seen with a missing FEU
     idle_ticks = 0
     idle_line = False
     _SPINNER = ['-', '\\', '|', '/']
@@ -174,6 +180,7 @@ def run_watcher(config: dict):
 
             sample_period = _read_sample_period(run_dir)
             feu_det_map   = _read_feu_detector_map(run_dir)
+            expected_feus = _read_expected_feus(run_dir)
             zs_baseline   = _read_zs_baseline(run_dir)
 
             for subrun_dir in _newest_first(d for d in run_dir.iterdir() if d.is_dir()):
@@ -190,7 +197,7 @@ def run_watcher(config: dict):
                 all_fnums  = _get_data_file_nums(raw_dir)
                 done_fnums = _get_processed_file_nums(
                     subrun_dir, combined_inner, hits_inner, decoded_inner,
-                    do_combine, do_analyze
+                    do_combine, do_analyze, expected_feus, raw_dir
                 )
 
                 for fnum in sorted(all_fnums - done_fnums, reverse=True):
@@ -207,6 +214,35 @@ def run_watcher(config: dict):
                         prev_sizes[key] = current
                         continue
 
+                    # ---- FEU-completeness guard ----
+                    # Size-stability alone is NOT enough: copy_on_fly streams the
+                    # 8 FDFs across progressively, so a single FEU's file can sit
+                    # complete and stable on disk while the rest are still coming.
+                    # Acting on that subset produced permanently partial data —
+                    # run_63/dblPS_dr600_r540_004 was decoded from FEU 06 alone at
+                    # 09:52 and combined at 09:53, while FEUs 01-05,07,08 only
+                    # finished arriving at 10:01; the combined file then marked the
+                    # file_num "done" forever. run_61 48/113 groups, run_62 12/25,
+                    # run_63 10/18 were lost this way (raw FDFs all intact).
+                    # Wait for the full set; after INCOMPLETE_GRACE_S process what
+                    # is there but say so loudly, so a genuinely missing FEU cannot
+                    # stall the pipeline indefinitely.
+                    n_feus = len({_extract_feu_num(p.name)
+                                  for p in all_fdf_group} - {None})
+                    if expected_feus and n_feus < expected_feus:
+                        first_seen = incomplete_since.setdefault(key, time.time())
+                        waited = time.time() - first_seen
+                        if waited < INCOMPLETE_GRACE_S:
+                            prev_sizes[key] = current
+                            continue
+                        _end_idle()
+                        print(f"[watcher] WARNING {run_dir.name}/{subrun_dir.name} "
+                              f"file_num={fnum:03d}: only {n_feus}/{expected_feus} "
+                              f"FEUs after {waited / 60:.0f} min — processing "
+                              f"INCOMPLETE")
+                    else:
+                        incomplete_since.pop(key, None)
+
                     if prev_sizes.get(key) == current:
                         _end_idle()
                         print(f"[watcher] {run_dir.name}/{subrun_dir.name}  "
@@ -222,6 +258,7 @@ def run_watcher(config: dict):
                             decode_stall_timeout_s, decode_hard_timeout_s
                         )
                         del prev_sizes[key]
+                        incomplete_since.pop(key, None)
                         return True
                     else:
                         prev_sizes[key] = current
@@ -273,22 +310,51 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
     # Step 1: Decode FDFs
     if do_decode:
         create_dir_if_not_exist(str(decoded_dir))
-        tasks = []
+        counts = {}
         with ThreadPoolExecutor(max_workers=n_threads) as pool:
+            futs = {}
             for fdf in all_fdf_paths:
                 root_path = decoded_dir / fdf.name.replace('.fdf', '.root')
                 if root_path.exists():
                     continue
-                tasks.append(pool.submit(_decode_file, str(fdf), str(root_path), decode_exe,
-                                         decode_stall_timeout_s, decode_hard_timeout_s))
-            for t in as_completed(tasks):
+                futs[pool.submit(_decode_file, str(fdf), str(root_path), decode_exe,
+                                 decode_stall_timeout_s,
+                                 decode_hard_timeout_s)] = (fdf, root_path)
+            for t in as_completed(futs):
                 try:
-                    t.result()
+                    counts[futs[t]] = t.result()
                 except DecodeTimeout as e:
                     # Continue with the surviving FEUs; the quarantined FDF
-                    # stays behind as <name>.hang for offline debugging.
+                    # stays behind as <name>.hang for offline debugging. Recorded
+                    # as None so the truncation guard below leaves it alone —
+                    # re-decoding a file that just hung would only hang again.
                     print(f"[decode]  quarantined {os.path.basename(e.hang_path)} "
                           f"({e.reason}); continuing with surviving FEUs")
+                    counts[futs[t]] = None
+
+        # Truncation guard: all FEUs of a group see the same triggers, so their
+        # decoded event counts must agree. Re-decode any short output once (a
+        # dead decode process is the usual cause); warn if it stays short.
+        good = [c for c in counts.values() if c and c > 0]
+        if good:
+            gmax = max(good)
+            for (fdf, root_path), c in list(counts.items()):
+                if c is None or c <= 0 or c >= gmax:
+                    continue
+                print(f"[decode]  TRUNCATED {os.path.basename(str(fdf))}: "
+                      f"{c} events vs {gmax} in this group — re-decoding")
+                if root_path.exists():
+                    root_path.unlink()
+                try:
+                    c2 = _decode_file(str(fdf), str(root_path), decode_exe,
+                                      decode_stall_timeout_s, decode_hard_timeout_s)
+                except DecodeTimeout as e:
+                    print(f"[decode]  quarantined {os.path.basename(e.hang_path)} "
+                          f"({e.reason}) on the truncation retry")
+                    continue
+                if c2 is None or (c2 > 0 and c2 < gmax):
+                    print(f"[decode]  WARNING {os.path.basename(str(fdf))} still "
+                          f"short after retry ({c2} vs {gmax})")
 
     # Step 2: Analyze waveforms
     if do_analyze:
@@ -319,7 +385,19 @@ def _process_file_num(fnum, all_fdf_paths, subrun_dir, ped_dir,
         if feu_hits_map:
             combined_name = _make_combined_name(next(iter(feu_hits_map.values())))
             combined_path = combined_dir / combined_name
-            if not combined_path.exists():
+            # Rebuild when any input is newer than the combined file. Previously
+            # this was "write only if absent", which froze a partial combine (built
+            # from a subset of FEUs) in place even after the missing FEUs were
+            # later decoded. With the freshness check, recovering a damaged group
+            # needs no manual deletion: decoding the missing FEUs produces newer
+            # hits files, which re-triggers the combine.
+            newest_input = max(os.path.getmtime(p) for p in feu_hits_map.values())
+            stale = (combined_path.exists()
+                     and os.path.getmtime(combined_path) < newest_input)
+            if not combined_path.exists() or stale:
+                if stale:
+                    print(f"[combine] rebuilding {combined_name} "
+                          f"({len(feu_hits_map)} FEUs; inputs newer than output)")
                 _combine_hits(feu_hits_map, str(combined_path), combine_exe)
 
     # Step 4: Cleanup
@@ -434,8 +512,16 @@ def _get_data_file_nums(raw_dir: Path) -> set:
 
 
 def _get_processed_file_nums(subrun_dir, combined_inner, hits_inner, decoded_inner,
-                              do_combine, do_analyze) -> set:
-    """Return file_nums whose final pipeline output already exists."""
+                              do_combine, do_analyze, expected_feus=None,
+                              raw_dir=None) -> set:
+    """Return file_nums whose final pipeline output already exists.
+
+    ``expected_feus`` makes "done" mean *fully* done: a file_num counts as
+    processed only if every FEU present in the raw directory also has a decoded
+    ROOT. Without this the mere existence of a combined file marked a group
+    finished even when it had been built from a single FEU, which is what made
+    the copy_on_fly race permanent instead of self-healing.
+    """
     if do_combine:
         check_dir, flag = subrun_dir / combined_inner, 'feu-combined'
     elif do_analyze:
@@ -455,6 +541,23 @@ def _get_processed_file_nums(subrun_dir, combined_inner, hits_inner, decoded_inn
         n = _extract_file_num(f.name)
         if n is not None:
             done.add(n)
+
+    # Demote groups whose per-FEU decode is incomplete, so the watcher revisits
+    # them and fills in the missing FEUs from the (intact) raw FDFs.
+    if expected_feus and raw_dir is not None:
+        decoded_dir = subrun_dir / decoded_inner
+        for n in sorted(done):
+            raw_feus = {_extract_feu_num(f.name) for f in raw_dir.iterdir()
+                        if _is_data_fdf(f.name) and _extract_file_num(f.name) == n}
+            raw_feus -= {None}
+            dec_feus = set()
+            if decoded_dir.exists():
+                dec_feus = {_extract_feu_num(f.name) for f in decoded_dir.iterdir()
+                            if f.name.endswith('.root') and '_datrun_' in f.name
+                            and '_pedestals_' not in f.name
+                            and _extract_file_num(f.name) == n} - {None}
+            if raw_feus and not raw_feus.issubset(dec_feus):
+                done.discard(n)
     return done
 
 
@@ -470,6 +573,32 @@ def _get_feu_hits_map(hits_dir: Path, fnum: int) -> dict:
         if m and int(m.group(1)) == fnum:
             result[int(m.group(2))] = str(f)
     return result
+
+
+def _extract_feu_num(filename: str):
+    """Extract the 2-digit FEU number from a DREAM filename, or None."""
+    m = re.match(r'.*_(\d{3})_(\d{2})[._]', filename)
+    return int(m.group(2)) if m else None
+
+
+def _read_expected_feus(run_dir: Path):
+    """How many FEUs a complete file-group must contain, from run_config.json.
+
+    Returns None when it cannot be determined, in which case the completeness
+    guard below is skipped (fail-open: never stall the pipeline on a config we
+    cannot read).
+    """
+    cfg_path = run_dir / 'run_config.json'
+    if not cfg_path.exists():
+        return None
+    try:
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+        feus = cfg.get('dream_daq_info', {}).get('included_feus')
+        return len(feus) if feus else None
+    except Exception as e:
+        print(f"[watcher] Could not read included_feus from {cfg_path}: {e}")
+        return None
 
 
 def _extract_file_num(filename: str):
@@ -573,63 +702,101 @@ def _read_feu_detector_map(run_dir: Path) -> dict:
 def _decode_file(fdf_path: str, root_path: str, decode_exe: str,
                  stall_timeout_s: float = DECODE_STALL_TIMEOUT_S,
                  hard_timeout_s: float = DECODE_HARD_TIMEOUT_S):
-    """Decode one FDF, with a watchdog.
+    """Decode one FDF, with a watchdog. Returns the decoder's event count, or
+    None if it failed; raises DecodeTimeout if the watchdog had to kill it.
 
-    DreamDecoder can infinite-loop on certain files — 100% CPU with the input
-    read position and the output ROOT both frozen (seen on the banco P2 setup
-    2026-07-23/24; same decoder source). The watcher is sequential per subrun,
-    so one such file pegs a core AND blocks the pipeline behind it. Guard it:
-    poll the output ROOT while the decoder runs; if it stops growing for
-    stall_timeout_s (the hang signature) or the decode exceeds hard_timeout_s,
-    kill the decoder, drop the partial ROOT, and quarantine the FDF to
-    <name>.hang. The raw FDF is renamed, never deleted — it remains a
+    Two independent decoder failure modes are handled here.
+
+    HANG — DreamDecoder can infinite-loop on certain files: 100% CPU with the
+    input read position and the output ROOT both frozen (seen on the banco P2
+    setup 2026-07-23/24; same decoder source). The watcher is sequential per
+    subrun, so one such file pegs a core AND blocks the pipeline behind it.
+    Guard it: poll the output ROOT while the decoder runs; if it stops growing
+    for stall_timeout_s (the hang signature) or the decode exceeds
+    hard_timeout_s, kill the decoder, drop the partial ROOT, and quarantine the
+    FDF to <name>.hang. The raw FDF is renamed, never deleted — it remains a
     reproducer for the decoder bug.
+
+    TRUNCATION — a decode that died part-way used to leave a short ROOT which
+    Step 1 then skipped forever (run_61 lost 68609 events across 84 files this
+    way, run_62 10232). The returned count comes from the decoder's own
+    ``Events analysed : N`` line, and the caller compares counts across a
+    file-group (every FEU sees the same triggers, so they must agree). A silent
+    failure is reported and its output removed, so the next pass retries this
+    FEU instead of treating it as done.
     """
     print(f"[decode]  {os.path.basename(fdf_path)}")
-    # own session/process group so the watchdog can reap the decoder and any
-    # children it might spawn in one shot.
-    proc = subprocess.Popen([decode_exe, fdf_path, root_path], start_new_session=True)
-    start = time.time()
-    last_size, last_progress = -1, start
-    while True:
-        try:
-            proc.wait(timeout=5)
-            return  # decode finished on its own (success or its own error)
-        except subprocess.TimeoutExpired:
-            pass
-        now = time.time()
-        try:
-            size = os.path.getsize(root_path)
-        except OSError:
-            size = 0
-        if size > last_size:
-            last_size, last_progress = size, now
-        stalled  = now - last_progress > stall_timeout_s
-        over_cap = now - start > hard_timeout_s
-        if not (stalled or over_cap):
-            continue
-        reason = (f'output frozen {int(now - last_progress)}s at {size} B'
-                  if stalled else f'exceeded {int(hard_timeout_s)}s hard cap')
-        print(f"[decode]  HANG: {os.path.basename(fdf_path)} — {reason}; killing decoder")
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            proc.kill()  # fallback if the group is already gone
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            pass
-        try:
-            if os.path.exists(root_path):
-                os.remove(root_path)
-        except OSError:
-            pass
-        hang_path = fdf_path + '.hang'
-        try:
-            os.replace(fdf_path, hang_path)
-        except OSError:
-            hang_path = fdf_path
-        raise DecodeTimeout(fdf_path, hang_path, reason)
+    # stdout goes to a temp file rather than a pipe: the watchdog loop below
+    # never drains a pipe, so a chatty decoder would deadlock on a full one.
+    with tempfile.TemporaryFile(mode='w+', errors='replace') as out:
+        # own session/process group so the watchdog can reap the decoder and any
+        # children it might spawn in one shot.
+        proc = subprocess.Popen([decode_exe, fdf_path, root_path],
+                                stdout=out, stderr=subprocess.STDOUT,
+                                start_new_session=True)
+        start = time.time()
+        last_size, last_progress = -1, start
+        while True:
+            try:
+                proc.wait(timeout=5)
+                break  # decode finished on its own (success or its own error)
+            except subprocess.TimeoutExpired:
+                pass
+            now = time.time()
+            try:
+                size = os.path.getsize(root_path)
+            except OSError:
+                size = 0
+            if size > last_size:
+                last_size, last_progress = size, now
+            stalled  = now - last_progress > stall_timeout_s
+            over_cap = now - start > hard_timeout_s
+            if not (stalled or over_cap):
+                continue
+            reason = (f'output frozen {int(now - last_progress)}s at {size} B'
+                      if stalled else f'exceeded {int(hard_timeout_s)}s hard cap')
+            print(f"[decode]  HANG: {os.path.basename(fdf_path)} — {reason}; killing decoder")
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                proc.kill()  # fallback if the group is already gone
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                if os.path.exists(root_path):
+                    os.remove(root_path)
+            except OSError:
+                pass
+            hang_path = fdf_path + '.hang'
+            try:
+                os.replace(fdf_path, hang_path)
+            except OSError:
+                hang_path = fdf_path
+            raise DecodeTimeout(fdf_path, hang_path, reason)
+
+        out.seek(0)
+        stdout_text = out.read()
+
+    if stdout_text:
+        sys.stdout.write(stdout_text)
+    # A silent decode failure used to be invisible: the pipeline carried on and
+    # combined whatever happened to exist, so a crashed/killed decoder became
+    # permanently missing data. Report it, and remove any truncated output so the
+    # next pass retries this FEU instead of treating it as done.
+    if proc.returncode != 0:
+        print(f"[decode]  FAILED rc={proc.returncode}: {os.path.basename(fdf_path)}")
+        if os.path.exists(root_path):
+            os.remove(root_path)
+        return None
+    if not os.path.exists(root_path) or os.path.getsize(root_path) == 0:
+        print(f"[decode]  FAILED (no/empty output): {os.path.basename(fdf_path)}")
+        if os.path.exists(root_path):
+            os.remove(root_path)
+        return None
+    m = re.search(r'Events analysed\s*:\s*(\d+)', stdout_text)
+    return int(m.group(1)) if m else -1     # -1 = decoded but count unknown
 
 
 def _analyze_file(root_path: str, ped_dir: str, hits_out_path: str, analyze_exe: str,

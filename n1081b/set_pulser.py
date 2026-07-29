@@ -42,8 +42,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--period", type=int, default=1_500_000, help="pulser period ns (default 1500000 = 1.5 ms)")
     ap.add_argument("--width", type=int, default=100, help="pulse width (default 100)")
+    ap.add_argument("--fixed", action="store_true", help="DETERMINISTIC (fixed-period) instead of Poisson "
+                    "-- for pacing tests; period is the exact spacing, not a mean")
     ap.add_argument("--show", action="store_true", help="print current M6.D pulser config and exit")
     args = ap.parse_args()
+
+    mode = N1081B.StatisticMode.STAT_DETERMINISTIC if args.fixed else N1081B.StatisticMode.STAT_POISSON
+    want_ftype = 0 if args.fixed else 1  # frequency_type: 0=deterministic, 1=Poisson
 
     try:
         with board_session(M6_IP, purpose="set M6.D random pulser",
@@ -56,15 +61,16 @@ def main():
             if args.period >= KILL_PERIOD_NS:
                 sys.exit(f"refusing period {args.period} ns >= {KILL_PERIOD_NS} (silently kills output)")
 
-            s.call("configure_pulse_generator", SEC, N1081B.StatisticMode.STAT_POISSON,
+            s.call("configure_pulse_generator", SEC, mode,
                    args.width, args.period, True, True, True, True)
             after = _get(s)
             print(f"AFTER   M6.D pulser: freq_type={after.get('frequency_type')} "
                   f"period={after.get('period')} width={after.get('width')}")
 
             ok = (after.get("period") == args.period and after.get("width") == args.width
-                  and after.get("frequency_type") == 1)  # 1 = Poisson
-            print("READBACK OK (Poisson)" if ok else "!! READBACK MISMATCH — do not start a run")
+                  and after.get("frequency_type") == want_ftype)
+            label = "DETERMINISTIC" if args.fixed else "Poisson"
+            print(f"READBACK OK ({label})" if ok else "!! READBACK MISMATCH — do not start a run")
             return 0 if ok else 1
     except BoardBusyError as e:
         print(f"!! board in use by another process: {e}", file=sys.stderr)

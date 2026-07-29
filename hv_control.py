@@ -63,7 +63,8 @@ def main():
                             server.send('HV ready to start')
                             sub_run = server.receive_json()
                             try:
-                                set_hvs(hv_info, sub_run['hvs'], caen_hv, caen_lock)
+                                set_hvs(hv_info, sub_run['hvs'], caen_hv, caen_lock,
+                                        alerter=hv_alerter)
                             except HVRampError as e:
                                 # Hard HV failure (e.g. CFE server crash, or a channel that
                                 # plateaus outside tolerance under load) — bail out of just
@@ -110,9 +111,40 @@ def main():
     print('donzo')
 
 
-def set_hvs(hv_info, hvs, caen_hv, caen_lock):
+def set_hvs(hv_info, hvs, caen_hv, caen_lock, alerter=None):
+    """Write setpoints and block until every channel is within 1.5 V of them.
+
+    The HV monitor thread is already running (daq_control begins monitoring
+    before ramping), so the ramp is bracketed with begin_ramp/end_ramp: the
+    alerter suppresses the deviation/over-current alerts a ramp inevitably
+    trips, watches for a stalled ramp instead, and is told explicitly when the
+    ramp fails so the skipped sub-run is not silent.
+    """
     print('Setting HV...')
     ramp_timeout_s = hv_info.get('ramp_timeout_s', DEFAULT_RAMP_TIMEOUT_S)
+    _notify_alerter(alerter, 'begin_ramp')
+    try:
+        _set_and_wait_for_ramp(hvs, caen_hv, caen_lock, ramp_timeout_s)
+    except HVRampError as e:
+        # Tell the alerter explicitly: daq_control skips this sub-run on this
+        # error, which would otherwise be visible only as a print in the tmux pane.
+        _notify_alerter(alerter, 'end_ramp', ok=False, detail=str(e))
+        raise
+    _notify_alerter(alerter, 'end_ramp', ok=True)
+    print('HV Ramped')
+
+
+def _notify_alerter(alerter, method, **kwargs):
+    """Best-effort alerter call — alerting must never break HV control."""
+    if alerter is None:
+        return
+    try:
+        getattr(alerter, method)(**kwargs)
+    except Exception as e:  # noqa: BLE001
+        print(f'HV alert {method} failed: {e}')
+
+
+def _set_and_wait_for_ramp(hvs, caen_hv, caen_lock, ramp_timeout_s):
     try:
         with caen_lock:
             for slot, channel_v0s in hvs.items():
@@ -163,7 +195,6 @@ def set_hvs(hv_info, hvs, caen_hv, caen_lock):
                     f'(crate/CFE server likely down) — aborting sub-run')
             print('Waiting for HV to ramp...')
             time.sleep(10)  # lock released during sleep — monitor runs freely
-    print('HV Ramped')
 
 
 def power_off_hvs(hv_info, caen_hv, caen_lock):

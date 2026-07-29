@@ -61,7 +61,7 @@
     <div class="col-12 col-md-6 col-xl">
       <div class="shift-card lv-idle" id="shift-beam-card">
         <div class="shift-card-head">
-          <span class="shift-card-title">n_TOF Beam</span>
+          <span class="shift-card-title"><span style="text-transform: lowercase;">n</span>_TOF Beam</span>
           <span class="shift-card-state" id="shift-beam-state">—</span>
         </div>
         <div id="shift-beam-body" class="shift-rows"></div>
@@ -239,6 +239,11 @@
           <div class="sys-io-row">
             <div>
               <div class="sys-col-title">Disk Space</div>
+              <!-- "time till full" tiles, side by side, above the usage bars -->
+              <div class="sys-ttf-row">
+                <div id="sys-ssd-ttf" class="sys-ttf-tile"></div>
+                <div id="sys-hdd-ttf" class="sys-ttf-tile"></div>
+              </div>
               <div class="sys-rows sys-diskspace">
                 <div id="sys-ssd-row"></div>
                 <div id="sys-hdd-row"></div>
@@ -1299,10 +1304,9 @@
 </div>
 
 <!-- Disk Space: confirm + progress modal (shared by delete and restore) -->
-<div id="ds-confirm-modal" style="position:fixed; inset:0; background:rgba(0,0,0,0.6);
-     display:none; align-items:center; justify-content:center; z-index:2000;">
-  <div style="background:var(--panel); border:1px solid var(--border); border-radius:10px;
-       padding:1.2rem 1.3rem; width:min(480px,94vw);">
+<div id="ds-confirm-modal" class="daq-overlay" style="display:none;">
+  <div id="ds-modal-box" class="daq-modal-box danger"
+       style="padding:1.2rem 1.3rem; width:min(480px,94vw); overflow:auto;">
     <div id="ds-modal-title" style="font-weight:600; margin-bottom:0.5rem; color:var(--bad);">Permanently delete runs</div>
 
     <!-- confirm phase -->
@@ -1449,7 +1453,8 @@ function showPopup(message, color) {
 
 // STOP SUB-RUN button
 document.getElementById("stop-sub-run").addEventListener("click", async () => {
-  const ok = confirm("Are you sure you want to stop the *sub-run*?");
+  const ok = await daqConfirm("The current sub-run will be closed out; the run itself keeps going.",
+                              {title: "Stop the sub-run?", okText: "Stop sub-run", warn: true});
   if (!ok) return;   // <-- Cancel → do nothing
 
   const res = await fetch("/stop_sub_run", { method: "POST" });
@@ -1463,16 +1468,18 @@ document.getElementById("stop-sub-run").addEventListener("click", async () => {
 
 // (Stop Run is now the run-toggle button; wiring lives with startRun/stopRun.)
 
-document.getElementById("restart-all").addEventListener("click", () => {
-  if (!confirm("Are you sure you want to restart all DAQ components?")) return;
+document.getElementById("restart-all").addEventListener("click", async () => {
+  if (!await daqConfirm("Every DAQ component will be restarted.",
+                        {title: "Restart all DAQ components?", okText: "Restart all", danger: true})) return;
   fetch("/restart_all", { method: "POST" })
     .then(res => res.json())
-    .then(data => alert(data.message))
-    .catch(err => alert("Error: " + err));
+    .then(data => daqAlert(data.message, {title: "Restart all"}))
+    .catch(err => daqAlert(String(err), {title: "Restart failed", danger: true}));
 });
 
 document.getElementById("hv-off").addEventListener("click", async () => {
-  if (!confirm("Power off HV for the detectors in the current run config?")) return;
+  if (!await daqConfirm("HV will be powered off for every detector in the current run config.",
+                        {title: "Power off HV?", okText: "Power off HV", danger: true})) return;
   const res = await fetch("/run/hv_off", { method: "POST" });
   const data = await res.json();
   showPopup(data.message, data.success ? "#17a2b8" : "#dc3545");
@@ -1481,12 +1488,13 @@ document.getElementById("hv-off").addEventListener("click", async () => {
 // GUI Reset: restart only the Flask server (this page). The request returns
 // before the server is killed ~2 s later, so we show a banner and auto-reload
 // once it's back up (retrying until the server answers again).
-document.getElementById("restart-flask").addEventListener("click", () => {
-  if (!confirm("Restart the GUI server? The page will be unavailable for a few seconds; the DAQ and watchers keep running.")) return;
+document.getElementById("restart-flask").addEventListener("click", async () => {
+  if (!await daqConfirm("This page will be unavailable for a few seconds. The DAQ and the watchers keep running.",
+                        {title: "Restart the GUI server?", okText: "Restart GUI", warn: true})) return;
   fetch("/restart_flask", { method: "POST" })
     .then(res => res.json())
     .then(data => {
-      if (data.view_only) { alert(data.message || "View-only mode"); return; }
+      if (data.view_only) { daqAlert(data.message || "View-only mode", {title: "View-only", warn: true}); return; }
       showPopup(data.message || "GUI restarting…", "#4dabe8");
       // The old server is killed ~2 s after the request; wait past that before
       // polling so we don't reload against the server that's about to die, then
@@ -1501,7 +1509,7 @@ document.getElementById("restart-flask").addEventListener("click", () => {
         }, 1000);
       }, 4000);
     })
-    .catch(err => alert("Error: " + err));
+    .catch(err => daqAlert(String(err), {title: "GUI restart failed", danger: true}));
 });
 
 
@@ -1672,8 +1680,9 @@ document.getElementById("take-pedestals").addEventListener("click", async () => 
 
 
 document.getElementById("rerun-qa").addEventListener("click", async () => {
-  const input = prompt(
-    "Enter run names to rerun (comma-separated), or leave blank to rerun all runs:"
+  const input = await daqPrompt(
+    "Comma-separated run names, or leave blank to rerun every run.",
+    {title: "Re-run online QA", okText: "Re-run QA", placeholder: "run_71, run_72"}
   );
   if (input === null) return;  // cancelled
   const runs = input.trim()
@@ -1703,7 +1712,7 @@ async function startRun() {
 
   const updateData = await updateRes.json();
   if (!updateData.success) {
-    alert("Error updating run number: " + updateData.message);
+    await daqAlert(updateData.message, {title: "Could not update the run number", danger: true});
     return;
   }
 
@@ -1714,19 +1723,15 @@ async function startRun() {
   const configData = await configRes.json();
 
   if (!configData.success) {
-    alert("Could not load config: " + configData.message);
+    await daqAlert(configData.message, {title: "Could not load the run config", danger: true});
     return;
   }
 
   const runName = configData.run_name;
 
   // ----- STEP 3: Ask user for confirmation -----
-  const confirmMsg =
-    `Start run?\n\n` +
-    `Run name: ${runName}\n` +
-    `Are you sure you want to continue?`;
-
-  const confirmRun = confirm(confirmMsg);
+  const confirmRun = await daqConfirm(`Run name:  ${runName}`,
+                                      {title: "Start run?", okText: "Start run"});
   if (!confirmRun) return;
 
   // ----- STEP 4: Start the run -----
@@ -1758,7 +1763,8 @@ let runActive = false;
 const RUN_IDLE_STATES = ["WAITING", "Run Complete", "ERROR"];
 
 async function stopRun() {
-  if (!confirm("Are you sure you want to STOP the run?")) return;
+  if (!await daqConfirm("The run will be ended, not paused. Data already taken is kept.",
+                        {title: "Stop the run?", okText: "Stop run", danger: true})) return;
   const res = await fetch("/stop_run", { method: "POST" });
   const data = await res.json();
   showPopup(data.message, "#dc3545");
@@ -2127,7 +2133,12 @@ WATCHER_TOGGLES.forEach(cfg => {
             const d = await res.json();
             showPopup(d.message, d.success ? "#17a2b8" : "#dc3545");
         } else {
-            if (!confirm(cfg.confirm)) return;
+            // The confirm strings read "Stop the X? (what stops with it)" — the
+            // question becomes the dialog title, the parenthetical its body.
+            const m = cfg.confirm.match(/^(.*?\?)\s*\((.*)\)$/);
+            const body = m ? m[2].charAt(0).toUpperCase() + m[2].slice(1) : "";
+            if (!await daqConfirm(body, {title: m ? m[1] : cfg.confirm,
+                                         okText: "Stop " + cfg.label, warn: true})) return;
             const res = await fetch(cfg.stop, { method: "POST" });
             const d = await res.json();
             showPopup(d.message, "#6c757d");
@@ -2387,13 +2398,21 @@ async function renderMonitorRules() {
   const d = await res.json();
   const defaultLabel = d.default_resend_minutes == null ? "never" : `${d.default_resend_minutes}m`;
   const container = document.getElementById("monitor-rules");
+  // The backend returns rules already ordered and tagged by section; emit a header
+  // row each time the section changes so the list reads as grouped blocks.
+  let lastSection = null;
   container.innerHTML = (d.rules || []).map(r => {
+    let header = "";
+    if (r.section && r.section !== lastSection) {
+      lastSection = r.section;
+      header = `<div class="monitor-rule-section">${r.section}</div>`;
+    }
     const stateTxt = r.enabled ? "On" : "Off";
     const stateCls = r.enabled ? "text-success" : "text-muted";
     const btnTxt = r.enabled ? "Disable" : "Enable";
     const btnCls = r.enabled ? "btn-outline-danger" : "btn-outline-success";
     const mode = r.resend_mode || "default";
-    return `
+    return header + `
       <div class="d-flex align-items-start gap-2 py-1 border-bottom flex-wrap">
         <div class="flex-grow-1" style="min-width:220px;">
           <div class="small fw-bold">${r.label}</div>
@@ -2657,6 +2676,90 @@ function sysFormatBytes(b) {
     return (b / 1e3).toFixed(0) + 'K';
 }
 
+// ---- Disk fill-rate forecast (shared by Overview rows + Disk Space tab) ----
+// /space/forecast fits the data-inflow rate off the system_stats history, so it
+// changes slowly — poll it on its own slow timer and cache it, rather than every
+// 2 s with the live bars.
+let sysForecast = null;
+
+async function updateDiskForecast() {
+    try {
+        const r = await fetch('/space/forecast');
+        const d = await r.json();
+        if (d && d.success) sysForecast = d;
+    } catch (e) { /* keep last-good */ }
+    renderTtfTiles();
+}
+
+// Colour rule for the "time till full" number:
+//   HDD  (nothing prunes it automatically) — green normally, YELLOW <= 24 h, RED <= 10 h.
+//   SSD  (auto-cleared, so the ETA is the "if auto-clear stops" hypothetical) — BLUE,
+//        turning RED only under 1 h. Idle / no-data reads muted.
+function ttfColor(f) {
+    const muted = 'var(--muted, #8b96a5)';
+    if (!f || f.trend !== 'filling' || f.time_to_full_h == null) return muted;
+    const h = f.time_to_full_h;
+    if (f.disk === 'hdd') {
+        if (h <= 10) return 'var(--bad)';
+        if (h <= 24) return 'var(--warn)';
+        return 'var(--ok)';
+    }
+    return h < 1 ? 'var(--bad)' : 'var(--info)';
+}
+
+// Fill the two Overview "time till full" tiles from the cached forecast.
+function renderTtfTiles() {
+    const tiles = {ssd: document.getElementById('sys-ssd-ttf'),
+                   hdd: document.getElementById('sys-hdd-ttf')};
+    const disks = (sysForecast && sysForecast.disks) ? sysForecast.disks : {};
+    for (const key of ['ssd', 'hdd']) {
+        const el = tiles[key];
+        if (!el) continue;
+        const f = disks[key];
+        const name = key.toUpperCase();
+        let value = '—', sub = '', color = 'var(--muted, #8b96a5)';
+        if (f && f.trend === 'filling' && f.eta_full) {
+            value = f.eta_full;
+            color = ttfColor(f);
+            sub = `${f.inflow_gb_per_hr} GB/hr`;
+        } else if (f && f.trend === 'idle') {
+            value = 'stable';
+            sub = 'not filling';
+        } else if (f && f.percent != null) {
+            sub = `${f.percent}% used`;
+        }
+        // Tiles are deliberately bare — number + inflow rate only. The "until full,
+        // if not cleared/pruned" qualifier lives on the Disk Space tab, which has room.
+        const tip = f && f.eta_basis && f.trend === 'filling'
+            ? `until full ${f.eta_basis}` : sub;
+        el.innerHTML =
+            `<div class="ttf-label">${name}</div>` +
+            `<div class="ttf-value" style="color:${color};" title="${tip}">${value}</div>` +
+            (sub ? `<div class="ttf-sub">${sub}</div>` : '');
+    }
+}
+
+// Compact "time till full" HTML for one disk key ('ssd'|'hdd'), from the cache.
+// Managed (SSD) ETAs are hypothetical ("if auto-clear stops") so they stay muted;
+// only the HDD, which nothing prunes automatically, is coloured as it gets close.
+function diskForecastHTML(f, opts) {
+    opts = opts || {};
+    if (!f || f.trend === 'unknown' || f.inflow_gb_per_hr == null) return '';
+    const muted = 'var(--muted, #8b96a5)';
+    if (f.trend === 'idle')
+        return `<span style="color:${muted};">not filling (&lt;1 GB/hr in)</span>`;
+    const rate = `${f.inflow_gb_per_hr} GB/hr in`;
+    let color = muted, eta = f.eta_full;
+    if (!f.managed && f.time_to_full_h != null) {
+        if (f.time_to_full_h < 24) color = 'var(--bad)';
+        else if (f.time_to_full_h < 72) color = 'var(--warn)';
+    }
+    const basis = opts.showBasis === false ? '' :
+        ` <span style="color:${muted};">(${f.eta_basis})</span>`;
+    return `<span style="color:${color};">full in ~${eta}</span>` +
+           `<span style="color:${muted};"> · ${rate}</span>${basis}`;
+}
+
 // ---- Rolling history for the line plots ----------------------------------
 // /system_stats returns instantaneous samples, so we keep a client-side buffer
 // and rebuild the traces each poll. The window is time-based (last SYS_WINDOW_MS)
@@ -2813,7 +2916,8 @@ async function updateSysStats() {
         const loadEl = document.getElementById('sys-load-avg');
         loadEl.textContent = 'load avg: ' + d.load_avg.map(x => x.toFixed(2)).join('  ');
 
-        // Disk-space usage stays as bars (kept as-is per request).
+        // Disk-space usage bars; the "time till full" numbers live in the tiles above
+        // (sys-*-ttf), fed by the slower /space/forecast poll.
         const sysDiskRow = (elId, label, disk) => {
             document.getElementById(elId).innerHTML = disk
                 ? sysMakeBar(label, disk.percent,
@@ -2851,6 +2955,9 @@ sysSeedHistory().finally(() => {
     updateSysStats();
     setInterval(updateSysStats, 2000);
 });
+// Fill-rate forecast changes slowly (fitted over hours) — poll it every 60 s.
+updateDiskForecast();
+setInterval(updateDiskForecast, 60000);
 // Overview may start hidden (unauthorized → Shift tab active); redraw on show
 // so the plots size correctly once the container has real dimensions.
 document.querySelector('a[href="#overview"]')
@@ -3125,10 +3232,10 @@ async function gasApplyMix(argonLnh, isoPct) {
     if (Math.abs(from - to) <= tol) return `${label}: ${toS} (unchanged)`;
     return `${label}: ${from.toFixed(dec)} → ${to.toFixed(dec)} ${unit}`;
   };
-  const msg = "Apply mixture?\n\n" +
+  const msg =
     line("Argon", gasCurrent.argon_lnh, argonLnh, "ln/h", 3, GAS_ARG_TOL) + "\n" +
     line("Isobutane", gasCurrent.iso_pct, isoPct, "% of total", 2, GAS_PCT_TOL);
-  if (!confirm(msg)) {
+  if (!await daqConfirm(msg, {title: "Apply mixture?", okText: "Apply"})) {
     // Canceled: put the inputs back to the live setpoint (undo the pending edit).
     gasFillFromCurrent();
     return;
@@ -3170,7 +3277,8 @@ document.getElementById("gas-max-argon").addEventListener("click", () => {
 });
 
 document.getElementById("gas-zero").addEventListener("click", async () => {
-  if (!confirm("Emergency zero: drive BOTH controllers to 0 flow?")) return;
+  if (!await daqConfirm("Both controllers are driven to 0 ln/h — argon and isobutane stop flowing.",
+                        {title: "Emergency zero the gas?", okText: "Zero both", danger: true})) return;
   const r = await (await fetch("/gas/zero", { method: "POST" })).json();
   showPopup(r.success ? "Both setpoints zeroed" : "Zero failed: " + (r.message || "?"),
             r.success ? "#28a745" : "#dc3545");
@@ -3961,11 +4069,12 @@ document.getElementById("s1-set-size-nominal").addEventListener("click", async (
   const raw = document.getElementById("s1-size-nominal-value").value;
   const body = raw ? { per_pulse_gib: parseFloat(raw) / 1024 } : {};
   const what = raw ? `${raw} MiB/pulse` : "the level the recent data suggests";
-  if (!confirm(`Freeze the file-size benchmark at ${what}?\n\n`
+  if (!await daqConfirm(`New benchmark: ${what}.\n\n`
              + "Every later file is graded against it until you change it again — so "
              + "only do this when the stream is known healthy. Re-freeze after a run-"
              + "configuration change that legitimately alters file size. (The watcher "
-             + "refuses if the waveform layer says a detector is down.)")) return;
+             + "refuses if the waveform layer says a detector is down.)",
+             {title: "Freeze the file-size benchmark?", okText: "Freeze benchmark", warn: true})) return;
   const r = await fetch("/stream1/set_size_nominal",
                         { method: "POST", headers: { "Content-Type": "application/json" },
                           body: JSON.stringify(body) });
@@ -3974,10 +4083,10 @@ document.getElementById("s1-set-size-nominal").addEventListener("click", async (
 });
 
 document.getElementById("s1-set-nominal").addEventListener("click", async () => {
-  if (!confirm("Re-freeze the waveform nominal from the newest file?\n\n"
-             + "Only do this when the detectors are known healthy — it becomes the "
-             + "reference every later file is graded against. (The watcher refuses if "
-             + "the walls are down in that file.)")) return;
+  if (!await daqConfirm("Only do this when the detectors are known healthy — the newest file "
+             + "becomes the reference every later file is graded against. (The watcher refuses "
+             + "if the walls are down in that file.)",
+             {title: "Re-freeze the waveform nominal?", okText: "Re-freeze", warn: true})) return;
   const r = await fetch("/stream1/set_nominal", { method: "POST" });
   const d = await r.json();
   showPopup(d.message, d.success ? "#17a2b8" : "#dc3545");
@@ -4620,17 +4729,19 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   }
 
   async function clearQuarantine(ip) {
-    if (!confirm(`Clear the quarantine on ${ip}?\n\nONLY do this after the board has `
-      + `been verified healthy (e.g. physically rebooted). Clearing it lets the next `
-      + `process reconnect — do NOT clear a board that is still wedged.`)) return;
+    if (!await daqConfirm(`ONLY do this after ${ip} has been verified healthy (e.g. physically `
+      + `rebooted). Clearing it lets the next process reconnect — do NOT clear a board that is `
+      + `still wedged.`,
+      {title: `Clear the quarantine on ${ip}?`, okText: "Clear quarantine", danger: true})) return;
     try {
       const r = await fetch("/n1081b/access/clear_quarantine", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ip })
       });
       const d = await r.json();
-      if (!d.success) alert("Failed: " + (d.message || "unknown"));
-    } catch (e) { alert("Request failed: " + e); }
+      if (!d.success) await daqAlert(d.message || "unknown error",
+                                     {title: "Could not clear the quarantine", danger: true});
+    } catch (e) { await daqAlert(String(e), {title: "Request failed", danger: true}); }
     loadAccess();
   }
   window._n1081bClearQ = clearQuarantine;
@@ -4697,24 +4808,35 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
   const resSel = new Set();      // runs selected for restore
   let delTable = null, resTable = null;
 
-  // ---- disk usage bars ----
-  function fmtBar(u) {
+  // ---- disk usage bars (+ a "time till full" line from /space/forecast) ----
+  function fmtBar(u, key) {
     if (!u || u.error) return `<div class="text-muted">unavailable (${u ? u.error : '—'})</div>`;
     const pct = u.pct || 0;
     const color = pct >= 90 ? "var(--bad)" : pct >= 75 ? "var(--warn)" : "var(--ok)";
     const g = (n) => (n / 1073741824).toFixed(0) + " GB";
+    const f = (typeof sysForecast !== "undefined" && sysForecast && sysForecast.disks)
+            ? sysForecast.disks[key] : null;
+    const fc = (typeof diskForecastHTML === "function") ? diskForecastHTML(f) : "";
+    const sub = fc
+      ? `<div class="sys-bar-sub" style="font-size:0.8rem; margin:1px 0 8px 2px;">↳ ${fc}</div>`
+      : "";
     return `
       <div class="sys-bar-row">
         <span class="sys-bar-label" style="width:auto; padding-right:10px;">${u.label}</span>
         <span class="sys-bar-track"><span class="sys-bar-fill" style="width:${pct}%; background:${color};"></span></span>
         <span class="sys-bar-pct" style="min-width:auto;">${pct}%</span>
         <span class="sys-bar-extra">${g(u.free)} free / ${g(u.total)}</span>
-      </div>`;
+      </div>${sub}`;
   }
   async function loadUsage() {
     try {
+      // Make sure the shared forecast cache is warm even if the Overview never ran.
+      if (typeof updateDiskForecast === "function" &&
+          (typeof sysForecast === "undefined" || !sysForecast)) {
+        await updateDiskForecast();
+      }
       const d = await (await fetch("/space/usage")).json();
-      usageBox.innerHTML = fmtBar(d.hdd) + fmtBar(d.ssd);
+      usageBox.innerHTML = fmtBar(d.hdd, "hdd") + fmtBar(d.ssd, "ssd");
     } catch (e) { usageBox.innerHTML = `<div class="text-muted">could not load usage</div>`; }
   }
 
@@ -4759,14 +4881,133 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       tr.innerHTML = `
         <td>${r.safe ? `<input type="checkbox" class="form-check-input ds-cb" data-run="${r.run}">`
                      : `<input type="checkbox" class="form-check-input" disabled title="not safe to delete">`}</td>
-        <td><b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}</td>
+        <td><button class="btn btn-link btn-sm p-0 ds-expand" data-run="${r.run}"
+                    title="Show subruns" style="text-decoration:none; width:1.2rem;">▸</button>
+            <b>${r.run}</b>${r.active ? ' <span class="text-muted">(active)</span>' : ''}</td>
         <td class="text-end" style="font-family:var(--mono);">${r.size_h}</td>
         <td style="font-size:0.82rem; color:var(--muted);">${r.reason}</td>
         <td>${badge}</td>`;
       tb.appendChild(tr);
     }
     delTable = wireTable(tb, "ds-cb", delSel, updateDelBtn);
+    // Per-run dropdown: expand to prune individual subruns (needed for one long run
+    // that is too big / still-acquiring to delete whole).
+    tb.querySelectorAll(".ds-expand").forEach(btn => btn.addEventListener("click", () =>
+      toggleSubruns(btn.dataset.run, btn.closest("tr"), btn)));
     updateDelBtn();
+  }
+
+  // ---- per-run subrun dropdown ----
+  const subSel = {};        // run -> Set(subrun names selected)
+  const subScanCache = {};  // run -> last /space/scan_subruns response
+
+  async function toggleSubruns(run, tr, caret) {
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains("ds-sub-row") && next.dataset.run === run) {
+      next.remove(); caret.textContent = "▸"; return;
+    }
+    caret.textContent = "▾";
+    const detail = document.createElement("tr");
+    detail.className = "ds-sub-row"; detail.dataset.run = run;
+    detail.innerHTML = `<td></td><td colspan="4"><div class="ds-sub-box text-muted"
+        style="padding:0.4rem 0;">Loading subruns… (verifying against EOS)</div></td>`;
+    tr.after(detail);
+    try {
+      const disk = diskSel.value;
+      const r = await fetch(`/space/scan_subruns?disk=${encodeURIComponent(disk)}&run=${encodeURIComponent(run)}`);
+      const d = await r.json();
+      if (!r.ok || d.success === false) throw new Error(d.message || "scan failed");
+      subScanCache[run] = d;
+      renderSubruns(run, detail.querySelector(".ds-sub-box"), d);
+    } catch (e) {
+      detail.querySelector(".ds-sub-box").innerHTML =
+        `<span style="color:var(--bad);">Subrun check failed: ${e.message}</span>`;
+    }
+  }
+
+  function syncSub(tbody, sel) {
+    sel.clear();
+    tbody.querySelectorAll(".ds-subcb").forEach(c => { if (c.checked) sel.add(c.dataset.sub); });
+  }
+  function wireSubTable(tbody, sel, onChange) {
+    const cbs = [...tbody.querySelectorAll(".ds-subcb")];
+    let lastIdx = null;
+    cbs.forEach((cb, i) => cb.addEventListener("click", (e) => {
+      if (e.shiftKey && lastIdx !== null && lastIdx !== i) {
+        const [lo, hi] = [Math.min(lastIdx, i), Math.max(lastIdx, i)];
+        for (let j = lo; j <= hi; j++) cbs[j].checked = cb.checked;
+      }
+      lastIdx = i; syncSub(tbody, sel); onChange();
+    }));
+  }
+
+  function renderSubruns(run, box, d) {
+    if (!subSel[run]) subSel[run] = new Set();
+    const sel = subSel[run]; sel.clear();
+    if (!d.subruns.length) { box.innerHTML = `<span class="text-muted">No subruns.</span>`; return; }
+    const rows = d.subruns.map(s => {
+      const badge = s.held_active ? `<span class="shift-flag-na">● in progress</span>`
+        : s.safe ? `<span class="shift-flag-ok">✓ safe</span>`
+                 : `<span class="shift-flag-bad">✗ not safe</span>`;
+      const cb = s.safe
+        ? `<input type="checkbox" class="form-check-input ds-subcb" data-run="${run}" data-sub="${s.subrun}">`
+        : `<input type="checkbox" class="form-check-input" disabled title="${s.reason}">`;
+      const comp = s.complete ? "" : ` <span class="text-muted" title="not marked complete">(incomplete)</span>`;
+      return `<tr>
+        <td style="width:2.2rem;">${cb}</td>
+        <td style="font-family:var(--mono); font-size:0.78rem;">${s.subrun}${comp}</td>
+        <td class="text-end" style="font-family:var(--mono);">${s.size_h}</td>
+        <td>${badge}</td></tr>`;
+    }).join("");
+    box.innerHTML = `
+      <div class="d-flex align-items-center gap-2 mb-1" style="flex-wrap:wrap;">
+        <b style="font-size:0.85rem;">${d.n_safe}/${d.n_subruns} subruns safe · would free ${d.safe_bytes_h}</b>
+        <button class="btn btn-outline-secondary btn-sm ds-sub-all">Select all safe</button>
+        <button class="btn btn-outline-secondary btn-sm ds-sub-clear">Clear</button>
+        <button class="btn btn-danger btn-sm ds-sub-del" disabled>Delete subruns…</button>
+      </div>
+      <div class="table-responsive"><table class="table table-dark table-sm mb-0" style="background:transparent;">
+        <thead><tr><th style="width:2.2rem;"></th><th>Subrun</th>
+          <th class="text-end">Size</th><th>Safe to delete</th></tr></thead>
+        <tbody class="ds-sub-tbody">${rows}</tbody></table></div>`;
+    const tbody = box.querySelector(".ds-sub-tbody");
+    const subUpdate = () => {
+      const btn = box.querySelector(".ds-sub-del");
+      btn.disabled = sel.size === 0;
+      btn.textContent = sel.size ? `Delete subruns (${sel.size})…` : "Delete subruns…";
+    };
+    wireSubTable(tbody, sel, subUpdate);
+    box.querySelector(".ds-sub-all").onclick = () => {
+      tbody.querySelectorAll(".ds-subcb").forEach(c => c.checked = true); syncSub(tbody, sel); subUpdate(); };
+    box.querySelector(".ds-sub-clear").onclick = () => {
+      tbody.querySelectorAll(".ds-subcb").forEach(c => c.checked = false); syncSub(tbody, sel); subUpdate(); };
+    box.querySelector(".ds-sub-del").onclick = () => openDeleteSubruns(run);
+    subUpdate();
+  }
+
+  function openDeleteSubruns(run) {
+    const d = subScanCache[run], sel = subSel[run];
+    if (!d || !sel || !sel.size) return;
+    const items = d.subruns.filter(s => sel.has(s.subrun))
+      .map(s => ({ name: s.subrun, sizeH: s.size_h, bytes: s.size || 0 }));
+    openAction({
+      needType: true, danger: true, title: `Delete subruns of ${run}`,
+      intro: `You are about to delete these subruns of <b>${run}</b> from ` +
+             `<b>${(d.disk || "").toUpperCase()}</b>. Each is re-verified on the server immediately ` +
+             `before deletion; anything not provably backed up — or still being acquired — is skipped.`,
+      sizeLabel: "Total to free:", items,
+      goLabel: "Delete permanently", goClass: "btn-danger", barColor: "var(--bad)",
+      verbing: "Deleting", working: "removing", endpoint: "/space/delete_subruns",
+      buildBody: (n) => ({ disk: d.disk, run: run, subruns: [n], confirm: "DELETE" }),
+      readResult: (dd) => {
+        const r = (dd.results && dd.results[0]) || { success: false, message: (dd && dd.message) || "failed" };
+        return { ok: r.success, bytes: r.freed_bytes || 0,
+                 detail: r.success ? `freed ${r.freed_h || ""}` : (r.message || "skipped") };
+      },
+      doneText: (nOk, nFail, b) => `Done — deleted ${nOk}` +
+        (nFail ? `, <span style="color:var(--warn);">skipped ${nFail}</span>` : "") + `, freed ${gb(b)}.`,
+      onClose: () => { delete subScanCache[run]; delete subSel[run]; runCheck(); },
+    });
   }
   async function runCheck() {
     const disk = diskSel.value;
@@ -4867,6 +5108,7 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     const total = cfg.items.reduce((a, it) => a + (it.bytes || 0), 0);
     $("ds-modal-title").textContent = cfg.title;
     $("ds-modal-title").style.color = cfg.danger ? "var(--bad)" : "var(--accent)";
+    $("ds-modal-box").classList.toggle("danger", !!cfg.danger);   // colours the box's top rule
     $("ds-confirm-intro").innerHTML = cfg.intro;
     $("ds-confirm-list").innerHTML = cfg.items.map(it => `<li>${it.name} — ${it.sizeH}</li>`).join("");
     $("ds-confirm-sizelabel").textContent = cfg.sizeLabel;
@@ -5072,7 +5314,8 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       body: JSON.stringify(body || {}),
     });
     const d = await r.json();
-    if (d.view_only) { alert(d.message || "View-only mode"); return null; }
+    if (d.view_only) { await daqAlert(d.message || "This browser is read-only.",
+                                      {title: "View-only mode", warn: true}); return null; }
     return d;
   }
 
@@ -5082,15 +5325,18 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
     if (!autoRunning) {
       const low = $("ds-auto-low").value, target = $("ds-auto-target").value,
             emerg = $("ds-auto-emerg").value;
-      if (!confirm(`Turn ON automatic SSD clearing?\n\nWhenever free space falls below ` +
-                   `${low} GB, the oldest runs verified on EOS will be deleted from the SSD ` +
-                   `until ${target} GB is free. The newest runs are kept back — except below ` +
-                   `${emerg} GB free, where that reserve is dropped and any run verified on ` +
-                   `EOS may be deleted. The run being acquired is never deleted.`)) return;
+      if (!await daqConfirm(`Whenever free space falls below ${low} GB, the oldest runs ` +
+                   `verified on EOS will be deleted from the SSD until ${target} GB is free. ` +
+                   `The newest runs are kept back — except below ${emerg} GB free, where that ` +
+                   `reserve is dropped and any run verified on EOS may be deleted. The run ` +
+                   `being acquired is never deleted.`,
+                   {title: "Turn ON automatic SSD clearing?", okText: "Turn on auto-clear",
+                    danger: true})) return;
     }
     btn.disabled = true;
     const d = await autoPost(autoRunning ? "/space/auto/stop" : "/space/auto/start");
-    if (d && !d.success) alert(d.message || "failed");
+    if (d && !d.success) await daqAlert(d.message || "The request failed.",
+                                        {title: "Auto-clear", danger: true});
     // Give tmux a moment to create/tear down the session before re-reading.
     setTimeout(() => { loadAuto(); loadUsage(); }, 700);
   });
@@ -5102,7 +5348,9 @@ if (shiftVisible()) { shiftUpdate(); shiftRenderPlots(); }
       emergency_gb: parseFloat($("ds-auto-emerg").value),
     });
     if (!d) return;
-    if (!d.success) { alert(d.message || "failed"); loadAuto(); return; }
+    if (!d.success) { await daqAlert(d.message || "The request failed.",
+                                     {title: "Could not save the auto-clear settings", danger: true});
+                      loadAuto(); return; }
     const box = $("ds-auto-state");
     box.innerHTML = `<span style="color:var(--ok);">${d.message}</span>`;
     setTimeout(loadAuto, 2500);

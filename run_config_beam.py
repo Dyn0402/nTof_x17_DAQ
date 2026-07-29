@@ -237,7 +237,9 @@ class Config(RunConfigBase):
                             # flash events (flash peak ~= latency + 8, measured 2026-07-19).
                             # Random pulser events are uncorrelated -> latency irrelevant (flat
                             # pedestal). NOTE: M4.D in0 PS-leg delay is DISABLED for this mode.
-            'sample_period': 60,  # ns (20 or 60)
+            'sample_period': 60,  # ns (20 or 60). Read clock is pinned at 25 MHz (RdClk 4.0) for both
+                            # -> 1.5x readout rate vs the old 16.7 MHz, window unchanged. See
+                            # SAMPLE_PERIOD_CLOCK_DIVS in dream_daq_control.py + CLOCK_RATE_SCAN_2026-07-23.md.
             # No daq_run_events cap: runs are purely time-based (5 min sub-runs), like run_15.
             'zs_check_sample': 4,  # Number of samples to read out beyond threshold crossing
             'inter_packet_delay': 100,  # Feu_InterPacket_Delay (template default 100). Dominant
