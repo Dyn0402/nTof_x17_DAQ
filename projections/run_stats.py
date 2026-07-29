@@ -44,6 +44,13 @@ PULSE_WINDOW_DAYS = 10
 
 COSMIC_BEAM_TYPES = {"cosmics", "cosmic"}
 
+# DAQ characterization runs, counted as NEITHER beam nor cosmics. Everything that is not a
+# COSMIC_BEAM_TYPE is otherwise treated as beam physics, so a saturating-pulser ladder
+# (run_config_ipd_ladder_pulser.py: 13 points x 20 000 events in ~7 min) would post a
+# quarter of a million fake events to the beam projection and dent the achieved-rate
+# reference. A run opts out by setting `beam_type` here.
+NON_PHYSICS_BEAM_TYPES = {"pulser", "test", "daq_test"}
+
 
 def run_number(run_name):
     """'run_79' -> 79, anything else -> None."""
@@ -113,6 +120,8 @@ def scan_runs(run_dir=RUN_DIR, first_run=79, last_run=None):
             continue
         cfg = _run_config(run_dir, run_name)
         beam_type = (cfg.get("beam_type") or "unknown").lower()
+        if beam_type in NON_PHYSICS_BEAM_TYPES:
+            continue
         planned = {s.get("sub_run_name"): float(s.get("run_time") or 0)
                    for s in cfg.get("sub_runs", [])}
         try:
@@ -167,6 +176,53 @@ def load_beam_pulses(t_from, t_to, csv_dir=BEAM_CSV_DIR):
         return np.array([])
     p = np.concatenate(out)
     return p[(p >= t_from.timestamp()) & (p <= t_to.timestamp())]
+
+
+def load_actual_downtime(t_from, t_to, csv_dir=BEAM_CSV_DIR):
+    """Measured beam-off intervals [(start, end), ...] in [t_from, t_to], from
+    gaps between beam pulses in the per-day CSVs.
+
+    Same method (and same STOP_S/LOGGER_GAP_S constants) as
+    beam_monitor/analyze_stop_durations.py, which derives STOP_S=80s from the
+    empty band in the pulse-gap distribution — see that file for the measurement.
+    A gap only counts as a real stop if the CSV kept logging rows all the way
+    through it; otherwise a dead logger would be indistinguishable from a beam
+    stop and would inflate this list with fake downtime."""
+    from beam_monitor.analyze_stop_durations import STOP_S, LOGGER_GAP_S, PULSE_E10
+
+    rows = []
+    day = t_from.date()
+    while day <= t_to.date():
+        path = os.path.join(csv_dir, f"beam_intensity_{day:%Y-%m-%d}.csv")
+        if os.path.exists(path):
+            try:
+                rows.append(pd.read_csv(path, usecols=["unix_ts", "intensity_e10"]))
+            except Exception as e:
+                print(f"[run_stats] Skipping {path}: {e}", file=sys.stderr)
+        day += timedelta(days=1)
+    if not rows:
+        return []
+
+    df = pd.concat(rows, ignore_index=True).sort_values("unix_ts")
+    df = df.drop_duplicates(subset="unix_ts")
+    t_all = df.unix_ts.to_numpy()
+    pulses = t_all[df.intensity_e10.to_numpy() > PULSE_E10]
+    if len(pulses) < 2:
+        return []
+    gaps = np.diff(pulses)
+    starts, ends = pulses[:-1], pulses[1:]
+
+    out = []
+    for i in np.where(gaps > STOP_S)[0]:
+        a, b = starts[i], ends[i]
+        between = t_all[(t_all > a) & (t_all < b)]
+        if len(between) < 2:
+            continue  # too few rows to tell a stop from a dead logger
+        if np.max(np.diff(np.concatenate(([a], between, [b])))) >= LOGGER_GAP_S:
+            continue  # the logger itself went quiet inside this gap
+        out.append((datetime.fromtimestamp(a), datetime.fromtimestamp(b)))
+
+    return [(a, b) for a, b in out if b > t_from and a < t_to]
 
 
 def add_pulse_counts(df, pulses):
@@ -331,6 +387,13 @@ def load_stats(run_dir=RUN_DIR, first_run=None, sync=True):
         except Exception as e:
             print(f"[run_stats] Disk scan failed, using ledger alone: {e}",
                   file=sys.stderr)
+    # The ledger persists rows written before NON_PHYSICS_BEAM_TYPES existed (e.g. the
+    # sub-12-second pulser characterization sub-runs from run_90-94), so scan_runs'
+    # filter alone doesn't keep them out — they must also be dropped here, or they
+    # sit in "beam" forever with events/12s rates that dwarf real beam and blow out
+    # any plot's rate axis.
+    if len(df):
+        df = df[~df.beam_type.isin(NON_PHYSICS_BEAM_TYPES)]
     if first_run is not None and len(df):
         n = df.run.map(run_number)
         df = df[n.notna() & (n >= first_run)]

@@ -64,10 +64,11 @@ def load_projections(saved_dir=SAVED_DIR):
 
 def _style(ax):
     ax.set_facecolor(SURFACE)
-    # No gridlines at all: day-spaced verticals read as beam stoppages at a glance
-    # (the confusion the downtime shading below is trying to avoid), and the
-    # horizontals competed with the scheduled/actual bands for the same space.
-    ax.grid(False)
+    # y only: day-spaced vertical gridlines read as beam stoppages at a glance,
+    # which is exactly the confusion the downtime shading below is trying to
+    # avoid. Lighter than the original weight so they stay recessive under the
+    # scheduled/actual bands rather than competing with them.
+    ax.grid(True, axis="y", color=GRID, linewidth=0.8, alpha=0.45)
     ax.set_axisbelow(True)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
@@ -88,17 +89,32 @@ SCHED_YSPAN = (0.62, 1.0)
 ACTUAL_YSPAN = (0.0, 0.70)
 
 
-def shade_downtime(ax, sched, t_lo, t_hi, label=True, yspan=SCHED_YSPAN):
+def shade_downtime(ax, sched, t_lo, t_hi, label=True, now=None, yspan=SCHED_YSPAN):
     """Grey out scheduled beam-off periods so flat stretches in the curves are
-    visibly explained rather than looking like a DAQ fault."""
+    visibly explained rather than looking like a DAQ fault.
+
+    Split into the top sliver (yspan) only where it can be checked against
+    actual data, i.e. before `now`; the future — where there's no actual band to
+    share the space with — gets the full height instead, so an upcoming access
+    doesn't read as a thin, easy-to-miss strip."""
     first = True
     for a, b in sched_mod.downtime_intervals(sched):
-        if b <= t_lo or a >= t_hi:
+        a, b = max(a, t_lo), min(b, t_hi)
+        if b <= a:
             continue
-        ax.axvspan(max(a, t_lo), min(b, t_hi), ymin=yspan[0], ymax=yspan[1],
-                   color=MUTED, alpha=0.22, linewidth=0,
-                   label="Scheduled beam off / access" if (first and label) else None)
-        first = False
+        past_end = min(b, now) if now is not None else b
+        segments = []
+        if past_end > a:
+            segments.append((a, past_end, yspan))
+        if now is None or b > now:
+            segments.append((max(a, now) if now is not None else a, b, (0.0, 1.0)))
+        for seg_a, seg_b, ys in segments:
+            if seg_b <= seg_a:
+                continue
+            ax.axvspan(seg_a, seg_b, ymin=ys[0], ymax=ys[1],
+                       color=MUTED, alpha=0.22, linewidth=0,
+                       label="Scheduled beam off / access" if (first and label) else None)
+            first = False
 
 
 def shade_actual_downtime(ax, intervals, t_lo, t_hi, label=True, yspan=ACTUAL_YSPAN):
@@ -135,15 +151,16 @@ def main():
     projections = load_projections()
     t_end = sched_mod._parse(sched["run_end"])
     t_lo = beam.t_start.min().to_pydatetime()
+    now = datetime.now()
     # Measured stops only exist up to now, never into the projected future.
-    actual_downtime = run_stats.load_actual_downtime(t_lo, min(t_end, datetime.now()))
+    actual_downtime = run_stats.load_actual_downtime(t_lo, min(t_end, now))
 
     fig, (ax, axr, axc) = plt.subplots(
         3, 1, figsize=(11.5, 10.4), height_ratios=[3.0, 1.5, 1.2], sharex=True,
         gridspec_kw={"hspace": 0.16})
     fig.patch.set_facecolor(SURFACE)
 
-    shade_downtime(ax, sched, t_lo, t_end)
+    shade_downtime(ax, sched, t_lo, t_end, now=now)
     shade_actual_downtime(ax, actual_downtime, t_lo, t_end)
 
     # --- projections, oldest first so the newest draws on top ---
@@ -200,7 +217,7 @@ def main():
         t.set_color(INK2)
 
     # --- expected vs actual instantaneous rate ---
-    shade_downtime(axr, sched, t_lo, t_end, label=False)
+    shade_downtime(axr, sched, t_lo, t_end, label=False, now=now)
     shade_actual_downtime(axr, actual_downtime, t_lo, t_end, label=False)
     newest = projections[-1] if projections else None
     if newest:
@@ -242,7 +259,7 @@ def main():
         t.set_color(INK2)
 
     # --- the little cosmics counter ---
-    shade_downtime(axc, sched, t_lo, t_end, label=False)
+    shade_downtime(axc, sched, t_lo, t_end, label=False, now=now)
     shade_actual_downtime(axc, actual_downtime, t_lo, t_end, label=False)
     if newest and newest.get("final_cosmics"):
         ts = [datetime.fromisoformat(pt["t"]) for pt in newest["points"]]

@@ -3,14 +3,16 @@
 <meta name="robots" content="noindex, nofollow">
 <title>nTOF x17 — live DAQ statistics</title>
 <style>
-  /* Palette: dataviz reference instance. Single series (blue slot 1) + the fixed
-     status palette — no new categorical set, so no re-validation needed. */
+  /* Palette: dataviz reference instance. Slots 1 (blue) + 2 (orange) — the
+     documented order validates that adjacent pair for CVD without a re-run of
+     the validator — carry the beam/cosmics split; slot 3 (aqua) is the
+     unrelated beam-delivery series; plus the fixed status palette. */
   :root {
     color-scheme: light;
     --plane:#f9f9f7; --surface:#fcfcfb;
     --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
     --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
-    --series-1:#2a78d6; --series-3:#1baf7a; --series-track:#cde2fb;
+    --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-track:#cde2fb;
     --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
   }
   @media (prefers-color-scheme: dark) {
@@ -19,7 +21,7 @@
       --plane:#0d0d0d; --surface:#1a1a19;
       --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
       --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
-      --series-1:#3987e5; --series-3:#199e70; --series-track:#184f95;
+      --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-track:#184f95;
     }
   }
   :root[data-theme="dark"] {
@@ -27,7 +29,7 @@
     --plane:#0d0d0d; --surface:#1a1a19;
     --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
     --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
-    --series-1:#3987e5; --series-3:#199e70; --series-track:#184f95;
+    --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-track:#184f95;
   }
 
   *, *::before, *::after { box-sizing: border-box; }
@@ -74,7 +76,16 @@
   .hero .runid .heroproj { display:block; }
 
   .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(228px, 1fr)); }
-  .tile .label { font-size:13px; color:var(--muted); }
+  .tile .label { font-size:13px; color:var(--muted); display:flex; align-items:center;
+                 justify-content:space-between; gap:8px; }
+  /* Which colour on the line means what — same hues the line segments themselves
+     use, so the key and the ink agree without a second legend to maintain. */
+  .tile .label .kind-key { display:inline-flex; align-items:center; gap:8px;
+                            font-size:11px; font-weight:500; }
+  .tile .label .kind-key span { display:inline-flex; align-items:center; gap:3px; }
+  .tile .label .kind-key i { width:7px; height:7px; border-radius:2px; flex:none; }
+  .tile .label .kind-key .k-beam i { background:var(--series-1); }
+  .tile .label .kind-key .k-cosmics i { background:var(--series-2); }
   .tile .value { font-size:30px; font-weight:600; letter-spacing:-0.015em; margin-top:2px; }
   .tile .value .unit { font-size:15px; font-weight:500; color:var(--ink-2); margin-left:3px; }
   .tile .note { font-size:12.5px; color:var(--ink-2); margin-top:6px; }
@@ -154,7 +165,9 @@
 
   <div class="grid">
     <div class="card tile">
-      <div class="label">Trigger rate</div>
+      <div class="label">Trigger rate
+        <span class="kind-key"><span class="k-beam"><i></i>Beam</span><span class="k-cosmics"><i></i>Cosmics</span></span>
+      </div>
       <div class="value"><span id="rate">—</span><span class="unit">triggers / day</span></div>
       <svg class="spark" id="spark" preserveAspectRatio="none" aria-hidden="true"></svg>
       <div class="grade" id="rate-grade">&nbsp;</div>
@@ -282,13 +295,58 @@
     el.innerHTML = "<b>" + pct.toFixed(0) + "% of best</b> · " + fmt(best);
   }
 
-  function sparkline(svg, pts, colour, fromZero) {
+  var HOUR_S = 3600;
+
+  // Trailing window over time-stamped samples: how many, from the end, fall
+  // within `windowS` seconds of the last sample's own timestamp. Time-based
+  // rather than a fixed sample count so it stays correct whether the series is
+  // the 60 s trigger-rate history or the 10 min beam-intensity buckets.
+  function trailingWindow(entries, windowS) {
+    if (!entries.length) return 0;
+    var lastT = entries[entries.length - 1].t;
+    if (typeof lastT !== "number") return 0;
+    var cutoff = lastT - windowS;
+    var n = 0;
+    for (var i = entries.length - 1; i >= 0 && entries[i].t >= cutoff; i--) n++;
+    return n;
+  }
+
+  // Mean of `valKey` over the trailing `windowS`-second window, skipping
+  // non-numeric samples and any entry `filterFn` rejects (e.g. beam buckets
+  // with no pulses). This is the number the tile quotes — deliberately NOT an
+  // average over the whole displayed line, which would smear a hot or cold
+  // hour into the full day and read as more stable than it is.
+  function windowAverage(entries, valKey, windowS, filterFn) {
+    var n = trailingWindow(entries, windowS);
+    var sum = 0, count = 0;
+    for (var i = entries.length - n; i < entries.length; i++) {
+      var e = entries[i], v = e && e[valKey];
+      if (typeof v !== "number" || isNaN(v)) continue;
+      if (filterFn && !filterFn(e)) continue;
+      sum += v; count++;
+    }
+    return { avg: count ? sum / count : null, n: count };
+  }
+
+  // points: [{t, v, ...}, ...]. Draws the full series, then a low-opacity band
+  // over the trailing 1 h — the same window windowAverage() quotes — so it's
+  // visible which slice of the full-day line the headline number came from.
+  //
+  // `colour` is either a fixed CSS colour string, or a function(point) -> CSS
+  // colour string — e.g. by run kind, so a beam stretch and a cosmics stretch
+  // (mode-watcher's changeovers) read as two different lines instead of one
+  // continuous rate that implies they're the same measurement.
+  function sparkline(svg, points, colour, fromZero) {
     colour = colour || "var(--series-1)";
+    var colourAt = typeof colour === "function" ? colour : function () { return colour; };
+    var ns = "http://www.w3.org/2000/svg";
     while (svg.firstChild) svg.removeChild(svg.firstChild);
-    var vals = pts.filter(function (v) { return typeof v === "number" && !isNaN(v); });
-    if (vals.length < 2) return;
+    var pts = points.filter(function (p) { return typeof p.v === "number" && !isNaN(p.v); });
+    if (pts.length < 2) return;
     var W = 100, H = 38, pad = 3;
     svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    var vals = pts.map(function (p) { return p.v; });
+    var cols = pts.map(colourAt);
     var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
     if (fromZero) {
       // Beam intensity: anchor at zero so a stop reads as a fall to the floor in
@@ -304,26 +362,56 @@
       var mid = (hi + lo) / 2;
       lo = mid - span / 2; hi = mid + span / 2;
     }
-    var x = function (i) { return (i / (vals.length - 1)) * W; };
+    var x = function (i) { return (i / (pts.length - 1)) * W; };
     var y = function (v) { return H - pad - ((v - lo) / (hi - lo)) * (H - 2 * pad); };
-    var d = vals.map(function (v, i) { return (i ? "L" : "M") + x(i).toFixed(2) + " " + y(v).toFixed(2); }).join(" ");
+    var lastColour = cols[cols.length - 1];
 
-    var ns = "http://www.w3.org/2000/svg";
-    var path = document.createElementNS(ns, "path");
-    path.setAttribute("d", d);
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", colour);
-    path.setAttribute("stroke-width", "2");
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("stroke-linejoin", "round");
-    path.setAttribute("vector-effect", "non-scaling-stroke");
-    svg.appendChild(path);
+    var nHighlight = trailingWindow(pts, HOUR_S);
+    if (nHighlight > 1 && nHighlight < pts.length) {
+      var rect = document.createElementNS(ns, "rect");
+      var x0 = x(pts.length - nHighlight);
+      rect.setAttribute("x", x0.toFixed(2));
+      rect.setAttribute("y", "0");
+      rect.setAttribute("width", (W - x0).toFixed(2));
+      rect.setAttribute("height", H);
+      rect.setAttribute("fill", lastColour);
+      rect.setAttribute("opacity", "0.14");
+      svg.appendChild(rect);
+    }
+
+    // One <path> per contiguous same-colour run. The point where the colour
+    // changes is drawn as the last point of one segment AND the first point of
+    // the next, so the line stays visually unbroken at the transition.
+    var segStart = 0;
+    for (var i = 1; i < pts.length; i++) {
+      if (cols[i] !== cols[i - 1]) {
+        emitSegment(segStart, i, cols[i - 1]);
+        segStart = i;
+      }
+    }
+    emitSegment(segStart, pts.length - 1, cols[cols.length - 1]);
+
+    function emitSegment(from, to, segColour) {
+      var d = "";
+      for (var j = from; j <= to; j++) {
+        d += (j === from ? "M" : "L") + x(j).toFixed(2) + " " + y(vals[j]).toFixed(2) + " ";
+      }
+      var path = document.createElementNS(ns, "path");
+      path.setAttribute("d", d.trim());
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", segColour);
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      path.setAttribute("vector-effect", "non-scaling-stroke");
+      svg.appendChild(path);
+    }
 
     var last = document.createElementNS(ns, "circle");
-    last.setAttribute("cx", x(vals.length - 1).toFixed(2));
+    last.setAttribute("cx", x(pts.length - 1).toFixed(2));
     last.setAttribute("cy", y(vals[vals.length - 1]).toFixed(2));
     last.setAttribute("r", "2.6");
-    last.setAttribute("fill", colour);
+    last.setAttribute("fill", lastColour);
     last.setAttribute("stroke", "var(--surface)");
     last.setAttribute("stroke-width", "1.5");
     svg.appendChild(last);
@@ -439,34 +527,47 @@
     if (run.subrun) runBits.push(run.subrun);
     $("run-note").textContent = runBits.join(" · ");
 
+    // Quoted numbers are a trailing-1h average, never the whole displayed line —
+    // the line goes back a full day for context, but averaging the headline over
+    // that whole span would blend a hot or cold hour into the rest and read as
+    // steadier than it is. The sparkline shades the same hour it's quoted from.
     var ref = d.reference || {};
-    var hz = trg.rate_hz;
+    var rateWin = windowAverage(history, "rate", HOUR_S);
+    var hz = rateWin.avg !== null ? rateWin.avg : trg.rate_hz;   // no history yet: fall back live
     $("rate").textContent = (typeof hz === "number") ? compact(Math.round(hz * 86400)) : "—";
     $("rate-hz").textContent = (typeof hz === "number") ? hz.toFixed(1) + " Hz" : "";
-    $("rate-note").textContent = history.length > 1
-      ? "last " + history.length + " samples" : " ";
+    $("rate-note").textContent = rateWin.n > 1 ? "1h avg · " + rateWin.n + " samples"
+      : (history.length ? "warming up" : " ");
     grade($("rate-grade"), hz, (ref.trigger || {}).hz_p99,
           function (v) { return compact(Math.round(v * 86400)) + "/day"; });
-    sparkline($("spark"), history.map(function (h) { return h.rate; }), "var(--series-1)");
+    // Colour each point by what was actually running then — BEAM and COSMICS get
+    // their own hue, matching the key in the tile label; anything else (pulser
+    // runs, gaps, idle) is muted rather than silently inheriting the beam colour.
+    sparkline($("spark"), history.map(function (h) { return { t: h.t, v: h.rate, kind: h.kind }; }),
+      function (p) {
+        return p.kind === "BEAM" ? "var(--series-1)"
+             : p.kind === "COSMICS" ? "var(--series-2)"
+             : "var(--muted)";
+      });
 
     // beam.on === null means UNKNOWN (watcher transient), which is not the same as OFF.
     var bh = d.beam_history || [];
-    var live = bh.filter(function (b) { return b.pulses > 0; });
-    var latest = live.length ? live[live.length - 1] : null;
-    $("beam-int").textContent = latest ? sci(latest.p_day) : "—";
+    var pulsesOnly = function (b) { return b.pulses > 0; };
+    var beamWin = windowAverage(bh, "p_day", HOUR_S, pulsesOnly);
+    var e10Win = windowAverage(bh, "e10_mean", HOUR_S, pulsesOnly);
+    $("beam-int").textContent = beamWin.avg !== null ? sci(beamWin.avg) : "—";
     // Empty buckets carry 0, so a beam stop reads as a drop to the floor instead of
     // being compressed out of the trace. Floor the domain at 0 for the same reason.
-    sparkline($("beam-spark"), bh.map(function (b) { return b.p_day; }),
+    sparkline($("beam-spark"), bh.map(function (b) { return { t: b.t, v: b.p_day }; }),
              "var(--series-3)", true);
 
-    grade($("beam-grade"), latest ? latest.p_day : null,
-          (ref.beam || {}).protons_per_day_p99, sci);
+    grade($("beam-grade"), beamWin.avg, (ref.beam || {}).protons_per_day_p99, sci);
 
     var bs = beam.on;
     var bits = [bs === true ? "beam on" : bs === false ? "beam off" : "beam unknown"];
     if (typeof beam.pulses_10min === "number") bits.push(beam.pulses_10min + " pulses/10 min");
     $("beam-note").textContent = bits.join(" · ");
-    $("beam-alt").textContent = latest ? Math.round(latest.e10_mean) + " e10/pulse" : "";
+    $("beam-alt").textContent = e10Win.avg !== null ? Math.round(e10Win.avg) + " e10/pulse" : "";
 
     if (d.tracks && typeof d.tracks.count === "number") {
       $("tracks").textContent = compact(d.tracks.count);

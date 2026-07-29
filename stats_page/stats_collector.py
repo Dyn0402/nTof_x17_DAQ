@@ -63,7 +63,9 @@ SPS_STATE = os.path.join(REPO_DIR, "config", "sps_state.json")
 PAGE_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 
 SCHEMA = 1
-HISTORY_MAX = 240          # ~4 h at one sample per 60 s
+HISTORY_MAX = 1440         # ~24 h at one sample per 60 s — the sparkline now draws
+                           # the full day, with the headline number quoted from a
+                           # highlighted trailing 1 h window rather than this whole span
 
 PROJECTIONS_DIR = os.path.join(REPO_DIR, "projections")
 LIVE_PLOT_PATH = os.path.join(PROJECTIONS_DIR, "plots", "progress_live.png")
@@ -88,8 +90,10 @@ DEFAULTS = {
     # on, or the "against projection" tile compares two different totals.
     "projection_first_run": None,
     # Beam-intensity trace for its own card. The daily CSV is ~1.3 MB and grows all
-    # day, so it is tail-read and recomputed on its own slower cadence.
-    "beam_history_hours": 6.0,
+    # day, so it is tail-read and recomputed on its own slower cadence. 24 h at a
+    # 10 min bucket is 144 points — same "full day, quote the last hour" treatment
+    # as the trigger-rate history above.
+    "beam_history_hours": 24.0,
     "beam_history_bucket_min": 10.0,
     "beam_history_interval_s": 300,
 }
@@ -437,6 +441,10 @@ def append_history(payload, history):
         "t": payload.get("generated_epoch"),
         "rate": (payload.get("triggers") or {}).get("rate_hz"),
         "events": (payload.get("triggers") or {}).get("events_run"),
+        # BEAM / COSMICS / OTHER / NOT RUNNING — so the trigger-rate sparkline can
+        # colour each stretch by what was actually running instead of implying one
+        # continuous beam rate across mode-watcher's beam<->cosmics changeovers.
+        "kind": (payload.get("run") or {}).get("kind"),
     })
     history = history[-HISTORY_MAX:]
     try:
