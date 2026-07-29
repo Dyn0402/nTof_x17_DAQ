@@ -24,7 +24,7 @@ import json
 import shutil
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
@@ -1302,11 +1302,99 @@ class DaqMonitor:
             return severity, detail
         return False, f"SSD (/) OK — {free_gb:.0f} GB free ({pct:.0f}% full), above the {emerg_gb:.0f} GB emergency level"
 
+    def _hdd_warning_threshold_hours(self, now, opts):
+        """How many hours-till-empty the HDD needs before the 'warning' tier trips,
+        as a function of time of day. Two regimes:
+
+          day    (day_start_hour <= now < night_start_hour, default 08:00-20:00):
+                 a flat floor (default 5 h) — "don't bother me unless it's close".
+          night  (otherwise): the disk must last until the next day_start_hour
+                 (assumed wake time) PLUS a margin (default 2 h). This shrinks
+                 through the night as wake time approaches — at 20:00 it demands
+                 ~14 h (12 h to 08:00 + 2 h margin), by 07:00 only ~3 h — so the
+                 rule tracks "will we make it to morning with a buffer", not a
+                 fixed number.
+
+        Returns (threshold_hours, basis_str) for the alert detail text."""
+        day_start = float(opts.get("day_start_hour", 8))
+        night_start = float(opts.get("night_start_hour", 20))
+        day_threshold = float(opts.get("day_threshold_hours", 5))
+        night_margin = float(opts.get("night_margin_hours", 2))
+
+        hour = now.hour + now.minute / 60 + now.second / 3600
+        if day_start <= hour < night_start:
+            return day_threshold, f"daytime floor: {day_threshold:.1f} h"
+        hours_to_wake = (day_start - hour) if hour < day_start else (24 - hour + day_start)
+        threshold = hours_to_wake + night_margin
+        return threshold, (f"{hours_to_wake:.1f} h to {day_start:02.0f}:00 wake "
+                            f"+ {night_margin:.1f} h overnight margin")
+
     def rule_hdd_disk_space(self):
-        """Alert as the data HDD (/mnt/data) fills up. Graded: warning at 70%, then
-        alert / critical / emergency as it climbs (thresholds configurable via
-        rule_options.rule_hdd_disk_space.thresholds)."""
-        return self._disk_space_alert("rule_hdd_disk_space", "/mnt/data", "HDD (/mnt/data)")
+        """Alert on the data HDD (/mnt/data) using projected TIME-TILL-EMPTY rather
+        than percent-full, since "how full" says nothing about how urgent that is —
+        5 GB/hr of margin means something very different at 10 GB free than at 500.
+
+        Time-to-empty comes from disk_forecast's gross-inflow fit (see disk_forecast.py
+        — a plain slope is useless here because the HDD is periodically pruned by
+        hand/backup cleanup, which looks like a huge negative rate to a naive fit).
+
+        Two independent gates, either one can raise the alert:
+          warning   time-to-empty has fallen below a floor that VARIES by time of day
+                    (see _hdd_warning_threshold_hours): a flat 5 h during 08:00-20:00,
+                    tightening overnight to "won't last to 08:00 wake + 2 h margin".
+                    This is the "should I deal with this before I sleep" signal.
+          critical / emergency
+                    time-to-empty below an absolute floor (default 2 h / 30 min),
+                    day or night — once it is this close to actually filling, the
+                    time of day stops mattering.
+
+        Tunable via rule_options.rule_hdd_disk_space: day_start_hour, night_start_hour,
+        day_threshold_hours, night_margin_hours, critical_hours, emergency_hours.
+
+        Falls back to the OLD percent-full gradient (rule_options.rule_hdd_disk_space.
+        thresholds, still warning/alert/critical/emergency at 70/80/90/95%) whenever
+        the forecast can't produce a time-to-empty — no recent fill history, the HDD
+        isn't currently filling (trend "idle"), or disk_forecast/pandas is unavailable
+        — so a disk that is already nearly full but not filling right now (or a
+        forecaster that's broken) still gets a floor to alert against."""
+        opts = self.config.get("rule_options", {}).get("rule_hdd_disk_space", {})
+        gb = 1024 ** 3
+
+        def fallback(note):
+            sev, detail = self._disk_space_alert("rule_hdd_disk_space", "/mnt/data", "HDD (/mnt/data)")
+            return sev, f"{detail} [{note}, using percent-full fallback]"
+
+        try:
+            disk_forecast = self._repo_import("disk_forecast")
+            fc = disk_forecast.forecast()
+        except Exception as e:
+            return fallback(f"time-to-empty forecast unavailable ({e})")
+
+        if not fc.get("success"):
+            return fallback(f"time-to-empty forecast unavailable ({fc.get('message')})")
+        hdd = fc.get("disks", {}).get("hdd") or {}
+        if hdd.get("trend") != "filling" or hdd.get("time_to_full_h") is None:
+            return fallback(f"HDD not currently filling (trend={hdd.get('trend', 'unknown')})")
+
+        ttf_h = hdd["time_to_full_h"]
+        now = datetime.now()
+        threshold_h, basis = self._hdd_warning_threshold_hours(now, opts)
+        critical_h = float(opts.get("critical_hours", 2))
+        emergency_h = float(opts.get("emergency_hours", 0.5))
+        eta_clock = (now + timedelta(hours=ttf_h)).strftime("%a %H:%M")
+
+        detail = (f"HDD (/mnt/data) projected empty in {disk_forecast.human_duration(ttf_h)} "
+                  f"(~{eta_clock}) at {hdd.get('inflow_gb_per_hr', 0):.1f} GB/hr — "
+                  f"{hdd.get('free', 0) / gb:.0f} GB free. Warning floor {basis}.")
+
+        if ttf_h < emergency_h:
+            return "emergency", detail
+        if ttf_h < critical_h:
+            return "critical", detail
+        if ttf_h < threshold_h:
+            return "warning", detail
+        return False, (f"HDD (/mnt/data) OK — {disk_forecast.human_duration(ttf_h)} until full "
+                       f"(~{eta_clock}), above the {threshold_h:.1f} h floor ({basis})")
 
     # ---- DREAM crate health --------------------------------------------
     #

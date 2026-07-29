@@ -112,7 +112,7 @@ def _load_window(hours):
     return df
 
 
-def _human_duration(hours):
+def human_duration(hours):
     """A compact ETA: minutes under 1 h, hours under 2 days, else days."""
     if hours is None:
         return None
@@ -176,7 +176,7 @@ def _forecast_disk(key, df, hours, bin_min, stable_gb_per_hr):
     if free is not None and rate_bytes_per_hr > 0:
         ttf_h = free / rate_bytes_per_hr
         out["time_to_full_h"] = round(ttf_h, 2)
-        out["eta_full"] = _human_duration(ttf_h)
+        out["eta_full"] = human_duration(ttf_h)
     return out
 
 
