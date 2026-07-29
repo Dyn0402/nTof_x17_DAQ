@@ -48,6 +48,7 @@ Config keys (see backup_config.py to generate the JSON):
   rsync_extra_args    : extra arguments passed verbatim to rsync  (default: [])
 """
 
+import re
 import sys
 import json
 import time
@@ -108,6 +109,8 @@ def run_watcher(config: dict, config_path: Path):
     if exclude_runs:
         print(f"[backup] exclude_runs       : {sorted(exclude_runs)}")
     print(f"[backup] poll               : {poll_interval}s  stale_after={stale_run_days}d")
+    print(f"[backup] xrdcp timeout      : {_XRDCP_TIMEOUT_BASE:.0f}s + 1s per "
+          f"{_XRDCP_MIN_RATE:.0f} MB  (xrdfs ls {_XRDFS_TIMEOUT:.0f}s)")
 
     state_path = config_path.parent / 'backup_state.json'
     loose_state_path = config_path.parent / 'backup_loose_state.json'
@@ -160,9 +163,7 @@ def run_watcher(config: dict, config_path: Path):
         else:
             # --- Smart per-subrun sync for runs_subdir ---
             if runs_dir.exists():
-                for run_dir in sorted(runs_dir.iterdir()):
-                    if not run_dir.is_dir():
-                        continue
+                for run_dir in _runs_newest_first(runs_dir):
                     if include_runs is not None and run_dir.name not in include_runs:
                         continue
                     if run_dir.name in exclude_runs:
@@ -258,9 +259,7 @@ def run_watcher(config: dict, config_path: Path):
                 _end_idle()
                 print(f"[backup] full reconcile: verifying all runs against EOS")
                 n_runs = n_gap_runs = 0
-                for run_dir in sorted(runs_dir.iterdir()):
-                    if not run_dir.is_dir():
-                        continue
+                for run_dir in _runs_newest_first(runs_dir):
                     if include_runs is not None and run_dir.name not in include_runs:
                         continue
                     if run_dir.name in exclude_runs:
@@ -356,10 +355,79 @@ def _refresh_kerberos(principal: str, keytab_file: Path, gpg_pass_file: Path) ->
 _XROOTD_URL  = None   # e.g. 'root://eospublic.cern.ch' — set by run_watcher()
 _XRDCP_EXTRA = []     # extra xrdcp args from config — set by run_watcher()
 
+# Wall-clock budget for one transfer.  Deliberately NOT config keys: the JSON is
+# regenerated from backup_config.py at every boot, so a tunable here would be a
+# tunable that silently reverts.  An xrdcp to EOS can wedge with the connection
+# open and no bytes moving, and its own
+# internal expiry is far longer than anything useful here: on 2026-07-28 a single
+# 202 MB .fdf sat for 22+ minutes while a fresh xrdcp of the same size ran in
+# under a second, and the watcher — single-threaded, sequential over sorted runs
+# — was blocked behind it for six hours.  That is how run_85..run_91 never
+# reached EOS at all, which in turn kept the SSD staging unprunable (nothing is
+# deletable until every staged .fdf is verified on EOS).  A killed transfer costs
+# nothing: the file is simply retried on the next poll.
+#
+# 2026-07-29 RETUNE.  The timeout above stopped the six-hour blocks but was still
+# ~7x too generous, and that alone refilled the disk to 0 B: the watcher had not
+# completed a single pass in 34 h and run_95..run_100 had ZERO files on EOS.
+# Re-measured that night: the wedge rate is unchanged at 1/20 = 5%, and a wedge is
+# SIZE-INDEPENDENT — a 14 kB .prg hung the full 70 s while the other 19 averaged
+# 0.08 s.  A wedged transfer reads its source fully, sends ~2.9 kB, gets acked and
+# then freezes, i.e. it is blocked on the OPEN, not on data.  So a big budget buys
+# nothing a small one does not: healthy transfers run at ~107 MB/s (200 MB in
+# 1.9 s), so 10 MB/s of allowance is already a 10x margin, and the base only has
+# to cover the handshake.  200 MB now gets 35 s (the measured optimum in the
+# benchmark table) and a 14 kB .prg gets 15 s instead of 60 s.
+_XRDCP_TIMEOUT_BASE = 15.0    # seconds of handshake/allocation allowance
+_XRDCP_MIN_RATE     = 10.0    # MB/s a transfer must beat to be considered alive
+_XRDCP_TIMEOUT_MAX  = 120.0   # ceiling, so no single file can re-create the stall
+_XRDFS_TIMEOUT      = 120.0   # a recursive `xrdfs ls -R` can hang the same way
+
+# Immediate in-pass retries after a wedge.  Measured: retrying a wedged transfer
+# straight away cleared 8/8 (6 on attempt 2, 1 on attempt 3) in 0.4-6.9 s.  The
+# old code deferred the retry to the next poll, so every wedged file also cost a
+# full re-walk of the tree before it got another chance -- which is what turned a
+# 5% wedge rate into a pass that never finished.  3 attempts covers the measured
+# distribution; anything still wedged is left for the next poll as before.
+_XRDCP_ATTEMPTS = 3
+
+
+def _runs_newest_first(runs_dir: Path) -> list:
+    """Run dirs ordered newest run number first, then unnumbered dirs by name.
+
+    Two reasons this is not plain sorted().  First, plain sorted() is LEXICAL, so
+    'run_100' sorts before 'run_87' and the run numbering silently stops meaning
+    anything past 99.  Second and more important: the pass is sequential and can
+    take hours, so whatever it walks last may not be reached at all.  The newest
+    runs are exactly the ones still occupying the SSD staging that space_manager
+    wants to prune, so they are the ones that must go first -- on 2026-07-29 the
+    ascending walk was still grinding run_89 while run_95..run_100 had nothing on
+    EOS at all and the disk filled to 0 B behind them.
+    """
+    def key(p: Path):
+        m = re.fullmatch(r'run_(\d+)', p.name)
+        return (0, -int(m.group(1))) if m else (1, p.name)
+    return sorted((p for p in runs_dir.iterdir() if p.is_dir()), key=key)
+
 
 def _xrd_url(eos_path: Path) -> str:
     """Native xrootd URL for an absolute EOS path: root://host//eos/..."""
     return f"{_XROOTD_URL}//{str(eos_path).lstrip('/')}"
+
+
+def _xrdcp_timeout(size_bytes: int) -> float:
+    """Seconds to allow one transfer of size_bytes before killing it.
+
+    Scaled by size so a big file is not cut off mid-flight, with the floor rate
+    set 10x below what this link actually does (measured ~107 MB/s to eospublic,
+    ~190 MB/s off the HDD).  The largest file in the tree is a 202 MB .fdf, which
+    gets 35 s against a healthy time of 1.9 s; the ceiling keeps an outlier from
+    re-creating the stall.  Do not widen this to "be safe": a wedge does not
+    resolve with more time (measured: still dead at 70 s on a 14 kB file), so
+    extra budget is pure dead time and the retry is what actually recovers it.
+    """
+    return min(_XRDCP_TIMEOUT_MAX,
+               _XRDCP_TIMEOUT_BASE + size_bytes / (_XRDCP_MIN_RATE * 1024 * 1024))
 
 
 def _remote_size_map(eos_dir: Path, recursive: bool = True) -> dict:
@@ -371,10 +439,16 @@ def _remote_size_map(eos_dir: Path, recursive: bool = True) -> dict:
     Parses `xrdfs <url> ls -l [-R]` lines: '<flags> <owner> <group> <size> <date> <time> <path>'.
     """
     ls_args = ['ls', '-l', '-R', str(eos_dir)] if recursive else ['ls', '-l', str(eos_dir)]
-    result = subprocess.run(
-        ['xrdfs', _XROOTD_URL, *ls_args],
-        capture_output=True, text=True,
-    )
+    try:
+        result = subprocess.run(
+            ['xrdfs', _XROOTD_URL, *ls_args],
+            capture_output=True, text=True, timeout=_XRDFS_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        # Same failure mode as a wedged xrdcp. An empty map is already the
+        # "directory not there yet" answer, so the caller just re-copies.
+        print(f"[backup] xrdfs ls TIMED OUT after {_XRDFS_TIMEOUT:.0f}s: {eos_dir}")
+        return {}
     if result.returncode != 0:
         return {}
     base = str(eos_dir).rstrip('/') + '/'
@@ -394,15 +468,44 @@ def _remote_size_map(eos_dir: Path, recursive: bool = True) -> dict:
 
 
 def _xrdcp_file(local: Path, eos_path: Path) -> bool:
-    """Copy one local file to EOS via native xrdcp (-f overwrite, -p make dirs)."""
-    result = subprocess.run(
-        ['xrdcp', '-f', '-p', '--nopbar', *_XRDCP_EXTRA, str(local), _xrd_url(eos_path)],
-        capture_output=True, text=True,
-    )
-    if result.returncode == 0:
-        return True
-    print(f"[backup] xrdcp FAILED (exit {result.returncode}) {local.name}: "
-          f"{result.stderr.strip()[:200]}")
+    """Copy one local file to EOS via native xrdcp (-f overwrite, -p make dirs).
+
+    Killed if it stalls (see _xrdcp_timeout) rather than left to xrdcp's own
+    expiry, which blocks this single-threaded loop for tens of minutes per file.
+    """
+    try:
+        size = local.stat().st_size
+    except OSError:
+        size = 0
+    budget = _xrdcp_timeout(size)
+    mb = size / (1024 * 1024)
+
+    for attempt in range(1, _XRDCP_ATTEMPTS + 1):
+        try:
+            result = subprocess.run(
+                ['xrdcp', '-f', '-p', '--nopbar', *_XRDCP_EXTRA, str(local), _xrd_url(eos_path)],
+                capture_output=True, text=True, timeout=budget,
+            )
+        except subprocess.TimeoutExpired:
+            # subprocess.run has already killed the child.  Retry straight away:
+            # a wedge is a property of that one connection, not of the file or
+            # the link, so attempt 2 normally flies (measured 0.4-6.9 s).
+            print(f"[backup] xrdcp WEDGED after {budget:.0f}s ({mb:.1f} MB) "
+                  f"{local.name} — killed, attempt {attempt}/{_XRDCP_ATTEMPTS}")
+            continue
+        if result.returncode == 0:
+            if attempt > 1:
+                print(f"[backup] xrdcp recovered on attempt {attempt}: {local.name}")
+            return True
+        # A real error (permissions, quota, bad path) will not fix itself by
+        # retrying, so report and give up on this file for this pass.
+        print(f"[backup] xrdcp FAILED (exit {result.returncode}) {local.name}: "
+              f"{result.stderr.strip()[:200]}")
+        return False
+
+    # Still wedged after every attempt. Not recorded as synced, so the next poll
+    # retries this file from scratch.
+    print(f"[backup] xrdcp gave up after {_XRDCP_ATTEMPTS} attempts: {local.name}")
     return False
 
 
