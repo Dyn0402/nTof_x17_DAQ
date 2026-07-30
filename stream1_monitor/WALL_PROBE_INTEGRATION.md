@@ -24,8 +24,12 @@ the flash amplitude is an absolute, per-channel, configuration-independent refer
 
 | state | wall flash amplitude | note |
 |---|---|---|
-| live | ~34 000 ADC counts | rails to the bottom of the ADC |
+| live | ~32 200 ADC counts | swings up through zero from a ≈ −31 400 baseline |
 | collapsed | 350 – 1 200 | measured 07-22 across all 32 channels |
+
+(The live figure read ~34 000 before the 2026-07-30 signed-decode fix, which changed how
+the above-zero half of the pulse is decoded but not the collapsed figure — see
+`SIGNED_DECODE_FIX_NOTE.md`.)
 
 Two orders of magnitude apart. No baseline, no window, no tuning.
 

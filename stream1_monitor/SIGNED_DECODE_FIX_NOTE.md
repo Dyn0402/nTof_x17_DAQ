@@ -1,9 +1,10 @@
-# TODO: `ntof_raw.py` decodes stream1 samples with the wrong sign
+# FIXED 2026-07-30: `ntof_raw.py` decoded stream1 samples with the wrong sign
 
-**Written 2026-07-30 by the X17 analysis side (Dylan Neff / session note).
-Nothing in this repo has been changed — this note exists so a session can pick
-the fix up cold.** The evidence lives in the analysis repo:
-`nTof_x17/ntof_processing/FINDINGS_2026-07-29_signed_decoding.md`.
+**Written 2026-07-30 by the X17 analysis side (Dylan Neff / session note); applied
+the same day.** The evidence lives in the analysis repo:
+`nTof_x17/ntof_processing/FINDINGS_2026-07-29_signed_decoding.md`. What was changed,
+and what was measured to check it, is at the bottom under
+[What was actually done](#what-was-actually-done-2026-07-30).
 
 ## The bug, in one line
 
@@ -105,6 +106,79 @@ whatever this repo produces after the change, are in
 Expect after the fix: WAL/PKUP baselines negative (~−31 400 / −26 660), no
 sample-to-sample discontinuities of ~65 000, clipped samples exactly at
 ±32 768/±32 767, and rail-to-rail flips only inside the γ-flash on LIQA/LIQB.
+
+## What was actually done (2026-07-30)
+
+Verified against a live file first, not against the reference chunks (they are on the
+analysis laptop; this machine has EOS): `run224619_38_s1.raw.finished`, one event, all
+51 channels, decoded both ways in a single read.
+
+1. **`ntof_raw.py`** — `'<u2'` → `SAMPLE_DTYPE = '<i2'`, both docstrings corrected, and
+   the `0x8000`-fill and 259-pre-sample facts written into `parse_acqc` (with
+   `PRE_SAMPLES` / `ZS_FILL_CODE` / `SAMPLE_RAILS` as named constants) and into
+   `docs/NTOF_RAW_FORMAT.md`. The `<u2` upstream of this vendored copy,
+   `~/beam_july/analysis/sipm_wall_filesize/ntof_raw.py`, was fixed the same way so a
+   re-copy cannot reintroduce it. No other `<u2` decode exists in the repo.
+
+2. **Measured effect of the sign change** (per detector group):
+
+   | quantity | outcome |
+   |---|---|
+   | noise RMS | **identical on every one of the 51 channels** — the quiet leading samples never cross zero |
+   | LIQ/PSS/SILI baseline | unchanged (+26 300 … +31 200) |
+   | WAL/PKUP/RMP baseline | shifted by exactly −65 536 (WALA +34 104 → −31 432, PKUP +38 870 → −26 666) |
+   | LIQ flash | ~33 900 → ~63 900 (1.9×) |
+   | PSS flash | ~34 400 → 40 600 … 63 100 |
+   | WAL flash | ~34 100 → ~32 200 (0.95× — the walls only just reach past zero) |
+
+   So `ZERO_RMS_COUNTS` and the whole FLATLINED/ZEROED path are untouched, which was
+   the open question in step 2 of the fix list: **confirmed, not assumed.**
+
+3. **Flash-ratio thresholds re-validated** on 6 consecutive events of the same file.
+   The signed flash is *more* stable event to event than the unsigned one for every
+   graded detector (spread over 6 events: LIQ 3.0 % → 0.0 %, PSS 0.4–1.3 % → 0.1–1.0 %,
+   WAL 0.1–1.7 % → 1.2–1.5 %), so `FLASH_BAD_RATIO` 0.50 and
+   `FLASH_QUESTIONABLE_RATIO` 0.85 keep the margin they were chosen with and were left
+   alone. The unsigned number had been accidentally saturating — once a pulse crossed
+   zero the measured excursion pinned near the baseline magnitude, discarding depth —
+   and the new spread is instead *between channels* of one detector (PSSB ch1 44 688 vs
+   ch2 63 480 in the same event). Harmless, since grading is on the per-detector mean.
+
+4. **The frozen nominal had to be thrown away.** `config/stream1_waveform_nominal.json`
+   was measured on 07-22 with the unsigned decode, and keeping it would have flagged
+   all four walls with a bogus 65 536-count baseline shift on every sample and — the
+   part that matters — inflated the LIQ/PSS flash reference by up to 1.9×, so a real
+   45 % gain loss on a liquid would still have graded "good". It cannot be migrated
+   arithmetically either (the flash half is unrecoverable, see 3). So nominals now
+   record `"decode": "int16"` and `load_nominal` **drops** any nominal not carrying the
+   current `NOMINAL_DECODE` tag, logs it once, and publishes `nominal_stale` in the
+   state file (the GUI says "no nominal — stored one dropped"). That hands the
+   reference back to the existing auto-seed, which re-freezes from the next file the
+   size layer independently calls healthy — minutes, with beam on.
+
+5. `wall_probe.py` needed no code change (it is baseline-relative and its cuts are two
+   orders of magnitude from both states); its numbers were corrected in the comments
+   and in `WALL_PROBE_INTEGRATION.md`. Checked against run 224619_48: baselines
+   ≈ −31 700, flash ≈ 32 700, verdict LIVE.
+
+6. **Checked live after restarting the watcher.** It logged the drop, re-froze from run
+   224619_53 two seconds later, and the next independent sample (224619_57) graded every
+   graded detector at 1.000–1.015 of the new nominal with no baseline/RMS notes, 51/51
+   channels, `missing_check: ok`.
+
+To redo any of this after a future decode change (bump `NOMINAL_DECODE`, then check
+before trusting it): pipe `xrdfs root://eospublic.cern.ch cat <file>` into
+`iter_banks`, stop at the second `EVEH`, and for each `ACQC` bank parse the first block
+*twice* — once per dtype — comparing median / std of the leading
+`WAVEFORM_BASELINE_SAMPLES` and `max|s - base|`. Run it over ~6 consecutive events to
+get the per-detector spread, which is what the ratio cuts are set against. One event is
+~200 MB, so a 6-event check moves ~1.2 GB.
+
+**Not fixed, found on the way:** `wall_probe`'s default 2 MiB read budget no longer
+reaches a single wall bank (they are 2–8 MB now), so the standalone default returns
+`unknown` / 0 channels. Pre-existing and independent of the sign — `analyze_mesh_toggle.py`
+already carries a "2 MB is TOO SMALL" note and passes a larger budget — but the
+docstring still advertises 2 MB and ~0.12 s.
 
 ## Still open, and NOT part of this fix
 

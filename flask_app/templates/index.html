@@ -4452,7 +4452,10 @@ function s1RenderWaveform(d) {
   const g = wf.grade;
   verdict.textContent = wf.have_nominal
     ? `${(S1_STATE_TEXT[g] || {}).text || "—"} · ${d.waveform_age_min ?? "?"} min ago`
-    : "no nominal yet";
+    : (d.nominal_stale ? "no nominal — stored one dropped" : "no nominal yet");
+  // Only ever set when the stored reference was thrown out (superseded sample decode),
+  // which otherwise looks identical to never having had one.
+  verdict.title = d.nominal_stale || "";
   verdict.style.color = S1_COLORS[g] || "";
 
   // With no proton pulse there is no gamma flash, so every detector reads ~0. Say that

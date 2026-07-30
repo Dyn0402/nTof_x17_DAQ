@@ -153,11 +153,20 @@ Frozen, never rolling — the whole point of the file-size baseline's weakness (
 dropout eventually becomes "normal") is avoided here. It is auto-seeded from the first
 sampled file the size layer independently calls *good*, and thereafter changes only
 when someone presses **Set nominal** in the GUI. Either way `adopt_nominal` refuses
-while any wall is below 10 000 counts (alive ≈ 34 000, dead ≈ 600), so a re-baseline
+while any wall is below 10 000 counts (alive ≈ 32 200, dead ≈ 600), so a re-baseline
 during a dropout cannot bless the fault as normal.
 
 Re-baseline after anything that legitimately changes gain: a wall HV change, a
 digitiser reconfiguration, a cabling change.
+
+The nominal also records which **sample decode** measured it (`"decode": "int16"`), and
+a nominal carrying anything else is dropped on load — its counts are not comparable, and
+a wrong reference is worse than none. That happened once, on 2026-07-30, when the ACQC
+samples turned out to be signed: the walls would have shown a bogus 65 536-count
+baseline shift and the LIQ/PSS flash reference would have been 1.9× too large, hiding a
+45 % gain loss. Dropping it hands the reference back to the auto-seed, so it re-freezes
+from the next healthy file — minutes, with beam. See `SIGNED_DECODE_FIX_NOTE.md` and
+`NOMINAL_DECODE` in `stream1_size_controller.py`.
 
 ## Operating notes
 

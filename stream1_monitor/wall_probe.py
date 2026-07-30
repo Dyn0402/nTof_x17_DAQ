@@ -6,7 +6,7 @@ file and measure the gamma-flash amplitude of the wall channels in it.
 
 This is the waveform-level replacement for the file-size proxy.  File size says
 "something stopped contributing"; this says "WALC ch2's flash is 600 counts
-instead of 34 000", which is unambiguous and needs no moving baseline.
+instead of 32 000", which is unambiguous and needs no moving baseline.
 
 Why it is cheap: the gamma flash lives in the first zero-suppressed block of
 every ACQC bank (the DAQ always keeps the first 30 us), and the first wall bank
@@ -45,10 +45,16 @@ EOS_BASE = '/eos/experiment/ntof/DAQ/2026/EAR2/X17_measurement'
 READ_BYTES = 2 << 20        # 2 MiB budget per probe
 WALL_DETS = ('WALA', 'WALB', 'WALC', 'WALD')
 
-# A live wall channel rails the flash to the ADC bottom: amplitude ~34 000
-# counts from a ~34 100 baseline.  A collapsed one gives 350-1200.  Two orders
-# of magnitude apart, so the threshold is not delicate and -- unlike a size
-# baseline -- it does not move with the run configuration.
+# A live wall channel's flash swings from a baseline near the ADC's negative rail
+# (~-31 400 counts; samples are SIGNED int16 -- see ntof_raw.parse_acqc) up through
+# zero, an amplitude of ~32 200.  A collapsed one gives 350-1200.  Two orders of
+# magnitude apart, so the threshold is not delicate and -- unlike a size baseline --
+# it does not move with the run configuration.
+#
+# Both cuts predate the 2026-07-30 signed-decode fix and are unchanged by it: the
+# unsigned decode read the above-zero half of the pulse as 65 536 minus itself and so
+# reported the same swing as ~34 100, i.e. a live wall moved 34 100 -> 32 200 and a
+# dead one did not move at all.  Both stay far from either cut.
 FLASH_DEAD_BELOW = 5000.0
 FLASH_LIVE_ABOVE = 20000.0
 
