@@ -628,10 +628,12 @@
         </div>
       </div>
       <p class="text-muted small mb-0 mt-3" id="gas-usage-note">
-        Normal litres drawn = integral of the logged flow since logging began.
-        <strong>Argon</strong> (compressed): pressure falls ~linearly with gas
-        removed — starting assumption 50 L bottle @ 220 bar (real-gas
-        compressibility adds ~10 % level error). <strong>Isobutane</strong>
+        Normal litres drawn = integral of the logged flow since logging began (gaps
+        integrated at their true duration, not capped). <strong>Argon</strong>
+        (compressed, 50 L @ 220 bar nominal): pressure converted from remaining
+        moles via a Redlich-Kwong real-gas model at the logged bottle temperature,
+        then calibrated against hand-logged gauge photos —
+        <span id="gas-argon-calib">fit pending</span>. <strong>Isobutane</strong>
         (liquefied): head pressure stays at its ~vapour pressure until the liquid
         is gone, so the gauge here is liquid remaining — starting assumption 50 L
         bottle, 80 % liquid. Edit assumptions in
@@ -3649,11 +3651,14 @@ document.getElementById("gas-zero").addEventListener("click", async () => {
 // while its tab is hidden (display:none -> 0 width), so (re)render when either tab is
 // Bottle usage: estimated from the integrated flow history (heavier server call,
 // so it refreshes on tab-show + a slow timer rather than every 2 s).
-function gasDaysToEmpty(d) {
+function gasDaysToEmpty(d, dateStr) {
   if (d == null) return "steady? —";
-  if (d >= 365) return `${(d / 365).toFixed(1)} yr`;
-  if (d >= 60) return `${(d / 30).toFixed(1)} mo`;
-  return `${d.toFixed(0)} d`;
+  const span = d >= 365 ? `${(d / 365).toFixed(1)} yr` : d >= 60 ? `${(d / 30).toFixed(1)} mo` : `${d.toFixed(0)} d`;
+  if (!dateStr) return span;
+  const dt = new Date(dateStr + "T00:00:00");
+  const opts = dt.getFullYear() === new Date().getFullYear()
+    ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" };
+  return `${span} (${dt.toLocaleDateString(undefined, opts)})`;
 }
 async function gasUpdateUsage() {
   let u;
@@ -3669,7 +3674,15 @@ async function gasUpdateUsage() {
   document.getElementById("gas-argon-remaining").textContent =
     `${gasNum(a.remaining_L, 0)} L · ${(a.frac_remaining * 100).toFixed(1)}%`;
   document.getElementById("gas-argon-rate").textContent = `${gasNum(a.rate_lnh, 2)} ln/h`;
-  document.getElementById("gas-argon-empty").textContent = gasDaysToEmpty(a.days_to_empty);
+  document.getElementById("gas-argon-empty").textContent = gasDaysToEmpty(a.days_to_empty, a.empty_date);
+  const calibEl = document.getElementById("gas-argon-calib");
+  if (calibEl) {
+    calibEl.textContent = a.calibration
+      ? `effective start ${gasNum(a.calibration.effective_start_bar, 0)} bar, ` +
+        `leak +${gasNum(a.calibration.effective_leak_pct, 1)}% vs. logged flow ` +
+        `(fit ±${gasNum(a.calibration.rms_residual_bar, 1)} bar, ${a.calibration.n_fit_points} photos)`
+      : "fit pending (need ≥2 gauge photos)";
+  }
 
   document.getElementById("gas-iso-liquid").textContent =
     `${gasNum(i.liquid_remaining_L, 1)} L liq`;
@@ -3679,7 +3692,7 @@ async function gasUpdateUsage() {
   document.getElementById("gas-iso-pressure").textContent =
     i.vapor_pressure_bar > 0 ? `~${gasNum(i.vapor_pressure_bar, 1)} bar (vapour)` : "empty";
   document.getElementById("gas-iso-rate").textContent = `${gasNum(i.rate_lnh, 3)} ln/h`;
-  document.getElementById("gas-iso-empty").textContent = gasDaysToEmpty(i.days_to_empty);
+  document.getElementById("gas-iso-empty").textContent = gasDaysToEmpty(i.days_to_empty, i.empty_date);
 
   const el = document.getElementById("gas-usage-updated");
   if (el) el.textContent = u.start ? `since ${u.start} · ${gasNum(u.logged_hours, 0)} h logged` : "";
