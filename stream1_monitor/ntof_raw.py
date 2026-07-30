@@ -35,7 +35,13 @@ description in Masi et al., ICALEPCS'2017 THPHA195, whose own format note
               of ZERO-SUPPRESSED BLOCKS, each
                   uint64 start   first sample index within the 20 ms window
                   uint64 n       number of samples in this block
-                  uint16[n]      samples (little-endian, unsigned ADC counts)
+                  int16[n]       samples (little-endian, SIGNED ADC counts:
+                                 ntoflib declares them int16_t, the cards are
+                                 S014/ADQ14 at 16 bits, and every channel is
+                                 parked at a +-950 mV baseline offset within a
+                                 +-1002 mV range, i.e. near the rail opposite
+                                 its pulse direction — so a full-size pulse
+                                 crosses zero.  See SIGNED_DECODE_FIX_NOTE.md)
               padded to a 4-byte boundary at the end of the bank.
 
   Timing: MODH gives 1000.0 MS/s and a 20000 us window -> 20 000 000 samples
@@ -144,11 +150,38 @@ SAMPLE_RATE_HZ = 1_000_000_000     # 1 GS/s -> 1 sample = 1 ns (from MODH)
 WINDOW_SAMPLES = 20_000_000        # 20 ms window
 
 
+# Exported because a consumer cannot derive any of the three from the file: the dtype
+# was got wrong for a week (see parse_acqc), the fill code is indistinguishable from a
+# clipped sample, and the pre-sample count is what puts a sample on the PSA time base.
+SAMPLE_DTYPE = '<i2'               # int16_t, NOT uint16 — see parse_acqc
+ZS_FILL_CODE = -32768              # 0x8000, bit-identical to the negative rail (-32768)
+PRE_SAMPLES = 259                  # samples a block carries BEFORE its `start`
+
+
 def parse_acqc(payload, with_samples=True):
     """Acquired-channel bank -> (detector, channel, blocks).
 
-    blocks is a list of (start_sample, samples) with samples a uint16 array
+    blocks is a list of (start_sample, samples) with samples an int16 array
     (or just the length when with_samples=False).
+
+    Samples are SIGNED (`int16_t` in ntoflib's ReaderStructACQC.h, 16 bits for the
+    S014/ADQ14 cards).  Reading them unsigned — which this did until 2026-07-30 —
+    is silently harmless only for traces that stay on one side of zero, and every
+    full-size pulse crosses it: the baseline sits ~95 % of the way to the rail
+    opposite the pulse direction, so a wrapped decode turns one pulse into an
+    apparent excursion "through 0 and back from 65 535".  SIGNED_DECODE_FIX_NOTE.md
+    lists the three findings that cost us.
+
+    Two things about the sample stream that are not visible from the numbers:
+
+      * The zero-suppression FILL value is 0x8000 == -32768, i.e. bit-identical to
+        the negative rail, so a filled gap and a genuine clip differ only by
+        context — a clip is approached sample by sample, a fill is not.
+      * A block's `start` is the zero-suppression TRIGGER sample; the payload
+        begins PRE_SAMPLES earlier.  Sample j of a block is therefore at
+            tof = start + j - (PRE_SAMPLES if start > 0 else 0)
+        (measured -258.7 ns on LIQA over 135/135 pulses, spread 1.1 ns).  The
+        always-kept flash block has start == 0 and no pre-samples.
     """
     import numpy as np
     det = payload[0:4].decode('ascii', 'replace')
@@ -160,7 +193,7 @@ def parse_acqc(payload, with_samples=True):
         if n == 0 or pos + 16 + 2 * n > len(payload) + 2:
             break                                   # trailing pad word
         if with_samples:
-            blocks.append((start, np.frombuffer(payload, dtype='<u2',
+            blocks.append((start, np.frombuffer(payload, dtype=SAMPLE_DTYPE,
                                                 offset=pos + 16,
                                                 count=min(n, (len(payload) - pos - 16) // 2))))
         else:

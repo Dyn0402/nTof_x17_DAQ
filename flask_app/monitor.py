@@ -1006,7 +1006,16 @@ class DaqMonitor:
         if not wf:
             return False, "no waveform sample yet"
         if not wf.get("have_nominal"):
-            return False, "no waveform nominal adopted yet — nothing to compare against"
+            # Distinguish "never had one" from "had one and threw it away" (the stored
+            # nominal was measured with a superseded sample decode — see NOMINAL_DECODE
+            # in stream1_size_controller). Both disarm this rule, but the second is a
+            # state someone caused and should be able to see the reason for. It clears
+            # itself once the auto-seed re-freezes from a size-good file, which needs
+            # beam: through a long beam stop, this rule stays disarmed.
+            stale = st.get("nominal_stale")
+            return False, (f"waveform nominal DROPPED, gain grading disarmed until it "
+                           f"re-freezes: {stale}" if stale else
+                           "no waveform nominal adopted yet — nothing to compare against")
         # Without protons there is no gamma flash, so EVERY detector reads ~0 and this
         # rule would cry facility-wide failure. The watcher detects that from the event
         # itself (PKUP/PSS/LIQ, the beam witnesses, all dead together) and from the

@@ -23,6 +23,11 @@ absolute reference: during the dropout the walls fell from ~34 000 counts to ~60
 names the affected detectors. Graded against a frozen nominal, never a rolling
 average, so a multi-hour dropout cannot become the new "normal".
 
+(Counts quoted anywhere in this file with "~34 000" are 2026-07-22 measurements made
+before the samples were found to be signed rather than unsigned; a live wall reads
+~32 200 now. See NOMINAL_DECODE for the per-group numbers and what the change did and
+did not move.)
+
 The watcher appends both layers to per-day CSVs and publishes a summary to
 STREAM1_STATE_PATH for the Flask app (/stream1/status) and the Telegram monitor.
 
@@ -191,7 +196,39 @@ WAVEFORM_MIN_INTERVAL_S = 300.0   # at most one sampled file per this interval
 WAVEFORM_INCOMPLETE_CONSEC = 3
 WAVEFORM_BASELINE_SAMPLES = 2000  # leading samples of the first block used for base/RMS
 
+# Sample-decode generation the stored nominal was measured with. A nominal is a
+# comparison against raw ADC counts and nothing inside the file says which decode
+# produced them, so this is bumped whenever a change in ntof_raw moves those numbers,
+# and a nominal that does not carry the current tag is DROPPED (load_nominal) rather
+# than trusted or migrated.
+#
+# 2026-07-30: ACQC samples are int16, not uint16 (stream1_monitor/
+# SIGNED_DECODE_FIX_NOTE.md). Measured on run 224619_38, one event, all 51 channels:
+#   * noise RMS is IDENTICAL under both decodes on every channel — the quiet leading
+#     samples never cross zero — so ZERO_RMS_COUNTS and the whole flatline path below
+#     mean exactly what they did before;
+#   * WAL/PKUP/RMP baselines move by exactly -65536 (WALA +34 104 -> -31 432, PKUP
+#     +38 870 -> -26 666). LIQ/PSS/SILI sit at ~+26 000-31 000 and do not move;
+#   * flash amplitudes move wherever the pulse crosses zero: LIQ ~33 900 -> ~63 900
+#     (1.9x), PSS ~34 400 -> 40 600-63 100, WAL ~34 100 -> ~32 200 (0.95x — the walls
+#     only just reach past zero).
+# Keeping the pre-fix nominal would therefore flag all four walls with a bogus
+# 65 536-count baseline shift on every sample and, worse, inflate the LIQ/PSS flash
+# reference by up to 1.9x, so a real 45 % gain loss on a liquid would still grade
+# "good". Migration is not possible either: the unsigned flash number was pinned near
+# the baseline magnitude and threw away pulse depth, so it cannot be converted.
+NOMINAL_DECODE = "int16"
+
 # Per-detector grading of the flash amplitude against the stored nominal.
+#
+# Re-validated for the int16 decode on 6 consecutive events of run 224619_38: the
+# signed flash is MORE stable event to event than the unsigned one was for every
+# graded detector (spread over 6 events: LIQ 3.0 % -> 0.0 %, PSS 0.4-1.3 % -> 0.1-1.0 %,
+# WAL 0.1-1.7 % -> 1.2-1.5 %), so these cuts keep the same margin they were chosen
+# with. The large spread is now BETWEEN CHANNELS of one detector rather than between
+# events (PSSB ch1 44 688 vs ch2 63 480 in the same event, because only some pulses
+# reach the far rail) — harmless here, since grading is on the per-detector mean, and
+# if anything it means losing one channel of a detector now also moves that mean.
 FLASH_BAD_RATIO = 0.50
 FLASH_QUESTIONABLE_RATIO = 0.85
 # A channel whose baseline moved by more than this (ADC counts), or whose noise RMS
@@ -199,8 +236,12 @@ FLASH_QUESTIONABLE_RATIO = 0.85
 # digitiser/DC-path problem rather than the gain collapse the flash ratio catches.
 BASELINE_SHIFT_COUNTS = 500.0
 RMS_FACTOR = 3.0
-# Refuse to adopt a nominal whose walls are already dead (they sit at ~34 000 alive,
-# ~600 dead), so a re-baseline during a dropout cannot silently bless the fault.
+# Refuse to adopt a nominal whose walls are already dead (they sit at ~32 200 alive
+# under the int16 decode, ~600 dead), so a re-baseline during a dropout cannot silently
+# bless the fault. Note that every "~34 000" in the comments below is a 2026-07-22
+# measurement made with the old unsigned decode; see NOMINAL_DECODE for what each
+# detector group reads now. The two orders of magnitude between alive and dead — which
+# is all any of these thresholds rests on — is unaffected either way.
 NOMINAL_MIN_WALL_FLASH = 10_000.0
 NOMINAL_WALL_PREFIX = "WAL"
 
@@ -455,6 +496,10 @@ class Stream1SizeMonitor:
         self._seen = {(r["run"], r["seq"]) for r in self._hist}
         self._pending = {}   # (run, seq) -> size at the previous listing (settle check)
         # Waveform layer: frozen per-detector reference + the newest graded sample.
+        # Set before the first load_nominal(), which writes both when it rejects a
+        # nominal from an older sample decode.
+        self._nominal_stale = None
+        self._nominal_stale_logged = None
         self._nominal = self.load_nominal()
         self._size_nominal = self.load_size_nominal()
         self._last_waveform = None
@@ -637,11 +682,34 @@ class Stream1SizeMonitor:
         return {d: sum(v) / len(v) for d, v in out.items()}
 
     def load_nominal(self):
+        """The frozen waveform reference, or None if there is none to trust.
+
+        A nominal from a different sample decode counts as none: its counts are not
+        comparable with what the decoder produces now (see NOMINAL_DECODE), and a
+        wrong reference is worse than an absent one — absent disarms the flash grading
+        and says so, wrong grades everything against numbers that are off by up to
+        1.9x. Dropping it puts the auto-seed back in charge, so the reference re-freezes
+        from the next file the size layer calls healthy."""
         try:
             with open(STREAM1_NOMINAL_PATH) as f:
-                return json.load(f)
+                nominal = json.load(f)
         except Exception:
             return None
+        if nominal.get("decode") != NOMINAL_DECODE:
+            msg = (f"stored nominal (run {nominal.get('run')}, adopted "
+                   f"{nominal.get('adopted')}) was measured with the "
+                   f"{nominal.get('decode') or 'uint16'} sample decode, not "
+                   f"{NOMINAL_DECODE} — dropped; it will be re-frozen from the next "
+                   f"healthy file")
+            self._nominal_stale = msg
+            # Logged once, not once per poll: this persists until a re-freeze, and the
+            # state file carries it for the GUI in the meantime.
+            if self._nominal_stale_logged != msg:
+                self.log(msg)
+                self._nominal_stale_logged = msg
+            return None
+        self._nominal_stale = None
+        return nominal
 
     def adopt_nominal(self, rows, meta, source="auto"):
         """Freeze the per-detector reference from a healthy sample.
@@ -664,6 +732,9 @@ class Stream1SizeMonitor:
         nominal = {
             "adopted": datetime.now().isoformat(timespec="seconds"),
             "source": source,
+            # Which decode produced these counts. load_nominal refuses a nominal
+            # carrying anything else, so a decode change can never be compared against.
+            "decode": NOMINAL_DECODE,
             "run": meta["run"], "seq": meta["seq"], "event": meta["event"],
             "detectors": {
                 d: {"flash": round(flash[d], 1),
@@ -681,6 +752,7 @@ class Stream1SizeMonitor:
         except Exception as e:
             return None, f"could not write nominal: {e}"
         self._nominal = nominal
+        self._nominal_stale = self._nominal_stale_logged = None
         return nominal, None
 
     @staticmethod
@@ -1429,6 +1501,11 @@ class Stream1SizeMonitor:
                 "normalised": self._beam.available,
             },
             "nominal_message": self._nominal_message,
+            # Why there is no nominal, when the reason is that the stored one was
+            # measured with a superseded sample decode. Unlike nominal_message this is
+            # NOT transient — it stands until a re-freeze — so the GUI can explain a
+            # blank flash grading instead of just showing "no nominal yet".
+            "nominal_stale": self._nominal_stale,
             "waveform_age_min": (round((time.time() - self._last_waveform_at) / 60.0, 1)
                                  if self._last_waveform_at else None),
             "nominal": self._nominal,

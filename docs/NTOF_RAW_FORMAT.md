@@ -69,7 +69,7 @@ plus two 64-bit timestamps. `ADDH` follows with beam-cycle info (`lsaCycle` ASCI
     then a sequence of ZERO-SUPPRESSED BLOCKS, each:
         uint64 start     first sample index within the 20 ms window (= ns since t0)
         uint64 n         samples in this block
-        uint16[n]        samples, little-endian, unsigned ADC counts
+        int16[n]         samples, little-endian, SIGNED ADC counts
     padded to a 4-byte boundary at the end of the bank
 
 **Zero suppression is the whole story for file size.** The first block is always kept
@@ -77,8 +77,30 @@ plus two 64-bit timestamps. `ADDH` follows with beam-cycle info (`lsaCycle` ASCI
 where the signal crossed threshold. A live wall channel emits ~500–700 blocks / ~700 k
 samples per event; a dead one emits *only* the mandatory first block.
 
-Sample polarity: pulses go **downward** from a baseline of ~34 100 counts for the walls
-(~31 100 for the liquids/plastics); the gamma flash rails to 0.
+**Samples are `int16_t`, not `uint16`** (`ntoflib/include/ReaderStructACQC.h`; the cards
+are S014/ADQ14 at 16 bits). Every channel carries a ±950 mV `baselineOffsetmV` inside a
+±1002 mV range, i.e. it is parked ~95 % of the way toward the rail *opposite* its pulse
+direction, so a full-size pulse crosses zero and an unsigned decode turns it into an
+apparent jump "through 0 and back from 65 535". Measured baselines (run 224619):
+
+| group | offset | polarity | baseline (signed) | flash amplitude |
+|---|---|---|---|---|
+| LIQ, PSS, SILI | +950 mV | negative-going | +26 300 … +31 200 | 40 000 – 64 000 |
+| WAL | −950 mV | positive-going | ≈ −31 400 | ≈ 32 200 |
+| PKUP, RMP | −950 mV | positive-going | −26 700 / −26 300 | beam-proportional |
+
+Two consequences worth knowing before reading samples:
+
+* the zero-suppression **fill value is `0x8000` = −32 768**, bit-identical to the
+  negative rail — fill and a genuine clip are told apart only by context (a clip is
+  approached sample by sample, a fill is not);
+* a block's `start` is the zero-suppression *trigger* sample, but its payload begins
+  **259 samples earlier**, so a sample index converts to PSA `tof` as
+  `start + j - (259 if start > 0 else 0)`. The always-kept flash block has `start == 0`
+  and no pre-samples.
+
+History: this reader decoded the samples unsigned until 2026-07-30, which cost three
+retracted findings — see `stream1_monitor/SIGNED_DECODE_FIX_NOTE.md`.
 
 ## Using the reader
 
