@@ -1,0 +1,285 @@
+{
+  "what": "gamma-flash arrival time of each detector channel, referenced to the beam pickup (PKUP) pulse of the same bunch",
+  "usage": "t_flash_at_channel(bunch) [ns] = tof_PKUP(bunch) + C_ns",
+  "IMPORTANT": "C is PER CHANNEL. Do not average to one constant per wall: a per-detector constant is no better than a single global one (3.42 vs 3.43 ns rms residual) because the four wall means agree to 0.7 ns while channels within a wall differ by up to 13.3 ns.",
+  "sign": "C is NEGATIVE: the flash reaches the detectors ~1.72 us BEFORE the pickup pulse appears in the digitiser window",
+  "epochs": {
+    "C_ns": "the 2026-07-16 epoch \u2014 use for runs >= 224400 (the state that held to the end of the campaign)",
+    "C_ns_epoch_2026_07_11": "use for runs < 224400",
+    "note": "the 07-11 -> 07-16 shift is per-channel (WALB ch3 -0.6 ns, WALD ch7 -6.9 ns); do not mix epochs"
+  },
+  "corrections": {
+    "beam_intensity_ns": -5.0,
+    "beam_intensity_note": "C shifts by -5.0 ns going from parasitic (4.1e12 p) to dedicated (8.5e12 p). Front-end saturation, not a real change of flash arrival. Values here are the run-average of a mixed-intensity sample; apply per bunch from PulseIntensity if you need better than 5 ns."
+  },
+  "accuracy_ns": {
+    "within_epoch_run_to_run_ns": 0.5,
+    "epoch_07_11_vs_07_16_ns": 3.8,
+    "transport_to_end_of_campaign_ns": 1.2,
+    "per_bunch_sigma_ns": 3.2,
+    "intensity_walk_ns": 5.0
+  },
+  "ungated_detectors": {
+    "note": "LIQ and PSS are never blanked, so they see the flash in every run. LIQ is stable across the campaign and can be used as a live monitor of the time base; PSS is NOT stable (moves tens of ns) \u2014 take it per run.",
+    "LIQ_C_ns": {
+      "LIQA": -1708.22,
+      "LIQB": -1710.3,
+      "LIQC": -1695.56,
+      "LIQD": -1701.56
+    },
+    "LIQ_stability_ns": {
+      "LIQA": 0.73,
+      "LIQB": 0.73,
+      "LIQC": 0.77,
+      "LIQD": 1.48
+    }
+  },
+  "provenance": {
+    "exported_utc": "2026-07-28T16:09:56Z",
+    "source_runs": [
+      224356,
+      224357,
+      224358,
+      224359,
+      224360,
+      224464,
+      224466
+    ],
+    "why_these_runs": "the only runs in the 2026 EAR2 X17 campaign taken with the SiPM wall blanking gate disabled, so the walls record the true gamma flash instead of the gate transient (see ../FLASH_DIVERT_OFF_RUNS.md)",
+    "method": "per (bunch, channel) the largest-amplitude hit within +-300 ns of the bunch flash anchor; its `tof` minus the same bunch PKUP `tof`; median over bunches after a +-100 ns core cut that removes PSA mis-tags",
+    "analysis": "nTof_x17/ntof_processing/flash_timing/ (report: latex/flash_timing_calibration.pdf)",
+    "regenerate": "python nTof_x17/ntof_processing/flash_timing/scripts/export_daq_calib.py",
+    "validated_against": "the independently reprocessed run 224572 (v4_walshapes): walls agree to 2.07 ns rms, liquids to 0.27 ns rms",
+    "caveats": [
+      "measured on the SEVEN runs of the campaign in which the SiPM-wall divert was disabled; every other run has the walls blanked and cannot show the flash",
+      "the wall front end saturates on the undiverted flash \u2014 these runs give TIMING only, no amplitude/energy information",
+      "valid for the 2026 EAR2 X17 hardware state; re-measure after any change to wall HV/thresholds or cabling (the 07-11 -> 07-16 wall equalisation moved individual channels by up to 6.9 ns)"
+    ]
+  },
+  "channels": {
+    "WALA_1": {
+      "tree": "WALA",
+      "detn": 1,
+      "C_ns": -1723.17,
+      "C_ns_epoch_2026_07_11": -1721.12,
+      "per_bunch_sigma_ns": 3.53
+    },
+    "WALA_2": {
+      "tree": "WALA",
+      "detn": 2,
+      "C_ns": -1713.24,
+      "C_ns_epoch_2026_07_11": -1710.89,
+      "per_bunch_sigma_ns": 3.57
+    },
+    "WALA_3": {
+      "tree": "WALA",
+      "detn": 3,
+      "C_ns": -1721.79,
+      "C_ns_epoch_2026_07_11": -1720.13,
+      "per_bunch_sigma_ns": 2.85
+    },
+    "WALA_4": {
+      "tree": "WALA",
+      "detn": 4,
+      "C_ns": -1715.91,
+      "C_ns_epoch_2026_07_11": -1713.59,
+      "per_bunch_sigma_ns": 3.15
+    },
+    "WALA_5": {
+      "tree": "WALA",
+      "detn": 5,
+      "C_ns": -1726.53,
+      "C_ns_epoch_2026_07_11": -1724.2,
+      "per_bunch_sigma_ns": 2.72
+    },
+    "WALA_6": {
+      "tree": "WALA",
+      "detn": 6,
+      "C_ns": -1715.4,
+      "C_ns_epoch_2026_07_11": -1712.28,
+      "per_bunch_sigma_ns": 2.97
+    },
+    "WALA_7": {
+      "tree": "WALA",
+      "detn": 7,
+      "C_ns": -1725.49,
+      "C_ns_epoch_2026_07_11": -1721.75,
+      "per_bunch_sigma_ns": 3.08
+    },
+    "WALA_8": {
+      "tree": "WALA",
+      "detn": 8,
+      "C_ns": -1714.16,
+      "C_ns_epoch_2026_07_11": -1709.51,
+      "per_bunch_sigma_ns": 3.42
+    },
+    "WALB_1": {
+      "tree": "WALB",
+      "detn": 1,
+      "C_ns": -1718.34,
+      "C_ns_epoch_2026_07_11": -1716.72,
+      "per_bunch_sigma_ns": 3.65
+    },
+    "WALB_2": {
+      "tree": "WALB",
+      "detn": 2,
+      "C_ns": -1718.09,
+      "C_ns_epoch_2026_07_11": -1716.26,
+      "per_bunch_sigma_ns": 3.62
+    },
+    "WALB_3": {
+      "tree": "WALB",
+      "detn": 3,
+      "C_ns": -1725.49,
+      "C_ns_epoch_2026_07_11": -1725.44,
+      "per_bunch_sigma_ns": 2.87
+    },
+    "WALB_4": {
+      "tree": "WALB",
+      "detn": 4,
+      "C_ns": -1715.12,
+      "C_ns_epoch_2026_07_11": -1714.53,
+      "per_bunch_sigma_ns": 2.95
+    },
+    "WALB_5": {
+      "tree": "WALB",
+      "detn": 5,
+      "C_ns": -1721.23,
+      "C_ns_epoch_2026_07_11": -1721.53,
+      "per_bunch_sigma_ns": 2.6
+    },
+    "WALB_6": {
+      "tree": "WALB",
+      "detn": 6,
+      "C_ns": -1721.89,
+      "C_ns_epoch_2026_07_11": -1721.69,
+      "per_bunch_sigma_ns": 2.75
+    },
+    "WALB_7": {
+      "tree": "WALB",
+      "detn": 7,
+      "C_ns": -1719.47,
+      "C_ns_epoch_2026_07_11": -1719.48,
+      "per_bunch_sigma_ns": 2.96
+    },
+    "WALB_8": {
+      "tree": "WALB",
+      "detn": 8,
+      "C_ns": -1717.86,
+      "C_ns_epoch_2026_07_11": -1717.36,
+      "per_bunch_sigma_ns": 3.11
+    },
+    "WALC_1": {
+      "tree": "WALC",
+      "detn": 1,
+      "C_ns": -1720.08,
+      "C_ns_epoch_2026_07_11": -1713.16,
+      "per_bunch_sigma_ns": 4.02
+    },
+    "WALC_2": {
+      "tree": "WALC",
+      "detn": 2,
+      "C_ns": -1717.52,
+      "C_ns_epoch_2026_07_11": -1710.63,
+      "per_bunch_sigma_ns": 4.05
+    },
+    "WALC_3": {
+      "tree": "WALC",
+      "detn": 3,
+      "C_ns": -1717.15,
+      "C_ns_epoch_2026_07_11": -1711.57,
+      "per_bunch_sigma_ns": 3.4
+    },
+    "WALC_4": {
+      "tree": "WALC",
+      "detn": 4,
+      "C_ns": -1720.27,
+      "C_ns_epoch_2026_07_11": -1714.92,
+      "per_bunch_sigma_ns": 3.36
+    },
+    "WALC_5": {
+      "tree": "WALC",
+      "detn": 5,
+      "C_ns": -1717.56,
+      "C_ns_epoch_2026_07_11": -1713.04,
+      "per_bunch_sigma_ns": 3.41
+    },
+    "WALC_6": {
+      "tree": "WALC",
+      "detn": 6,
+      "C_ns": -1720.44,
+      "C_ns_epoch_2026_07_11": -1715.96,
+      "per_bunch_sigma_ns": 3.37
+    },
+    "WALC_7": {
+      "tree": "WALC",
+      "detn": 7,
+      "C_ns": -1720.72,
+      "C_ns_epoch_2026_07_11": -1716.71,
+      "per_bunch_sigma_ns": 3.64
+    },
+    "WALC_8": {
+      "tree": "WALC",
+      "detn": 8,
+      "C_ns": -1720.12,
+      "C_ns_epoch_2026_07_11": -1716.32,
+      "per_bunch_sigma_ns": 3.58
+    },
+    "WALD_1": {
+      "tree": "WALD",
+      "detn": 1,
+      "C_ns": -1716.35,
+      "C_ns_epoch_2026_07_11": -1710.07,
+      "per_bunch_sigma_ns": 3.57
+    },
+    "WALD_2": {
+      "tree": "WALD",
+      "detn": 2,
+      "C_ns": -1718.2,
+      "C_ns_epoch_2026_07_11": -1712.03,
+      "per_bunch_sigma_ns": 3.49
+    },
+    "WALD_3": {
+      "tree": "WALD",
+      "detn": 3,
+      "C_ns": -1721.05,
+      "C_ns_epoch_2026_07_11": -1714.79,
+      "per_bunch_sigma_ns": 3.1
+    },
+    "WALD_4": {
+      "tree": "WALD",
+      "detn": 4,
+      "C_ns": -1723.5,
+      "C_ns_epoch_2026_07_11": -1717.49,
+      "per_bunch_sigma_ns": 2.99
+    },
+    "WALD_5": {
+      "tree": "WALD",
+      "detn": 5,
+      "C_ns": -1718.08,
+      "C_ns_epoch_2026_07_11": -1711.5,
+      "per_bunch_sigma_ns": 3.06
+    },
+    "WALD_6": {
+      "tree": "WALD",
+      "detn": 6,
+      "C_ns": -1723.95,
+      "C_ns_epoch_2026_07_11": -1717.85,
+      "per_bunch_sigma_ns": 3.03
+    },
+    "WALD_7": {
+      "tree": "WALD",
+      "detn": 7,
+      "C_ns": -1713.82,
+      "C_ns_epoch_2026_07_11": -1705.03,
+      "per_bunch_sigma_ns": 3.87
+    },
+    "WALD_8": {
+      "tree": "WALD",
+      "detn": 8,
+      "C_ns": -1717.15,
+      "C_ns_epoch_2026_07_11": -1708.49,
+      "per_bunch_sigma_ns": 4.03
+    }
+  }
+}
