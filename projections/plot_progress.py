@@ -41,11 +41,11 @@ PLOT_DIR = os.path.join(HERE, "plots")
 INK, INK2, MUTED = "#0b0b0b", "#52514e", "#898781"
 GRID, AXIS = "#e1e0d9", "#c3c2b7"
 SURFACE = "#fcfcfb"
-ACTUAL = "#2a78d6"       # categorical slot 1
-PROJECTION = "#eb6834"   # categorical slot 2
-COSMIC = "#1baf7a"       # categorical slot 3
+ACTUAL = "#2a78d6"       # categorical slot 1 (blue) — beam
+PROJECTION = "#5598e7"   # light blue — projection line, distinct from ACTUAL's beam blue
+COSMIC = "#eb6834"       # categorical slot 2 (orange) — cosmics, everywhere
 ACTUAL_DOWN = "#e34948"  # categorical slot 8 (red) — measured beam-off, kept off
-                         # the blue/orange/aqua already claimed by data lines above
+                         # the blues/orange already claimed by data lines above
 MILLION = 1e6
 
 
@@ -223,7 +223,7 @@ def main():
     if newest:
         ts = [datetime.fromisoformat(pt["t"]) for pt in newest["points"]]
         axr.step(ts, [pt.get("rate_hz", 0) for pt in newest["points"]], where="post",
-                 color=PROJECTION, linewidth=1.8, linestyle="--",
+                 color=ACTUAL, linewidth=1.8, linestyle="--",
                  label="Expected beam rate")
         # During a scheduled stop the beam rate is zero and we take cosmics instead —
         # the same assumption that feeds the projected cosmic total below.
