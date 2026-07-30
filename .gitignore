@@ -297,9 +297,13 @@ config/n1081b_scan_schedule.json.*_backup
 # N1081B time-tag watcher per-day CSV data logs
 n1081b/logs/
 
-# Ad-hoc pre-release backups of live configs (processor_config.py.bak_predrelease
-# and friends) — local snapshots taken before a config edit, not source.
+# Ad-hoc backups of live configs — local snapshots taken before a config edit, not
+# source. Covers both the pre-release form (processor_config.py.bak_predrelease) and
+# the dated form (monitor_config.json.bak_20260729_pre_tt_rule). Note that these
+# mirror files that are themselves ignored *because they hold secrets*, so a copy is
+# just as sensitive as the original — the Telegram bot token lives in one of them.
 *.bak_predrelease
+*.bak_[0-9]*
 
 # Public stats page: local config holds the Cloudflare ingest token.
 config/stats_page_config.json
