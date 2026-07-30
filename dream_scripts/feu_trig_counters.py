@@ -36,8 +36,19 @@ Usage:
   feu_trig_counters.py --latch         # latch statistics first (a write), then read
   feu_trig_counters.py --feus 1 2      # subset, by cfg slot number
   feu_trig_counters.py --watch 5       # re-read every 5 s until Ctrl-C
+  feu_trig_counters.py --latch --watch 2 --csv /path/log.csv   # log a whole ladder run
+
+⚠ COUNTER WIDTHS — only `accepted` is usable under saturation
+  accepted   is the full 32-bit register.  closeDrop and fifoDrop are 8 bit and
+  maxFIFOocc is 6 bit, so under a saturating pulser the drop counters WRAP within
+  milliseconds. Read them as "nonzero = dropping", never as a rate. The honest
+  throughput number is d(accepted)/dt from --csv sampling.
+  Counters reset when RunCtrl starts a sub-run, so a --csv log sampled straight
+  through a multi-sub-run ladder captures each sub-run's final value as the last
+  sample before the reset — no coordination with daq_control needed.
 """
 import argparse
+import os
 import socket
 import sys
 import time
@@ -168,20 +179,51 @@ def main():
                     help="issue LatchStat (a WRITE) to freeze coherent statistics first")
     ap.add_argument("--watch", type=float, metavar="SEC",
                     help="repeat every SEC seconds until Ctrl-C")
+    ap.add_argument("--csv", metavar="PATH",
+                    help="append every sample to PATH as CSV (one row per FEU per sample); "
+                         "flushed each sample so the file is complete if this is killed")
+    ap.add_argument("--quiet", action="store_true",
+                    help="with --csv: suppress the table, print one progress line per sample")
     args = ap.parse_args()
 
     slots = args.feus or sorted(FEUS)
-    while True:
-        rows = [read_feu(s, args.latch) for s in slots]
-        print(f"\n=== FEU trigger counters  {time.strftime('%H:%M:%S')}"
-              f"{'  (latched)' if args.latch else '  (read-only)'} ===")
-        print_table(rows)
-        if not args.watch:
-            return 0 if any(r.get("ok") for r in rows) else 1
-        try:
+    csv_f = None
+    if args.csv:
+        new = not os.path.exists(args.csv) or os.path.getsize(args.csv) == 0
+        csv_f = open(args.csv, "a", buffering=1)
+        if new:
+            csv_f.write("t_unix,iso,slot,id,hwm,lwm,ovrthresh,locthrot,"
+                        "accepted,close_drop,fifo_drop,max_fifo_occ,ok\n")
+    try:
+        while True:
+            rows = [read_feu(s, args.latch) for s in slots]
+            now = time.time()
+            if csv_f:
+                iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(now))
+                for r in rows:
+                    csv_f.write(
+                        f"{now:.3f},{iso},{r['slot']},{r['id']},"
+                        f"{r.get('OvrWrnHwm', '')},{r.get('OvrWrnLwm', '')},"
+                        f"{r.get('OvrThersh', '')},{r.get('LocThrot', '')},"
+                        f"{r.get('accepted', '')},{r.get('closeDrop', '')},"
+                        f"{r.get('fifoDrop', '')},{r.get('maxFIFOocc', '')},"
+                        f"{int(bool(r.get('ok')))}\n")
+            if csv_f and args.quiet:
+                acc = [r.get("accepted", 0) for r in rows if r.get("ok")]
+                print(f"{time.strftime('%H:%M:%S')}  {len(acc)}/{len(rows)} FEUs  "
+                      f"accepted min={min(acc) if acc else '-'} max={max(acc) if acc else '-'}")
+            else:
+                print(f"\n=== FEU trigger counters  {time.strftime('%H:%M:%S')}"
+                      f"{'  (latched)' if args.latch else '  (read-only)'} ===")
+                print_table(rows)
+            if not args.watch:
+                return 0 if any(r.get("ok") for r in rows) else 1
             time.sleep(args.watch)
-        except KeyboardInterrupt:
-            return 0
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        if csv_f:
+            csv_f.close()
 
 
 if __name__ == "__main__":
