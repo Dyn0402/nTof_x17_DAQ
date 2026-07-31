@@ -824,57 +824,15 @@ class DaqMonitor:
                         f"(data gap; wall clock {gap:.0f} s).")
             else:
                 head = f"n_TOF beam has been OFF for {gap_min:.0f} min."
-            return severity, head + self._changeover_outlook(gap)
+            # No changeover/cosmics commentary here, at any severity (2026-07-31, on
+            # the first alert seen in the field). This rule says exactly one thing —
+            # the beam is gone — and rule_mode_changeover says exactly one thing back
+            # when the DAQ swaps and again when it swaps home. Mixing "what the watcher
+            # might do" into a repeating condition alert was noise on both messages.
+            return severity, head
         return False, (f"beam on (last pulse {gap:.0f}s ago"
                        + (f", data gap {observed:.0f}s" if isinstance(observed, (int, float)) else "")
                        + ")")
-
-    # Cache for _changeover_outlook: (monotonic_ts, text). rule_beam_off runs in the
-    # 15 s fast lane and composes its detail on EVERY check while the beam is off, so
-    # the tmux probe behind the outlook is refreshed at most once a minute.
-    _OUTLOOK_TTL_S = 60
-
-    def _changeover_outlook(self, gap_s):
-        """One line on what the auto-changeover will do about this beam gap, appended
-        to the beam-off alert.
-
-        The beam being off and the DAQ swapping to cosmics are two different facts and
-        stay two different notifications (rule_mode_changeover reports the swap itself).
-        But the first question on seeing "beam is off" at 3 a.m. is always "is it
-        handling itself?", and the answer is worth nothing an hour later — so it rides
-        along here rather than waiting to be looked up in the GUI.
-
-        Returns "" if it cannot be determined; this is decoration, never a reason for
-        the beam alert itself to fail.
-        """
-        now = time.monotonic()
-        cached = getattr(self, "_outlook_cache", None)
-        if cached and now - cached[0] < self._OUTLOOK_TTL_S:
-            return cached[1]
-        text = ""
-        try:
-            mw = self._mode_watcher()
-            mode, _ = mw.current_mode()
-            if mode == "cosmics":
-                text = "\n🌌 Already on the cosmics trigger — nothing to switch."
-            elif mode is None:
-                text = ("\n⚠️ No run is live, so there is nothing for mode_watcher to "
-                        "switch — this beam gap is being recorded by nobody.")
-            elif os.path.exists(mw.DISARM_FLAG):
-                text = ("\n⚠️ mode_watcher is DISARMED — it will NOT switch to cosmics; "
-                        "this gap is being watched, not acted on.")
-            elif not self._mode_watcher_running():
-                text = ("\n⚠️ mode_watcher is NOT RUNNING — no automatic switch to "
-                        "cosmics. Beam-off time is being lost.")
-            else:
-                left = mw.BEAM_DOWN_MIN * 60 - gap_s
-                text = ("\n🔁 mode_watcher switches to cosmics in ~%.0f min." % (left / 60)
-                        if left > 0 else
-                        "\n🔁 mode_watcher is switching to cosmics now.")
-        except Exception:                                       # noqa: BLE001
-            text = ""
-        self._outlook_cache = (now, text)
-        return text
 
     def _beam_off_hold(self, reason):
         """Replay rule_beam_off's last known severity instead of clearing it when the
@@ -1554,9 +1512,6 @@ class DaqMonitor:
             sys.path.append(_REPO_DIR)
         return __import__(module_name)
 
-    # Name of the tmux session the GUI launches mode_watcher.py into (app.py MODE_TMUX).
-    _MODE_TMUX = "mode_watcher"
-
     def _mode_watcher(self):
         """The mode_watcher module, imported once and kept.
 
@@ -1571,11 +1526,6 @@ class DaqMonitor:
             mod = self._repo_import("mode_watcher")
             self._mode_watcher_mod = mod
         return mod
-
-    def _mode_watcher_running(self):
-        import subprocess
-        return subprocess.run(["tmux", "has-session", "-t", self._MODE_TMUX],
-                              capture_output=True).returncode == 0
 
     def _daq_is_running(self):
         try:
@@ -1747,9 +1697,9 @@ class DaqMonitor:
         and "we therefore traded the beam run for a cosmics run" are different facts:
         the first is the facility's, the second changes what is on our disk, and either
         can happen without the other (a manual switch; a beam gap short enough that
-        beam_gate just parks the run). rule_beam_off carries a one-line preview of what
-        the watcher intends (_changeover_outlook); this rule reports what actually
-        happened.
+        beam_gate just parks the run). rule_beam_off says only that the beam is gone,
+        and repeats while it stays gone; this rule fires exactly twice per episode —
+        once when the DAQ goes to cosmics, once when it comes back to beam.
 
         Ground truth is the LIVE run's config filename (mode_watcher.current_mode(),
         /proc only — never a board poll), so an operator/GUI switch is announced exactly
