@@ -1,0 +1,81 @@
+{
+ "what": "the N1081B discriminator thresholds the run actually held",
+ "kind": "DAQ hardware state. This is an INPUT to the offline trigger emulation, not something the analysis fits. It is the file a shifter changes.",
+ "IMPORTANT": "read per sub-run from <run>/<subrun>/n1081b_config.json, which is the only record of what the discriminators were set to. Do not assume they held across a run.",
+ "trigger_chain": "M1 = 428F analogue SUM of the two bar ends over the wall threshold, ORed over the 4 bar segments; M2 = any plastic bar of that arm over its threshold; M3 = M1 .AND. M2 inside the 20 ns logic pulse",
+ "recommended_thresholds": "see ../wal_trigger/ and ../pss_trigger/ for what to SET; this file records what WAS set",
+ "run": "run_79",
+ "ntof_run": 224572,
+ "sub_runs": {
+  "stat090_0000": {
+   "wall_mV": {
+    "A": 25.0,
+    "B": 35.0,
+    "C": 34.0,
+    "D": 36.0
+   },
+   "plastic_mV": {
+    "A": 118.0,
+    "B": 139.0,
+    "C": 157.0,
+    "D": 134.0
+   },
+   "plastic_pmts": {
+    "A": [
+     1,
+     2
+    ],
+    "B": [
+     1,
+     2
+    ],
+    "C": [
+     1,
+     2
+    ],
+    "D": [
+     1,
+     2
+    ]
+   },
+   "polled_at": "2026-07-26 18:07:21"
+  },
+  "stat090_0001": {
+   "wall_mV": {
+    "A": 25.0,
+    "B": 35.0,
+    "C": 34.0,
+    "D": 36.0
+   },
+   "plastic_mV": {
+    "A": 118.0,
+    "B": 139.0,
+    "C": 157.0,
+    "D": 134.0
+   },
+   "plastic_pmts": {
+    "A": [
+     1,
+     2
+    ],
+    "B": [
+     1,
+     2
+    ],
+    "C": [
+     1,
+     2
+    ],
+    "D": [
+     1,
+     2
+    ]
+   },
+   "polled_at": "2026-07-26 19:07:45"
+  }
+ },
+ "provenance": {
+  "exported_utc": "2026-07-30T17:57:14Z",
+  "source": "nTof_x17/ntof_dream_merge/dream_trigger.py load_thresholds(), reading the per-sub-run n1081b_config.json staged from the DAQ machine"
+ }
+}

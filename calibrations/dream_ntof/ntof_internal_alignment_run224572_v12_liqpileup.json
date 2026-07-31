@@ -1,0 +1,182 @@
+{
+ "what": "the internal time alignment of the n_TOF detectors, measured in situ on the file being analysed",
+ "kind": "OFFLINE. A property of the PROCESSING, not of the hardware -- re-measure after any reprocessing or UserInput change",
+ "variant": "v12_liqpileup",
+ "run": 224572,
+ "offsets_to_apply": {
+  "value": "none",
+  "why": "on this processing every subsystem is already within a few ns of the others: liquid-vs-wall -0.8..+0.2 ns, wall-vs-plastic per channel RMS 2.3 ns inside a 20 ns logic pulse. Applying a stale offset is as harmful as ignoring a live one -- measure, then decide."
+ },
+ "measure_per_file": {
+  "wall_top_bottom_ns": "the per-segment t_top - t_bottom used to pair the two ends of a bar. On v12 it is within +-5.5 ns; on the OFFICIAL processing of the same run it is +-32..39 ns with one -77.5 ns outlier. That structure was the old flash-finder / leading-edge timing, removed by the wall shape fitting of v4_walshapes. Pairing around a 38 ns offset that is no longer there loses most genuine pairs. Use fast_singles.measure_tb_offsets (seconds).",
+  "measured": {
+   "official": {
+    "A": {
+     "0": 38.5,
+     "1": -31.5,
+     "2": 0.5,
+     "3": 35.5
+    },
+    "B": {
+     "0": -0.5,
+     "1": 38.5,
+     "2": -28.5,
+     "3": 1.5
+    },
+    "C": {
+     "0": 34.5,
+     "1": -32.5,
+     "2": 0.5,
+     "3": 39.5
+    },
+    "D": {
+     "0": 31.5,
+     "1": -0.5,
+     "2": -77.5,
+     "3": 32.5
+    }
+   },
+   "v12": {
+    "A": {
+     "0": 0.5,
+     "1": 5.5,
+     "2": 2.5,
+     "3": 2.5
+    },
+    "B": {
+     "0": -0.5,
+     "1": 0.5,
+     "2": 3.5,
+     "3": 4.5
+    },
+    "C": {
+     "0": 0.5,
+     "1": 0.5,
+     "2": 0.5,
+     "3": -0.5
+    },
+    "D": {
+     "0": 0.5,
+     "1": -2.5,
+     "2": -5.5,
+     "3": -2.5
+    }
+   },
+   "bunches": [
+    1007,
+    1156
+   ]
+  }
+ },
+ "tflash_repair": {
+  "setting": "OFF",
+  "why": "ntof_dream_merge/tflash_repair.py was built for the BROKEN official flash finding. On v12 it is not a no-op: it would shift LIQC/LIQD by ~15 ns and add 25 ns RMS on PSSC, while the stored time base already has the liquids within 1 ns of the walls. ntof_io defaults it ON -- turn it off explicitly."
+ },
+ "flash_vs_pickup_ns": {
+  "WALA": {
+   "median": -1719.2624776921703,
+   "per_bunch_sigma": 10.1970940064644
+  },
+  "WALB": {
+   "median": -1719.649163491291,
+   "per_bunch_sigma": 8.481783542800931
+  },
+  "WALC": {
+   "median": -1721.2681832058033,
+   "per_bunch_sigma": 9.389649367797052
+  },
+  "WALD": {
+   "median": -1723.3451539200514,
+   "per_bunch_sigma": 5.230284388732828
+  },
+  "PSSA": {
+   "median": -1685.4299462220097,
+   "per_bunch_sigma": 4.589202875074998
+  },
+  "PSSB": {
+   "median": -1690.2130621291335,
+   "per_bunch_sigma": 3.291509227845391
+  },
+  "PSSC": {
+   "median": -1681.918724122609,
+   "per_bunch_sigma": 3.5791479576477316
+  },
+  "PSSD": {
+   "median": -1682.0029053043008,
+   "per_bunch_sigma": 3.4876376404964904
+  },
+  "LIQA": {
+   "median": -1708.0898799363913,
+   "per_bunch_sigma": 6.162413514441942
+  },
+  "LIQB": {
+   "median": -1710.5293973784364,
+   "per_bunch_sigma": 6.798139699390202
+  },
+  "LIQC": {
+   "median": -1695.6579032442714,
+   "per_bunch_sigma": 4.674875881742607
+  },
+  "LIQD": {
+   "median": -1701.0207302476947,
+   "per_bunch_sigma": 4.978377176820309
+  }
+ },
+ "flash_vs_divert_off_calibration": {
+  "reference": "nTof_x17_DAQ/calibrations/flash_timing/flash_time_constants.json (LIQ monitor values)",
+  "liquids_agree_to_ns": {
+   "LIQA": 0.13,
+   "LIQB": -0.23,
+   "LIQC": -0.1,
+   "LIQD": 0.54
+  },
+  "plastics_disagree_by_ns": {
+   "PSSA": -50.4,
+   "PSSB": -34.8,
+   "PSSC": -30.8,
+   "PSSD": -35.7
+  },
+  "note": "the liquids reproducing the divert-off calibration to 0.1-0.5 ns is two independent measurements confirming each other. The plastics are 31-50 ns away, exactly as flash_timing/README.md warns: take PSS per run."
+ },
+ "wall_vs_plastic_ns": {
+  "per_arm_peak": {
+   "A": -6.75,
+   "B": -3.75,
+   "C": -6.25,
+   "D": -8.75
+  },
+  "per_arm_sigma": {
+   "A": 11.729680160741575,
+   "B": 10.790926341190751,
+   "C": 11.144005623426587,
+   "D": 11.778022449748942
+  },
+  "per_channel_rms": 2.3201282763003546,
+  "per_channel_range": [
+   -7.69916550477501,
+   1.942016092594713
+  ]
+ },
+ "liquid_vs_wall_ns": {
+  "A": -0.75,
+  "B": -0.75,
+  "C": 0.25,
+  "D": -0.25
+ },
+ "provenance": {
+  "exported_utc": "2026-07-30T17:57:14Z",
+  "dream_run": "run_79",
+  "dream_sub_runs": [
+   "stat090_0000",
+   "stat090_0001"
+  ],
+  "ntof_run": 224572,
+  "ntof_processing": "v12_liqpileup",
+  "n_bunches": 250,
+  "n_dream_triggers": 213420,
+  "stored_tflash": "used as-is, laptop repair OFF",
+  "source": "nTof_x17/ntof_dream_merge/match_study/",
+  "document": "nTof_x17/ntof_dream_merge/DREAM_NTOF_CALIBRATION.md",
+  "regenerate": "cd match_study/scripts && python export_daq_calib.py"
+ }
+}
