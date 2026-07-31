@@ -320,7 +320,29 @@ class DaqMonitor:
 
     @property
     def fast_check_interval(self):
-        """Cadence of the FAST lane (see fast_rules). None/0 disables it."""
+        """Cadence of the FAST lane (see fast_rules). None/0 disables it.
+
+        Config carries **5 s** (`fast_check_interval_seconds`, monitor_config.json —
+        which is gitignored, so this is where the number is recorded). It is the
+        cheapest term in the beam-off alert's latency budget, measured 2026-07-31:
+
+            55 s  the pulse gap itself, set by the machine's supercycle structure
+                  (rule_beam_off.early_gap_seconds — not ours to shrink)
+          + 18 s  NXCALS ingestion, i.e. how old the newest logged point is when we
+                  fetch it. MEASURED over 14 polls: 13.0 / 17.9 / 22.8 s
+                  (min/median/max). NXCALS is a logging database — this is a FLOOR,
+                  and polling harder does not move it.
+          +  6 s  poll phase, mean of beam_watcher's POLL_S=12 s
+          +  2 s  this lane, mean of 5 s   <-- the only term that is free to us
+          ------
+           ~81 s  typical, against ~103 s for the wall-clock-only rule it replaced
+
+        Dropping POLL_S 12 -> 4 s would buy ~4 s more for 3x the query rate against a
+        shared CERN service; judged not worth it. Anything below ~77 s needs a
+        different SOURCE, not a faster poll: a CMW/JAPC live subscription (ms latency,
+        but Technical Network + RBAC, and this host is on the GPN), or our own
+        detectors (the M5/.244 timetag stream is already live 24/7). Neither is built.
+        """
         return self.config.get("fast_check_interval_seconds") or None
 
     @property
@@ -328,7 +350,9 @@ class DaqMonitor:
         """Rules cheap enough to run between full passes — file reads only, no
         pinging and no tmux sweeps. A full pass costs ~10 s (rule_feu_unreachable
         alone pings 9 boards serially), which is why the whole set cannot simply be
-        run more often; the beam rules read one JSON file and cost ~0 ms."""
+        run more often. Config carries rule_beam_off + rule_mode_changeover, together
+        3.8 ms a pass (the beam rules read one JSON file; the changeover rule reads
+        /proc, 4.3 ms for the scan) — which is what makes a 5 s lane free."""
         if not self.fast_check_interval:
             return []
         names = self.config.get("fast_rules", ["rule_beam_off"])
