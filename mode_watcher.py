@@ -188,12 +188,17 @@ def load_state():
 
 
 def save_state(**kw):
+    """Merge kw into the state file. Written via a temp file + os.replace so a reader
+    can never catch a half-written JSON: the Flask Run Mode card polls this, and so does
+    the Telegram monitor's changeover rule, which decides whether to notify from it."""
     st = load_state()
     st.update(kw)
     try:
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-        with open(STATE_FILE, 'w') as f:
+        tmp = STATE_FILE + '.tmp'
+        with open(tmp, 'w') as f:
             json.dump(st, f, indent=1)
+        os.replace(tmp, STATE_FILE)
     except Exception as e:  # noqa: BLE001
         log(f'  (could not write state file: {e})')
 
@@ -254,7 +259,7 @@ def do_changeover(target, dry, reason=''):
         log(f'  CHANGEOVER TO {target.upper()} COMPLETE')
         _log('CHANGEOVER_DONE', target=target, reason=reason)
         save_state(last_changeover_ts=time.time(), last_target=target,
-                   last_result='ok',
+                   last_result='ok', last_reason=reason,
                    last_changeover_at=datetime.now().isoformat(timespec='seconds'))
         return True
     if r.returncode == 7:
@@ -266,7 +271,7 @@ def do_changeover(target, dry, reason=''):
     _log('CHANGEOVER_FAILED', target=target, rc=r.returncode, reason=reason,
          note='the DAQ may be in NEITHER state — not retried automatically')
     save_state(last_changeover_ts=time.time(), last_target=target,
-               last_result=f'FAILED rc={r.returncode}',
+               last_result=f'FAILED rc={r.returncode}', last_reason=reason,
                last_changeover_at=datetime.now().isoformat(timespec='seconds'))
     return False
 
