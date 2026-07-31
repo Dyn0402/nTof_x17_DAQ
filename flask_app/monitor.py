@@ -21,6 +21,7 @@ To disable a rule without deleting it, add  "rule_<name>": false  to the
 
 import os
 import json
+import re
 import shutil
 import threading
 import time
@@ -73,7 +74,11 @@ _UNSET = object()
 
 # Alert severities, lowest to highest. rank drives escalation (a higher rank
 # than the last sent forces an immediate re-send); emoji/label drive the message.
+# "info" is for event rules that report a normal, expected thing happening (a
+# beam<->cosmics changeover) rather than a fault — it must not look like a problem
+# in the phone notification, which is the whole reason it is not just "warning".
 SEVERITY_META = {
+    "info":      {"rank": 0, "emoji": "ℹ️", "label": "INFO"},
     "warning":   {"rank": 1, "emoji": "🟡", "label": "WARNING"},
     "alert":     {"rank": 2, "emoji": "⚠️", "label": "ALERT"},
     "critical":  {"rank": 3, "emoji": "🔴", "label": "CRITICAL"},
@@ -160,7 +165,7 @@ class DaqMonitor:
     # They must NOT emit a "RECOVERED" message (there is nothing to recover from) and
     # their resend gap is irrelevant because they self-clear. See rule_run_ended /
     # rule_long_run_warning.
-    _EVENT_RULES = {"rule_run_ended", "rule_long_run_warning"}
+    _EVENT_RULES = {"rule_run_ended", "rule_long_run_warning", "rule_mode_changeover"}
 
     # Per-rule recovery text, shown after the ✅ when an alert condition clears.
     # (The alert body itself is the rule's own returned `detail`, already tailored;
@@ -218,6 +223,7 @@ class DaqMonitor:
             "rule_no_active_run",
             "rule_run_ended",
             "rule_long_run_warning",
+            "rule_mode_changeover",
         ]),
         ("Background watchers", [
             "rule_gas_watcher_dead",
@@ -252,6 +258,13 @@ class DaqMonitor:
         self._prev_daq_status = None    # last daq_control status seen by rule_run_ended
         self._long_run_warned = set()   # run names already given the 10-min warning
         self._last_beam_off_severity = None  # held verdict, see rule_beam_off / _beam_off_hold
+        # rule_mode_changeover: last trigger mode seen live, and the last auto-changeover
+        # timestamp already accounted for. _mode_primed guards the first check, so a DAQ
+        # found mid-cosmics at monitor start is not announced as a fresh changeover.
+        self._prev_run_mode = None
+        self._last_changeover_ts = None
+        self._attributed_changeover_ts = None  # spent explaining a transition already
+        self._mode_primed = False
 
         self._thread = None
         self._stop_event = threading.Event()
@@ -725,8 +738,21 @@ class DaqMonitor:
         not ours — but shifters want to know without watching the vistar. Graded:
         escalates to a higher severity the longer the beam stays off.
 
+        Two independent detectors, because they fail in opposite ways:
+
+        1. EARLY, on `observed_gap_s` — the gap as the DATA sees it (last logged cycle
+           minus last real pulse), which carries NO wall-clock term and therefore none
+           of the NXCALS ingestion delay. This is what fires first in practice.
+        2. BACKSTOP, on `seconds_since_pulse` (wall clock) via `thresholds`. Needed
+           because in a genuine stop the point stream itself can dry up (TOF out of the
+           supercycle), which FREEZES observed_gap_s — detector 1 would then never
+           cross. Also the only detector that can ever say "beam is back".
+
         Tunable via rule_options.rule_beam_off in monitor_config.json:
-          thresholds — {severity: off_minutes} gradient, e.g.
+          early_gap_seconds — data-axis gap that counts as "beam down", at the lowest
+                       severity in `thresholds`. Default 55; 0/null disables the early
+                       path. See the margin discussion below before changing it.
+          thresholds — {severity: off_minutes} gradient on the WALL-CLOCK gap, e.g.
                        {"warning": 1.5, "alert": 10}. The highest severity whose
                        minute threshold has been reached wins. Default: {"warning":
                        10} (must be comfortably above normal supercycle gaps and
@@ -734,13 +760,22 @@ class DaqMonitor:
           off_minutes — legacy single-level form (used only if "thresholds" is
                         absent): pulse gap that counts as "beam down" at "warning".
 
-        Do NOT set the first threshold below ~1.25 min. seconds_since_pulse is a
-        WALL-CLOCK gap, so it carries the delay before a pulse becomes visible to us
-        (NXCALS ingestion + poll phase, 11-23 s measured) on top of the real gap; with
-        the longest healthy in-beam gap at 38.4 s (134 h sample, 2026-07-27) a running
-        beam can legitimately read ~62 s. The old 1 min setting sat right on that edge:
-        no false alarm was ever observed from it, but it was only evaluated once a
-        minute, and the 15 s fast lane samples those peaks four times as often.
+        Do NOT set the wall-clock threshold below ~1.25 min. seconds_since_pulse
+        carries the delay before a pulse becomes visible to us (NXCALS ingestion + poll
+        phase, 11-23 s measured) on top of the real gap; with the longest healthy
+        in-beam gap at 38.4 s (134 h sample, 2026-07-27) a running beam can legitimately
+        read ~62 s.
+
+        early_gap_seconds has no such latency term, so it can sit much closer to the
+        real structure — that is the whole point of it. Re-measured 2026-07-31 over the
+        full month of CSVs (731 h, 587 k pulses): the longest gap with the beam still
+        running is 44.4 s, four gaps fall in 41-46 s, and the next one up is 48.4 s.
+        55 s therefore clears the observed structural tail by ~11 s. Cost of the early
+        path, same sample: gaps that cross 55 s but recover within 3 min run 1.94/day,
+        against 1.54/day already crossing the current 80 s-equivalent boundary — i.e.
+        it buys ~40 s of warning for ~0.4 extra self-clearing alerts per day.
+        ⚠ Re-measure (beam_monitor/analyze_gap_band.py) before lowering it further: the
+        band below 48 s belongs to the machine's supercycle structure, not to us.
 
         ⚠ A missing/stale reading is held at its last known severity via
         _beam_off_hold, NEVER treated as "recovered". 2026-07-29: beam_watcher.py
@@ -753,6 +788,7 @@ class DaqMonitor:
         """
         opts = self.config.get("rule_options", {}).get("rule_beam_off", {})
         thresholds = opts.get("thresholds") or {"warning": opts.get("off_minutes", 10)}
+        early_gap_s = opts.get("early_gap_seconds", 55)
         try:
             with open(BEAM_STATE_FILE) as f:
                 st = json.load(f)
@@ -766,15 +802,79 @@ class DaqMonitor:
             return self._beam_off_hold("no beam pulse seen yet since the watcher started")
         gap_min = gap / 60
 
-        # Highest severity whose minute threshold has been reached.
+        # Highest severity whose minute threshold has been reached (wall-clock backstop).
+        ladder = sorted(thresholds.items(), key=lambda kv: float(kv[1]))
         severity = None
-        for sev, thr in sorted(thresholds.items(), key=lambda kv: kv[1]):
+        for sev, thr in ladder:
             if gap_min >= float(thr):
                 severity = sev
+
+        # Early, latency-free detector. Only ever ADDS the lowest severity: a frozen
+        # observed_gap_s must not be able to escalate, and must never clear anything.
+        observed = st.get("observed_gap_s")
+        early = (severity is None and early_gap_s and ladder
+                 and isinstance(observed, (int, float)) and observed >= float(early_gap_s))
+        if early:
+            severity = ladder[0][0]
+
         self._last_beam_off_severity = severity
         if severity:
-            return severity, f"n_TOF beam has been OFF for {gap_min:.0f} min."
-        return False, f"beam on (last pulse {gap:.0f}s ago)"
+            if early:
+                head = (f"n_TOF beam has STOPPED — no pulse for {observed:.0f} s "
+                        f"(data gap; wall clock {gap:.0f} s).")
+            else:
+                head = f"n_TOF beam has been OFF for {gap_min:.0f} min."
+            return severity, head + self._changeover_outlook(gap)
+        return False, (f"beam on (last pulse {gap:.0f}s ago"
+                       + (f", data gap {observed:.0f}s" if isinstance(observed, (int, float)) else "")
+                       + ")")
+
+    # Cache for _changeover_outlook: (monotonic_ts, text). rule_beam_off runs in the
+    # 15 s fast lane and composes its detail on EVERY check while the beam is off, so
+    # the tmux probe behind the outlook is refreshed at most once a minute.
+    _OUTLOOK_TTL_S = 60
+
+    def _changeover_outlook(self, gap_s):
+        """One line on what the auto-changeover will do about this beam gap, appended
+        to the beam-off alert.
+
+        The beam being off and the DAQ swapping to cosmics are two different facts and
+        stay two different notifications (rule_mode_changeover reports the swap itself).
+        But the first question on seeing "beam is off" at 3 a.m. is always "is it
+        handling itself?", and the answer is worth nothing an hour later — so it rides
+        along here rather than waiting to be looked up in the GUI.
+
+        Returns "" if it cannot be determined; this is decoration, never a reason for
+        the beam alert itself to fail.
+        """
+        now = time.monotonic()
+        cached = getattr(self, "_outlook_cache", None)
+        if cached and now - cached[0] < self._OUTLOOK_TTL_S:
+            return cached[1]
+        text = ""
+        try:
+            mw = self._mode_watcher()
+            mode, _ = mw.current_mode()
+            if mode == "cosmics":
+                text = "\n🌌 Already on the cosmics trigger — nothing to switch."
+            elif mode is None:
+                text = ("\n⚠️ No run is live, so there is nothing for mode_watcher to "
+                        "switch — this beam gap is being recorded by nobody.")
+            elif os.path.exists(mw.DISARM_FLAG):
+                text = ("\n⚠️ mode_watcher is DISARMED — it will NOT switch to cosmics; "
+                        "this gap is being watched, not acted on.")
+            elif not self._mode_watcher_running():
+                text = ("\n⚠️ mode_watcher is NOT RUNNING — no automatic switch to "
+                        "cosmics. Beam-off time is being lost.")
+            else:
+                left = mw.BEAM_DOWN_MIN * 60 - gap_s
+                text = ("\n🔁 mode_watcher switches to cosmics in ~%.0f min." % (left / 60)
+                        if left > 0 else
+                        "\n🔁 mode_watcher is switching to cosmics now.")
+        except Exception:                                       # noqa: BLE001
+            text = ""
+        self._outlook_cache = (now, text)
+        return text
 
     def _beam_off_hold(self, reason):
         """Replay rule_beam_off's last known severity instead of clearing it when the
@@ -1454,6 +1554,29 @@ class DaqMonitor:
             sys.path.append(_REPO_DIR)
         return __import__(module_name)
 
+    # Name of the tmux session the GUI launches mode_watcher.py into (app.py MODE_TMUX).
+    _MODE_TMUX = "mode_watcher"
+
+    def _mode_watcher(self):
+        """The mode_watcher module, imported once and kept.
+
+        Importing it also execs switch_mode (it loads it by path to keep one definition
+        of a changeover) — both are import-safe, which is why app.py's /mode/status does
+        exactly the same thing. Unlike app.py this does NOT reload on every call: the
+        monitor only needs the module's constants and its two pure read functions, and a
+        reload per check in the fast lane would re-exec switch_mode every 15 s.
+        """
+        mod = getattr(self, "_mode_watcher_mod", None)
+        if mod is None:
+            mod = self._repo_import("mode_watcher")
+            self._mode_watcher_mod = mod
+        return mod
+
+    def _mode_watcher_running(self):
+        import subprocess
+        return subprocess.run(["tmux", "has-session", "-t", self._MODE_TMUX],
+                              capture_output=True).returncode == 0
+
     def _daq_is_running(self):
         try:
             return get_daq_control_status()["status"] in self._DAQ_ACTIVE_STATUSES
@@ -1613,6 +1736,112 @@ class DaqMonitor:
             run = status_field(info, "Run") or "?"
             return True, f"Run <b>{run}</b> has ended (DAQ reported Run Complete)."
         return False, f"daq_control: {status}"
+
+    # Modes as they should read in a notification, with the icon each one gets.
+    _MODE_LABEL = {"beam": ("🔆", "Back on BEAM"), "cosmics": ("🌌", "Now taking COSMICS")}
+
+    def rule_mode_changeover(self):
+        """Notify when the DAQ swaps between the beam and the cosmics trigger.
+
+        Deliberately a SEPARATE notification from rule_beam_off. "The beam went away"
+        and "we therefore traded the beam run for a cosmics run" are different facts:
+        the first is the facility's, the second changes what is on our disk, and either
+        can happen without the other (a manual switch; a beam gap short enough that
+        beam_gate just parks the run). rule_beam_off carries a one-line preview of what
+        the watcher intends (_changeover_outlook); this rule reports what actually
+        happened.
+
+        Ground truth is the LIVE run's config filename (mode_watcher.current_mode(),
+        /proc only — never a board poll), so an operator/GUI switch is announced exactly
+        like an automatic one. mode_watcher_state.json is consulted only to attribute it
+        and to quote the reason.
+
+        Two events, both one-shot:
+          info     — a beam<->cosmics transition completed.
+          critical — mode_watcher recorded a FAILED changeover. That path is the one
+                     from 2026-07-29: switch_mode exits non-zero, the DAQ may be in
+                     NEITHER state, and nothing retries it. rule_no_active_run only
+                     notices 5 min later, and only if no run is left running at all.
+
+        A run stopping (mode -> None mid-changeover) is not a transition and is ignored;
+        the first check after a monitor restart only primes the state.
+        """
+        mw = self._mode_watcher()
+        mode, mode_detail = mw.current_mode()
+        st = mw.load_state()
+        ts = st.get("last_changeover_ts")
+
+        if not self._mode_primed:
+            self._mode_primed = True
+            self._prev_run_mode = mode
+            self._last_changeover_ts = ts
+            return False, f"mode: {mode or 'no run live'} (priming)"
+
+        prev_mode, prev_ts = self._prev_run_mode, self._last_changeover_ts
+        self._last_changeover_ts = ts
+        if mode is not None:
+            self._prev_run_mode = mode
+
+        result = str(st.get("last_result") or "")
+        if ts is not None and ts != prev_ts and result != "ok":
+            target = str(st.get("last_target") or "?").upper()
+            return "critical", (
+                f"🔁 <b>Auto-changeover to {target} FAILED</b> ({result}).\n"
+                f"The DAQ may be in NEITHER trigger state and it will NOT be retried "
+                f"automatically — check the Run Mode card and switch by hand.")
+
+        if mode is None or prev_mode is None or mode == prev_mode:
+            return False, f"mode: {mode or 'no run live'}"
+
+        emoji, label = self._MODE_LABEL.get(mode, ("🔁", f"Now on {mode.upper()}"))
+        run = self._run_name_from_argv(mode_detail)
+        head = f"{emoji} <b>{label}</b>"
+        if run:
+            head += f" — {run}"
+        return "info", head + ".\n" + self._changeover_context(mode, ts, st)
+
+    @staticmethod
+    def _run_name_from_argv(argv):
+        """'daq_control.py run_config_cosmics_optimal_113.json' -> 'run_113'.
+
+        The run number is the trailing number of the generated config filename (that is
+        how switch_mode/run_num name them), so it needs no run-directory lookup and
+        costs nothing in the fast lane."""
+        m = re.search(r"_(\d+)\.json", argv or "")
+        return f"run_{m.group(1)}" if m else None
+
+    def _changeover_context(self, mode, ts, mw_state):
+        """Why we are on this trigger now: what the beam is doing, and who switched."""
+        bits = []
+        try:
+            with open(BEAM_STATE_FILE) as f:
+                bst = json.load(f)
+            gap = bst.get("seconds_since_pulse")
+            if isinstance(gap, (int, float)):
+                bits.append(f"Beam has been off {gap / 60:.1f} min."
+                            if mode == "cosmics" else
+                            f"Beam is back — last pulse {gap:.0f} s ago "
+                            f"({bst.get('last_pulse_e10')}e10).")
+        except Exception:                                       # noqa: BLE001
+            pass
+
+        # Attribution. mode_watcher stamps its state file when switch_mode returns,
+        # within about a second of the new run appearing in /proc — so the stamp is
+        # recent, names THIS mode, and has not already been spent explaining an earlier
+        # transition. All three conditions matter: without the last one, an operator
+        # who overrides a changeover minutes later gets it credited to the watcher.
+        auto = (ts is not None
+                and ts != self._attributed_changeover_ts
+                and (time.time() - ts) < 600
+                and mw_state.get("last_target") == mode)
+        if auto:
+            self._attributed_changeover_ts = ts
+            reason = mw_state.get("last_reason")
+            bits.append("Switched automatically by mode_watcher"
+                        + (f" ({reason})." if reason else "."))
+        else:
+            bits.append("Not a mode_watcher changeover — switched from the GUI or by hand.")
+        return " ".join(bits)
 
     def rule_long_run_warning(self):
         """For a run scheduled to last longer than an hour, send a single warning
