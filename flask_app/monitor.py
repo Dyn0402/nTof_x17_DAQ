@@ -460,11 +460,25 @@ class DaqMonitor:
         set to "never repeat"), or _UNSET (no override -> use the global default)."""
         return self.config.get("rule_options", {}).get(name, {}).get("resend_minutes", _UNSET)
 
-    def _rule_resend_interval_secs(self, name):
+    def _rule_resend_interval_secs(self, name, severity=None):
         """Seconds between repeated alerts for this rule, or None if repeats are
         disabled (a re-send only happens on recovery+re-trigger, or on a severity
         change for graded rules — see `escalated` in _check_all_rules). Falls back
-        to the global resend_interval when the rule has no override."""
+        to the global resend_interval when the rule has no override.
+
+        A graded rule can nag at its high tiers without nagging at its low ones via
+        rule_options.<rule>.resend_minutes_by_severity, e.g.
+        {"critical": 30, "emergency": 15} alongside a base "resend_minutes": null —
+        "stay quiet at warning/alert, but keep reminding me once it is critical".
+        Keys are severity names; a key set to null disables repeats for that tier.
+        Only consulted when `severity` is given (the Setup panel asks without one and
+        gets the rule's base interval, which is what it displays)."""
+        if severity is not None:
+            by_sev = self.config.get("rule_options", {}).get(name, {}).get(
+                "resend_minutes_by_severity") or {}
+            if severity in by_sev:
+                minutes = by_sev[severity]
+                return None if minutes is None else minutes * 60
         minutes = self._rule_resend_minutes_raw(name)
         if minutes is _UNSET:
             return self.resend_interval
@@ -589,7 +603,9 @@ class DaqMonitor:
 
                 if elapsed >= min_dur:
                     prev_severity = self._alert_severity.get(name)
-                    resend_secs = self._rule_resend_interval_secs(name)
+                    # Keyed on the CURRENT severity, so a rule that is silent at
+                    # warning starts nagging the moment it escalates to critical.
+                    resend_secs = self._rule_resend_interval_secs(name, severity)
                     # resend_secs is None -> repeats disabled: only the first send
                     # in an episode is due; escalation (below) can still resend.
                     resend_due = last_sent is None or (
@@ -1416,12 +1432,21 @@ class DaqMonitor:
             return severity, detail
         return False, f"SSD (/) OK — {free_gb:.0f} GB free ({pct:.0f}% full), above the {emerg_gb:.0f} GB emergency level"
 
-    def _hdd_warning_threshold_hours(self, now, opts):
-        """How many hours-till-empty the HDD needs before the 'warning' tier trips,
-        as a function of time of day. Two regimes:
+    @staticmethod
+    def _hour_in_cyclic_window(hour, start, end):
+        """True if `hour` falls in the [start, end) window, which may wrap midnight
+        (23:00-08:00 is a wrap; 08:00-20:00 is not)."""
+        if start <= end:
+            return start <= hour < end
+        return hour >= start or hour < end
+
+    def _hdd_time_of_day_gate(self, now, opts):
+        """The HDD's time-of-day gate: how many hours-till-empty it needs before this
+        gate trips, AND at what severity. Two regimes:
 
           day    (day_start_hour <= now < night_start_hour, default 08:00-20:00):
-                 a flat floor (default 5 h) — "don't bother me unless it's close".
+                 a flat floor (default 8 h) at `warning` — someone is around to see
+                 the Disk Space tab, so this is a heads-up, not an emergency.
           night  (otherwise): the disk must last until the next day_start_hour
                  (assumed wake time) PLUS a margin (default 2 h). This shrinks
                  through the night as wake time approaches — at 20:00 it demands
@@ -1429,19 +1454,31 @@ class DaqMonitor:
                  rule tracks "will we make it to morning with a buffer", not a
                  fixed number.
 
-        Returns (threshold_hours, basis_str) for the alert detail text."""
+        The night regime is deliberately LOUDER than the day one, because nobody is
+        watching: it opens at `alert` when the evening starts, and hardens to
+        `critical` from night_critical_hour (default 23:00) to wake — "you were told
+        at 20:00 and it is still not fixed, and the disk will not survive the night."
+        Set night_critical_hour to null to keep the whole night at `alert`.
+
+        Returns (threshold_hours, severity, basis_str) for the alert detail text."""
         day_start = float(opts.get("day_start_hour", 8))
         night_start = float(opts.get("night_start_hour", 20))
-        day_threshold = float(opts.get("day_threshold_hours", 5))
+        day_threshold = float(opts.get("day_threshold_hours", 8))
         night_margin = float(opts.get("night_margin_hours", 2))
+        night_critical_hour = opts.get("night_critical_hour", 23)
 
         hour = now.hour + now.minute / 60 + now.second / 3600
         if day_start <= hour < night_start:
-            return day_threshold, f"daytime floor: {day_threshold:.1f} h"
+            return day_threshold, "warning", f"daytime floor: {day_threshold:.1f} h"
+
         hours_to_wake = (day_start - hour) if hour < day_start else (24 - hour + day_start)
         threshold = hours_to_wake + night_margin
-        return threshold, (f"{hours_to_wake:.1f} h to {day_start:02.0f}:00 wake "
-                            f"+ {night_margin:.1f} h overnight margin")
+        severity, when = "alert", "overnight"
+        if night_critical_hour is not None and self._hour_in_cyclic_window(
+                hour, float(night_critical_hour), day_start):
+            severity, when = "critical", f"after {float(night_critical_hour):02.0f}:00"
+        return threshold, severity, (f"{when}: {hours_to_wake:.1f} h to "
+                                     f"{day_start:02.0f}:00 wake + {night_margin:.1f} h margin")
 
     def rule_hdd_disk_space(self):
         """Alert on the data HDD (/mnt/data) using projected TIME-TILL-EMPTY rather
@@ -1452,18 +1489,23 @@ class DaqMonitor:
         — a plain slope is useless here because the HDD is periodically pruned by
         hand/backup cleanup, which looks like a huge negative rate to a naive fit).
 
-        Two independent gates, either one can raise the alert:
-          warning   time-to-empty has fallen below a floor that VARIES by time of day
-                    (see _hdd_warning_threshold_hours): a flat 5 h during 08:00-20:00,
-                    tightening overnight to "won't last to 08:00 wake + 2 h margin".
-                    This is the "should I deal with this before I sleep" signal.
-          critical / emergency
-                    time-to-empty below an absolute floor (default 2 h / 30 min),
-                    day or night — once it is this close to actually filling, the
-                    time of day stops mattering.
+        Two independent gates; the alert takes whichever severity is HIGHER:
+          time-of-day  time-to-empty has fallen below a floor that VARIES by time of
+                    day (see _hdd_time_of_day_gate) — a flat 8 h at `warning` during
+                    08:00-20:00, tightening overnight to "won't last to 08:00 wake
+                    + 2 h margin" at `alert`, and hardening to `critical` from 23:00.
+                    This is the "deal with it before you sleep" signal.
+          absolute  time-to-empty below an absolute floor — `critical` under 3 h,
+                    `emergency` under 30 min — day or night. Once it is this close to
+                    actually filling, the time of day stops mattering.
+
+        Repeats are severity-keyed (rule_options.….resend_minutes_by_severity): silent
+        at warning/alert so a slow daytime slide does not nag, then every 30 min once
+        critical and every 15 once emergency.
 
         Tunable via rule_options.rule_hdd_disk_space: day_start_hour, night_start_hour,
-        day_threshold_hours, night_margin_hours, critical_hours, emergency_hours.
+        day_threshold_hours, night_margin_hours, night_critical_hour, critical_hours,
+        emergency_hours.
 
         Falls back to the OLD percent-full gradient (rule_options.rule_hdd_disk_space.
         thresholds, still warning/alert/critical/emergency at 70/80/90/95%) whenever
@@ -1492,21 +1534,27 @@ class DaqMonitor:
 
         ttf_h = hdd["time_to_full_h"]
         now = datetime.now()
-        threshold_h, basis = self._hdd_warning_threshold_hours(now, opts)
-        critical_h = float(opts.get("critical_hours", 2))
+        threshold_h, tod_severity, basis = self._hdd_time_of_day_gate(now, opts)
+        critical_h = float(opts.get("critical_hours", 3))
         emergency_h = float(opts.get("emergency_hours", 0.5))
         eta_clock = (now + timedelta(hours=ttf_h)).strftime("%a %H:%M")
 
         detail = (f"HDD (/mnt/data) projected empty in {disk_forecast.human_duration(ttf_h)} "
                   f"(~{eta_clock}) at {hdd.get('inflow_gb_per_hr', 0):.1f} GB/hr — "
-                  f"{hdd.get('free', 0) / gb:.0f} GB free. Warning floor {basis}.")
+                  f"{hdd.get('free', 0) / gb:.0f} GB free. Floor {threshold_h:.1f} h ({basis}); "
+                  f"nothing prunes this disk automatically.")
 
+        # Both gates are evaluated; the louder one wins, so the overnight tightening
+        # can never DOWNgrade an absolute-floor critical (or vice versa).
+        candidates = []
         if ttf_h < emergency_h:
-            return "emergency", detail
-        if ttf_h < critical_h:
-            return "critical", detail
+            candidates.append("emergency")
+        elif ttf_h < critical_h:
+            candidates.append("critical")
         if ttf_h < threshold_h:
-            return "warning", detail
+            candidates.append(tod_severity)
+        if candidates:
+            return max(candidates, key=_severity_rank), detail
         return False, (f"HDD (/mnt/data) OK — {disk_forecast.human_duration(ttf_h)} until full "
                        f"(~{eta_clock}), above the {threshold_h:.1f} h floor ({basis})")
 
