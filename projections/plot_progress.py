@@ -24,6 +24,7 @@ import argparse
 import glob
 import json
 import os
+import re
 from datetime import datetime
 
 import matplotlib
@@ -131,6 +132,20 @@ def shade_actual_downtime(ax, intervals, t_lo, t_hi, label=True, yspan=ACTUAL_YS
         first = False
 
 
+def _fitted_label(runs):
+    """Name the runs the forward rate was fitted on, without spelling out a list
+    that grows with every production run — a long subtitle squeezes the plot."""
+    if not runs:
+        return "?"
+    if len(runs) <= 3:
+        return ", ".join(runs)
+    nums = sorted(int(m.group(1)) for r in runs
+                  if (m := re.search(r"(\d+)", r)) is not None)
+    if len(nums) == len(runs):
+        return f"{len(runs)} runs (run_{nums[0]}–run_{nums[-1]})"
+    return f"{len(runs)} runs"
+
+
 def main():
     ap = argparse.ArgumentParser(description="Plot statistics progress vs projections.")
     ap.add_argument("--out", help="output PNG path")
@@ -196,7 +211,7 @@ def main():
     ax.set_title("nTOF x17 — cumulative beam triggers vs projection",
                  color=INK, fontsize=14, fontweight="bold", loc="left", pad=32)
     counted = f"run_{args.first_run}+" if args.first_run else "all recorded runs"
-    fitted = ", ".join(stats.get("rate_runs") or []) or "?"
+    fitted = _fitted_label(stats.get("rate_runs") or [])
     ax.text(0, 1.012,
             f"counting {counted} · forward rate from {fitted}: "
             f"{rate['events_per_pulse']:.0f} events/pulse × "
@@ -300,7 +315,12 @@ def main():
 
     out = args.out or os.path.join(PLOT_DIR, f"progress_{datetime.now():%Y-%m-%d}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+    # Explicit margins and NO bbox_inches="tight": a tight crop is trimmed to
+    # whatever happens to be drawn, so the output size and the left/right balance
+    # would drift with the length of the subtitle and the footer. The page embeds
+    # this at a fixed width — it wants the same geometry every render.
+    fig.subplots_adjust(left=0.072, right=0.988, top=0.935, bottom=0.075)
+    fig.savefig(out, dpi=150, facecolor=SURFACE)
     print(f"[plot] Wrote {out}")
     if args.show:
         plt.show()
