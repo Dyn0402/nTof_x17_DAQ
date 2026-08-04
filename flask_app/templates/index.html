@@ -247,6 +247,20 @@
             </div>
           </div>
 
+          <!-- Soft shutdown: stop everything cleanly before rebooting the host. It does
+               NOT reboot, and deliberately leaves HV on and gas flowing (a reboot is not
+               a detector-safety event). Progress is polled from /soft_shutdown/status
+               because the .244 restore step can take a couple of minutes. -->
+          <div class="btn-group-block">
+            <span class="group-label">Host</span>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <button id="soft-shutdown" class="btn btn-outline-danger btn-sm">Soft Shutdown (before reboot)</button>
+              <span id="soft-shutdown-phase" class="text-muted small"></span>
+            </div>
+            <div id="soft-shutdown-progress" class="small mt-2 d-none"
+                 style="max-height:11rem;overflow-y:auto;"></div>
+          </div>
+
           <div class="btn-group-block">
             <span class="group-label">Watchers</span>
             <div class="d-flex flex-wrap gap-2">
@@ -1697,6 +1711,77 @@ document.getElementById("hv-off").addEventListener("click", async () => {
   const data = await res.json();
   showPopup(data.message, data.success ? "#17a2b8" : "#dc3545");
 });
+
+// Soft Shutdown: stop the DAQ cleanly ahead of a host reboot. The endpoint returns
+// immediately and the script publishes progress, so poll until it finishes. The wait
+// matters: the N1081B TT stream needs up to a couple of minutes to restore .244 to
+// counters, and SIGKILLing it (which is what systemd's 90 s stop timeout would do on a
+// plain reboot) is the dirty disconnect that wedges the board for hours.
+let softShutdownPoll = null;
+
+function renderSoftShutdown(state, running) {
+  const phaseEl = document.getElementById("soft-shutdown-phase");
+  const listEl  = document.getElementById("soft-shutdown-progress");
+  if (!state) { phaseEl.textContent = ""; listEl.classList.add("d-none"); return; }
+
+  const safe = state.safe_to_reboot === true;
+  phaseEl.textContent = safe ? "✅ SAFE TO REBOOT"
+                             : (running ? `⏳ ${state.phase}…` : `⚠ ${state.phase}`);
+  phaseEl.className = "small " + (safe ? "text-success fw-bold"
+                                       : (running ? "text-info" : "text-warning fw-bold"));
+
+  const icon = {ok: "✅", fail: "❌", skip: "—"};
+  listEl.innerHTML = (state.steps || []).map(s =>
+    `<div><span style="display:inline-block;width:1.3rem;">${icon[s.status] || "•"}</span>` +
+    `<strong>${s.name}</strong> <span class="text-muted">${s.detail || ""}</span></div>`
+  ).join("") || '<div class="text-muted">starting…</div>';
+  listEl.classList.remove("d-none");
+}
+
+async function pollSoftShutdown() {
+  try {
+    const data = await (await fetch("/soft_shutdown/status")).json();
+    renderSoftShutdown(data.state, data.running);
+    if (!data.running && softShutdownPoll) {
+      clearInterval(softShutdownPoll); softShutdownPoll = null;
+      const btn = document.getElementById("soft-shutdown");
+      btn.disabled = false; btn.textContent = "Soft Shutdown (before reboot)";
+      if (data.state && data.state.safe_to_reboot) {
+        daqAlert("Everything stopped cleanly — it is safe to reboot now.\n\n" +
+                 "HV is still on and gas is still flowing, by design.",
+                 {title: "Safe to reboot"});
+      } else if (data.state) {
+        daqAlert("Soft shutdown finished with problems — check the list before rebooting.",
+                 {title: "Review before rebooting", warn: true});
+      }
+    }
+  } catch (err) { /* transient — keep polling */ }
+}
+
+document.getElementById("soft-shutdown").addEventListener("click", async () => {
+  if (!await daqConfirm(
+        "Stops the run, restores N1081B .244 to counters, and shuts down every watcher " +
+        "so the host can be rebooted safely.\n\n" +
+        "This does NOT reboot — do that yourself once it reports SAFE TO REBOOT.\n" +
+        "HV stays ON and gas keeps flowing (use Emergency Stop if you want those off).\n\n" +
+        "Takes up to a few minutes.",
+        {title: "Soft shutdown for reboot?", okText: "Stop everything", danger: true})) return;
+  const btn = document.getElementById("soft-shutdown");
+  btn.disabled = true; btn.textContent = "Stopping…";
+  try {
+    const data = await (await fetch("/soft_shutdown", { method: "POST" })).json();
+    showPopup(data.message, data.success ? "#17a2b8" : "#dc3545");
+    if (!data.success) { btn.disabled = false; btn.textContent = "Soft Shutdown (before reboot)"; return; }
+    if (!softShutdownPoll) softShutdownPoll = setInterval(pollSoftShutdown, 2000);
+    pollSoftShutdown();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = "Soft Shutdown (before reboot)";
+    daqAlert(String(err), {title: "Soft shutdown failed", danger: true});
+  }
+});
+
+// Reflect a shutdown started from another browser tab / by hand on the CLI.
+pollSoftShutdown();
 
 // GUI Reset: restart only the Flask server (this page). The request returns
 // before the server is killed ~2 s later, so we show a banner and auto-reload

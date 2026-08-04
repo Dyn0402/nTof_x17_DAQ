@@ -555,6 +555,62 @@ def restart_all():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+SOFT_SHUTDOWN_STATE = f"{BASE_DIR}/config/soft_shutdown_state.json"
+
+
+@app.route("/soft_shutdown", methods=["POST"])
+def soft_shutdown():
+    """Bring the DAQ down cleanly ahead of a host reboot. Does NOT reboot.
+
+    Runs bash_scripts/soft_shutdown.sh detached and returns at once; the script
+    publishes progress to config/soft_shutdown_state.json, which /soft_shutdown/status
+    serves so the GUI can follow along. It can take a few minutes — the N1081B stream
+    is allowed as long as it needs to restore .244 to counters, because the alternative
+    (systemd SIGKILLing it at the 90 s stop timeout) is the dirty disconnect that wedges
+    the board for hours.
+
+    HV stays ON and gas keeps flowing, deliberately — see the script's header. The
+    Shift Overview EMERGENCY STOP is the endpoint that takes those down."""
+    log_event('SOFT_SHUTDOWN', 'flask_button', remote_addr=_client_ip())
+    try:
+        if os.path.exists(SOFT_SHUTDOWN_STATE):
+            try:
+                with open(SOFT_SHUTDOWN_STATE) as f:
+                    prev = json.load(f)
+                pid = prev.get("pid")
+                # Refuse to start a second pass on top of a live one: two of these
+                # racing would have each other's sessions disappearing mid-wait.
+                if (pid and not prev.get("safe_to_reboot")
+                        and os.path.exists(f"/proc/{pid}")):
+                    return jsonify({"success": False,
+                                    "message": f"A soft shutdown is already running "
+                                               f"(phase: {prev.get('phase')})"}), 409
+            except (ValueError, OSError):
+                pass
+        os.makedirs(f"{LOG_DIR}", exist_ok=True)
+        subprocess.Popen([f"{BASH_DIR}/soft_shutdown.sh"],
+                         cwd=BASE_DIR, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.STDOUT, start_new_session=True)
+        return jsonify({"success": True,
+                        "message": "Soft shutdown started — watch the progress list. "
+                                   "Wait for SAFE TO REBOOT before rebooting."})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route("/soft_shutdown/status")
+def soft_shutdown_status():
+    """Progress of an in-flight or finished soft shutdown (see /soft_shutdown)."""
+    try:
+        with open(SOFT_SHUTDOWN_STATE) as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        return jsonify({"success": True, "running": False, "state": None})
+    pid = state.get("pid")
+    running = bool(pid) and os.path.exists(f"/proc/{pid}")
+    return jsonify({"success": True, "running": running, "state": state})
+
+
 @app.route("/restart_flask", methods=["POST"])
 def restart_flask():
     """Restart ONLY the Flask GUI server (tmux `flask_server`), leaving the DAQ,
