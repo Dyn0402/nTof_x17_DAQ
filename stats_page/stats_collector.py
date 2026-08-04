@@ -96,6 +96,12 @@ DEFAULTS = {
     "beam_history_hours": 24.0,
     "beam_history_bucket_min": 10.0,
     "beam_history_interval_s": 300,
+    # Run-history timeline (its own runs.json, not data.json — see run_history_block).
+    "run_history_enabled": True,
+    "run_history_days": 7.0,
+    # Beam-off intervals shorter than this are counted in the totals but not drawn;
+    # at a week per screen a 2-minute band is a hairline that reads as chart noise.
+    "run_history_min_gap_min": 5.0,
 }
 
 _beam_history_cache = {"t": 0.0, "data": None}
@@ -133,6 +139,13 @@ def run_kind(run_name, running):
 
 # {"t": last computed, "data": block, "png": path if freshly rendered}
 _projection_cache = {"t": 0.0, "data": None, "png": None}
+
+# The run-history timeline. Same gating as the plot: a week of sub-runs is ~15 kB,
+# and it only changes when a sub-run completes (~hourly), so it rides in its own
+# runs.json instead of the 60 s data.json — otherwise every push would carry it and
+# EOS would version a fresh copy 1,440 times a day for one hourly change.
+# {"stamp": inputs it was built from, "data": block, "fresh": True until pushed}
+_run_history_cache = {"stamp": None, "data": None, "fresh": False}
 
 # Which tmux services are worth showing publicly, and the label to show them under.
 # Deliberately a subset: the point is "is the DAQ taking data", not a control panel.
@@ -249,6 +262,55 @@ def projection_block(cfg, force=False):
 
     _projection_cache.update(t=now, data=data, png=png)
     return data, png
+
+
+def run_history_block(cfg, stats):
+    """The sub-run timeline, rebuilt only when a sub-run has completed.
+
+    Returns (stamp, data) where `stamp` is what the page watches to know whether to
+    re-fetch runs.json. `stats` is the already-computed projection block, used only
+    for its last_subrun_end — this must not trigger a second pandas pass.
+
+    Never raises: this is the newest card on the page and the oldest numbers on it
+    still matter more, so a failure costs the timeline and nothing else."""
+    if not cfg.get("run_history_enabled", True):
+        return None, None
+
+    # The ledger only grows when a sub-run finishes; the day is in the stamp so a
+    # rolling window still slides forward on a quiet day with no completions.
+    stamp = "|".join([str((stats or {}).get("last_subrun_end")),
+                      datetime.now().strftime("%Y-%m-%d"),
+                      str(cfg.get("run_history_days"))])
+    if stamp == _run_history_cache["stamp"] and _run_history_cache["data"] is not None:
+        return stamp, _run_history_cache["data"]
+
+    try:
+        if PROJECTIONS_DIR not in sys.path:
+            sys.path.insert(0, PROJECTIONS_DIR)
+        import live as projection_live
+        # sync=False: projection_block already synced the ledger from disk on this
+        # same cadence, and a second scan of every run directory buys nothing.
+        data = projection_live.run_history(
+            days=float(cfg["run_history_days"]),
+            min_gap_min=float(cfg["run_history_min_gap_min"]),
+            sync=False)
+    except Exception as e:  # noqa: BLE001
+        print(f"[stats_page] Run history failed: {e}", file=sys.stderr)
+        return _run_history_cache["stamp"], _run_history_cache["data"]
+
+    if data is None:
+        return _run_history_cache["stamp"], _run_history_cache["data"]
+    _run_history_cache.update(stamp=stamp, data=data, fresh=True)
+    return stamp, data
+
+
+def take_fresh_run_history():
+    """The timeline block if it changed since the last call, else None. Keeps
+    runs.json off EOS on the ~59 pushes an hour where nothing about it moved."""
+    if not _run_history_cache["fresh"]:
+        return None
+    _run_history_cache["fresh"] = False
+    return _run_history_cache["data"]
 
 
 def _tail_lines(path, max_bytes):
@@ -410,6 +472,9 @@ def collect(cfg):
     # projections/reference_maxima.py; they only ever ratchet upward.
     payload["reference"] = _read_json(REFERENCE_PATH) or None
     payload["stats"], _ = projection_block(cfg)
+    # Only the stamp rides here; the timeline itself is runs.json, which the page
+    # re-fetches when this value changes.
+    payload["run_history_stamp"], _ = run_history_block(cfg, payload["stats"])
 
     return payload
 
@@ -485,7 +550,7 @@ def _xrdcp(local_path, remote_path, cfg):
     return True, "ok"
 
 
-def push_eos(cfg, payload, history, with_page=True, png=None):
+def push_eos(cfg, payload, history, with_page=True, png=None, runs=None):
     """Publish to the CERN webeos site by copying the data (and, on the first push
     of a session, the page itself) into its EOS www directory.
 
@@ -502,6 +567,18 @@ def push_eos(cfg, payload, history, with_page=True, png=None):
         ok, msg = _xrdcp(data_path, f"{www}/data.json", cfg)
         if not ok:
             return False, msg
+        # Push runs.json before the page on a first push, so a freshly uploaded page
+        # never polls for a timeline that isn't there yet.
+        if runs is not None or (with_page and _run_history_cache["data"] is not None):
+            runs_path = os.path.join(tmpdir, "runs.json")
+            with open(runs_path, "w") as f:
+                json.dump(runs if runs is not None else _run_history_cache["data"], f,
+                          separators=(",", ":"))
+            ok, msg = _xrdcp(runs_path, f"{www}/runs.json", cfg)
+            if not ok:
+                # The live status is already published; the timeline card will keep
+                # showing its previous fetch and go stale rather than the push failing.
+                print(f"[stats_page] Run history upload failed: {msg}", file=sys.stderr)
         if with_page:
             page_path = os.path.join(tmpdir, "index.html")
             with open(PAGE_HTML) as src, open(page_path, "w") as dst:
@@ -541,12 +618,16 @@ def ensure_eos_dir(cfg):
     return True, "ok"
 
 
-def render_preview(payload, out_path, history=None):
+def render_preview(payload, out_path, history=None, runs=None):
     """Write a standalone copy of the page with a snapshot inlined, so the layout
-    can be eyeballed in a browser without deploying anything."""
+    can be eyeballed in a browser without deploying anything.
+
+    The run-history timeline is inlined alongside the payload: it normally lives in
+    its own runs.json, and a file:// preview has no host to fetch that from."""
     with open(PAGE_HTML) as f:
         html = f.read()
-    snapshot = {"latest": payload, "history": history or []}
+    snapshot = {"latest": payload, "history": history or [],
+                "runs": runs if runs is not None else _run_history_cache["data"]}
     inject = ("<script>window.__PREVIEW__ = "
               + json.dumps(snapshot) + ";</script>\n")
     html = html.replace("<script>\n(function ()", inject + "<script>\n(function ()", 1)
@@ -573,7 +654,8 @@ def run_blocking(cfg):
         history = append_history(payload, history)
         # Re-upload the page itself on the first push of a session, so an edit to
         # page.html goes live on restart without a separate deploy step.
-        ok, msg = push_eos(cfg, payload, history, with_page=first, png=take_fresh_png())
+        ok, msg = push_eos(cfg, payload, history, with_page=first, png=take_fresh_png(),
+                           runs=take_fresh_run_history())
         _write_state(ok, msg)
         if ok:
             if fails:
@@ -617,7 +699,8 @@ def main():
         if not ok:
             print(f"[stats_page] mkdir failed: {msg}", file=sys.stderr)
         history = append_history(payload, load_history())
-        ok, msg = push_eos(cfg, payload, history, with_page=True, png=take_fresh_png())
+        ok, msg = push_eos(cfg, payload, history, with_page=True, png=take_fresh_png(),
+                           runs=take_fresh_run_history())
         print(f"[stats_page] {'OK' if ok else 'FAILED'}: {msg}")
         sys.exit(0 if ok else 1)
 

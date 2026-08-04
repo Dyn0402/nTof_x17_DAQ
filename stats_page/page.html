@@ -126,6 +126,119 @@
   }
   :root[data-theme="dark"] .plot { background:#f4f3ef; }
 
+  /* Tabs. Live status and the run record are different questions asked at different
+     cadences, so they get different views rather than one ever-longer page. */
+  .tabs { display:flex; gap:2px; margin:0 0 16px; border-bottom:1px solid var(--grid); }
+  .tabs button {
+    appearance:none; background:none; border:0; border-bottom:2px solid transparent;
+    margin-bottom:-1px; padding:8px 14px; cursor:pointer;
+    font:inherit; font-size:13.5px; font-weight:500; color:var(--ink-2);
+  }
+  .tabs button:hover { color:var(--ink); }
+  .tabs button[aria-selected="true"] { color:var(--ink); font-weight:600;
+                                       border-bottom-color:var(--series-1); }
+  .tabs button:focus-visible { outline:2px solid var(--series-1); outline-offset:-2px; }
+  [role="tabpanel"][hidden] { display:none; }
+
+  /* Run list — the whole ledger, one row per run. */
+  .runlist { margin-top:14px; padding:16px 18px 12px; }
+  .runlist .bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+                  margin-bottom:14px; }
+  .runlist .modes { display:flex; gap:2px; }
+  .runlist .modes button {
+    appearance:none; cursor:pointer; font:inherit; font-size:12.5px;
+    padding:4px 11px; border:1px solid var(--ring); background:var(--plane);
+    color:var(--ink-2); border-radius:999px;
+  }
+  .runlist .modes button[aria-pressed="true"] { background:var(--series-1); color:#fff;
+                                                border-color:var(--series-1); font-weight:500; }
+  .runlist .modes button:focus-visible { outline:2px solid var(--series-1); outline-offset:2px; }
+  .runlist input[type="search"] {
+    font:inherit; font-size:12.5px; padding:5px 10px; border-radius:6px;
+    border:1px solid var(--ring); background:var(--plane); color:var(--ink); width:150px;
+  }
+  .runlist .count { margin-left:auto; font-size:12.5px; color:var(--muted);
+                    font-variant-numeric:tabular-nums; }
+
+  /* The table treatment: uppercase hairline header, rules between rows only,
+     numerals aligned in their columns. */
+  .runlist table { border-collapse:collapse; width:100%; font-size:13px; min-width:720px; }
+  .runlist th, .runlist td { padding:7px 14px 7px 0; text-align:right; white-space:nowrap;
+                             border-bottom:0; }
+  .runlist th:first-child, .runlist td:first-child,
+  .runlist th:nth-child(2), .runlist td:nth-child(2) { text-align:left; }
+  .runlist thead th {
+    font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--muted); border-bottom:1px solid var(--axis); padding-bottom:9px;
+    cursor:pointer; user-select:none;
+  }
+  .runlist thead th:hover { color:var(--ink-2); }
+  .runlist thead th .arrow { opacity:0; margin-left:4px; font-size:9px; }
+  .runlist thead th[aria-sort] { color:var(--ink); }
+  .runlist thead th[aria-sort] .arrow { opacity:1; }
+  .runlist tbody td { border-bottom:1px solid var(--grid); font-variant-numeric:tabular-nums;
+                      color:var(--ink-2); }
+  .runlist tbody tr:last-child td { border-bottom:0; }
+  .runlist tbody tr:hover td { background:var(--plane); }
+  .runlist td.run-id { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .runlist td.ev { color:var(--ink); }
+  .runlist tfoot td { padding-top:11px; font-weight:600; color:var(--ink);
+                      border-top:1px solid var(--axis); font-variant-numeric:tabular-nums; }
+  .runlist .chip { display:inline-flex; align-items:center; gap:7px; }
+  .runlist .chip i { width:8px; height:8px; border-radius:2px; flex:none; }
+  .runlist .chip.beam i { background:var(--series-1); }
+  .runlist .chip.cosmics i { background:var(--series-2); }
+  .runlist .chip.pulser i { background:var(--muted); }
+  .runlist .dag { color:var(--muted); padding-left:3px; }
+  .runlist .empty { padding:22px 0; color:var(--muted); font-size:13px; text-align:center; }
+  .runlist .note { margin-top:12px; font-size:12px; color:var(--muted); max-width:86ch; }
+
+  /* Run-history timeline. Sub-runs on a true wall-clock axis, so a beam stop is a
+     visible hole rather than a compressed-away discontinuity. */
+  .runs { margin-top:14px; padding:14px 16px 10px; }
+  .runs .head { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px;
+                margin-bottom:8px; }
+  .runs .span { font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .runs .key { display:flex; flex-wrap:wrap; gap:14px; margin-left:auto;
+               font-size:12px; color:var(--ink-2); }
+  .runs .key span { display:inline-flex; align-items:center; gap:6px; }
+  .runs .key i { width:9px; height:9px; border-radius:2px; flex:none; }
+  .runs .key .k-beam i { background:var(--series-1); }
+  .runs .key .k-cosmics i { background:var(--series-2); }
+  .runs .key .k-off i { background:var(--grid); border:1px solid var(--ring); }
+  .runs .plot-scroll { overflow-x:auto; }
+  .runs svg { display:block; width:100%; min-width:640px; height:auto; overflow:visible; }
+  .runs .tick { font-size:11px; fill:var(--muted); font-variant-numeric:tabular-nums; }
+  .runs .daylab { font-size:11px; fill:var(--ink-2); font-weight:600; }
+  .runs .gridline { stroke:var(--grid); stroke-width:1; }
+  .runs .axisline { stroke:var(--axis); stroke-width:1; }
+  /* Marks are painted through the tokens rather than with resolved colours, so a
+     theme switch repaints them immediately — the timeline is only re-rendered when
+     a sub-run completes, which can be an hour away. */
+  .runs .bar-beam { fill:var(--series-1); }
+  .runs .bar-cosmics { fill:var(--series-2); }
+  .runs .band-off { fill:var(--grid); }
+  .runs .crosshair { stroke:var(--axis); stroke-width:1; }
+  .runs .foot { display:flex; flex-wrap:wrap; gap:4px 18px; margin-top:8px;
+                font-size:12.5px; color:var(--ink-2); }
+  .runs .foot b { color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
+  .runs .stale { color:var(--muted); font-style:italic; }
+
+  /* Hover read-out. Follows the pointer; every value in it is also in the table
+     view below, so nothing is gated behind hovering. */
+  .rtip { position:fixed; z-index:20; pointer-events:none; opacity:0;
+          transition:opacity .1s; background:var(--surface);
+          border:1px solid var(--ring); border-radius:8px; padding:8px 11px;
+          font-size:12.5px; min-width:160px;
+          box-shadow:0 1px 2px rgba(0,0,0,.08), 0 8px 22px rgba(0,0,0,.12); }
+  .rtip .r-run { font-weight:600; display:flex; align-items:center; gap:7px; }
+  .rtip .r-run i { width:9px; height:9px; border-radius:2px; flex:none; }
+  .rtip .r-run i.beam { background:var(--series-1); }
+  .rtip .r-run i.cosmics { background:var(--series-2); }
+  .rtip dl { display:grid; grid-template-columns:auto auto; gap:1px 14px; margin:5px 0 0; }
+  .rtip dt { color:var(--muted); }
+  .rtip dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; }
+
   table { border-collapse:collapse; width:100%; font-size:13.5px;
           font-variant-numeric:tabular-nums; }
   th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--grid); }
@@ -147,7 +260,15 @@
     <span class="pill" id="freshness"><span class="dot"></span><span id="freshness-text">connecting…</span></span>
   </header>
 
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button role="tab" id="tab-live" aria-controls="panel-live" aria-selected="true">Live</button>
+    <button role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" tabindex="-1">Runs</button>
+  </nav>
+
+  <!-- Staleness applies to everything, so it sits above the panels, not inside one. -->
   <div class="banner" id="banner"></div>
+
+  <section id="panel-live" role="tabpanel" aria-labelledby="tab-live">
 
   <div class="card hero">
     <div>
@@ -233,10 +354,66 @@
     <div class="scroll"><table id="table"><tbody></tbody></table></div>
   </details>
 
+  </section><!-- /panel-live -->
+
+  <section id="panel-runs" role="tabpanel" aria-labelledby="tab-runs" hidden>
+
+  <h2>Recent activity</h2>
+  <p class="caption">
+    Every sub-run of the last week on a wall-clock axis: each column is one sub-run,
+    its width the time it actually ran and its height the events it banked. Shaded
+    bands are measured beam-off periods — where one is wide, the orange columns under
+    it are the automatic changeover to cosmics. Hover a column for its run.
+  </p>
+  <div class="card runs" id="runs-card" style="display:none">
+    <div class="head">
+      <span class="span" id="runs-span">—</span>
+      <span class="key">
+        <span class="k-beam"><i></i>Beam</span>
+        <span class="k-cosmics"><i></i>Cosmics</span>
+        <span class="k-off"><i></i>Beam off</span>
+      </span>
+    </div>
+    <div class="plot-scroll">
+      <svg id="runs-plot" role="img"
+           aria-label="Events per sub-run over the last week, beam and cosmics, with beam-off periods shaded"></svg>
+    </div>
+    <div class="foot" id="runs-foot"></div>
+  </div>
+
+  <h2>All runs</h2>
+  <p class="caption" id="runlist-caption">
+    Every run in the ledger. Click a column to sort.
+  </p>
+  <div class="card runlist" id="runlist-card" style="display:none">
+    <div class="bar">
+      <div class="modes" id="runlist-modes" role="group" aria-label="Filter by mode">
+        <button type="button" data-mode="all" aria-pressed="true">All</button>
+        <button type="button" data-mode="beam" aria-pressed="false">Beam</button>
+        <button type="button" data-mode="cosmics" aria-pressed="false">Cosmics</button>
+        <button type="button" data-mode="pulser" aria-pressed="false">Pulser</button>
+      </div>
+      <input type="search" id="runlist-search" placeholder="Find a run…" aria-label="Find a run by name">
+      <span class="count" id="runlist-count"></span>
+    </div>
+    <div class="scroll">
+      <table id="runlist-table">
+        <thead><tr id="runlist-head"></tr></thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+      </table>
+    </div>
+    <p class="note" id="runlist-note"></p>
+  </div>
+
+  </section><!-- /panel-runs -->
+
   <footer>
     <span id="stamp">—</span> · page refreshes every 20 s
   </footer>
 </div>
+
+<div class="rtip" id="rtip" role="status" aria-live="polite"></div>
 
 <script>
 (function () {
@@ -417,9 +594,15 @@
     svg.appendChild(last);
   }
 
+  // Bulk series that have their own card and their own table view. Flattened into
+  // the field table they are hundreds of columns of "[object Object]" — noise that
+  // buries the fields this table exists to show.
+  var TABLE_SKIP = { beam_history: 1 };
+
   function tableRows(obj, prefix, out) {
     Object.keys(obj).forEach(function (k) {
       var v = obj[k], key = prefix ? prefix + "." + k : k;
+      if (!prefix && TABLE_SKIP[k]) return;
       if (v && typeof v === "object" && !Array.isArray(v)) tableRows(v, key, out);
       else out.push([key, Array.isArray(v) ? v.join(", ") : String(v)]);
     });
@@ -490,6 +673,354 @@
     $("stat-delta-note").textContent =
       (p.delta >= 0 ? "+" : "") + compact(p.delta) + " vs projection "
       + (p.name || "") + " · steps when a sub-run completes";
+  }
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  // Roving tabindex + the hash, so a view is linkable and survives a reload.
+  var TABS = ["live", "runs"];
+
+  function showTab(name, focus) {
+    if (TABS.indexOf(name) < 0) name = "live";
+    TABS.forEach(function (t) {
+      var btn = $("tab-" + t), panel = $("panel-" + t), on = (t === name);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+      btn.tabIndex = on ? 0 : -1;
+      panel.hidden = !on;
+      if (on && focus) btn.focus();
+    });
+    if (location.hash.replace("#", "") !== name) {
+      history.replaceState(null, "", "#" + name);
+    }
+  }
+
+  TABS.forEach(function (t, i) {
+    var btn = $("tab-" + t);
+    btn.addEventListener("click", function () { showTab(t); });
+    btn.addEventListener("keydown", function (e) {
+      var d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      showTab(TABS[(i + d + TABS.length) % TABS.length], true);
+    });
+  });
+  window.addEventListener("hashchange", function () {
+    showTab(location.hash.replace("#", ""));
+  });
+  showTab(location.hash.replace("#", ""));
+
+  // ── Run history ───────────────────────────────────────────────────────────
+  // Its own file (runs.json) on its own cadence: it is ~15 kB and only changes when
+  // a sub-run completes, so re-fetching it with every 20 s poll would be all cost.
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var DAYNAME = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var MONNAME = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var runsState = { stamp: null, data: null, fetching: false };
+
+  function svgEl(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  function clock(d) {
+    return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+  }
+
+  function hoursText(h) {
+    return h >= 1 ? h.toFixed(1) + " h" : Math.round(h * 60) + " min";
+  }
+
+  function renderRuns(rh) {
+    renderRunList(rh);                     // the list stands on its own if the
+                                           // timeline window happens to be empty
+    var card = $("runs-card"), svg = $("runs-plot");
+    if (!rh || !rh.subs || !rh.subs.length) {          // block disabled or not built yet
+      card.style.display = "none";
+      return;
+    }
+    card.style.display = "";
+
+    var W = 1000, H = 214, PADL = 44, PADR = 12, PADT = 14, PADB = 30;
+    var IW = W - PADL - PADR, PH = H - PADT - PADB;
+    // Sub-run rows are [start_epoch, seconds, events, is_cosmic].
+    var t0 = Infinity, t1 = -Infinity, maxEv = 0, i;
+    for (i = 0; i < rh.subs.length; i++) {
+      var s = rh.subs[i];
+      if (s[0] < t0) t0 = s[0];
+      if (s[0] + s[1] > t1) t1 = s[0] + s[1];
+      if (s[2] > maxEv) maxEv = s[2];
+    }
+    (rh.gaps || []).forEach(function (g) { if (g[1] > t1) t1 = g[1]; });
+    if (t1 <= t0) return;
+
+    var X = function (t) { return PADL + (t - t0) / (t1 - t0) * IW; };
+    var step = maxEv > 60000 ? 25000 : 10000;
+    var yMax = Math.max(step, Math.ceil(maxEv / step) * step);
+    var Y = function (v) { return PADT + PH - v / yMax * PH; };
+
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    // Beam-off bands go down first: they are ground, not a mark.
+    (rh.gaps || []).forEach(function (g) {
+      var a = X(g[0]), b = X(g[1]);
+      svgEl("rect", { x: a, y: PADT, width: Math.max(1.5, b - a), height: PH,
+                      "class": "band-off" }, svg);
+    });
+
+    for (var v = 0; v <= yMax; v += step) {
+      svgEl("line", { x1: PADL, x2: W - PADR, y1: Y(v), y2: Y(v),
+                      "class": v === 0 ? "axisline" : "gridline" }, svg);
+      svgEl("text", { x: PADL - 8, y: Y(v) + 3.5, "class": "tick", "text-anchor": "end" }, svg)
+        .textContent = v === 0 ? "0" : (v / 1000) + "k";
+    }
+
+    // Midnight boundaries + a day name centred in each day that has room for one.
+    var d = new Date(t0 * 1000); d.setHours(0, 0, 0, 0);
+    var bounds = [];
+    for (var tt = d.getTime() / 1000; tt <= t1; tt += 86400) bounds.push(tt);
+    bounds.forEach(function (b, k) {
+      if (b > t0 && b < t1) {
+        svgEl("line", { x1: X(b), x2: X(b), y1: PADT, y2: PADT + PH, "class": "gridline" }, svg);
+      }
+      var a = Math.max(b, t0), z = (k + 1 < bounds.length) ? Math.min(bounds[k + 1], t1) : t1;
+      if (z - a < 4 * 3600) return;                    // too narrow for a legible label
+      var dd = new Date(b * 1000);
+      svgEl("text", { x: (X(a) + X(z)) / 2, y: H - 10, "class": "daylab",
+                      "text-anchor": "middle" }, svg)
+        .textContent = DAYNAME[dd.getDay()] + " " + dd.getDate() + " " + MONNAME[dd.getMonth()];
+    });
+
+    // Which run a sub-run belongs to, by start time — the payload keeps them apart
+    // so the same row can serve the bar, the tooltip and the table.
+    var runs = (rh.runs || []).slice().sort(function (a, b) { return a.t0_epoch - b.t0_epoch; });
+    function runAt(ts) {
+      var found = null;
+      for (var j = 0; j < runs.length; j++) { if (runs[j].t0_epoch <= ts) found = runs[j]; else break; }
+      return found;
+    }
+
+    var marks = [];
+    rh.subs.forEach(function (s) {
+      var x = X(s[0]), w = Math.max(3, X(s[0] + s[1]) - x - 2);
+      var h = Math.max(1, PH - (Y(s[2]) - PADT));
+      svgEl("rect", { x: x, y: Y(s[2]), width: w, height: h,
+                      rx: Math.min(2, w / 2), ry: 2,
+                      "class": s[3] ? "bar-cosmics" : "bar-beam" }, svg);
+      marks.push({ x: x, w: w, t: s[0], secs: s[1], ev: s[2], cos: s[3] });
+    });
+
+    // Hover: one full-height hit area over the plot picking the nearest column, so
+    // a 3px bar is still reachable without pixel-hunting.
+    var cross = svgEl("line", { x1: 0, x2: 0, y1: PADT, y2: PADT + PH,
+                                "class": "crosshair", opacity: 0 }, svg);
+    var hit = svgEl("rect", { x: PADL, y: PADT, width: IW, height: PH, fill: "transparent" }, svg);
+    var tip = $("rtip");
+
+    hit.onmousemove = function (ev) {
+      var box = svg.getBoundingClientRect();
+      var px = (ev.clientX - box.left) / box.width * W;
+      var best = null, bd = Infinity;
+      marks.forEach(function (m) {
+        var dd2 = (px >= m.x && px <= m.x + m.w) ? 0 : Math.abs(m.x + m.w / 2 - px);
+        if (dd2 < bd) { bd = dd2; best = m; }
+      });
+      if (!best) return;
+      cross.setAttribute("x1", best.x + best.w / 2);
+      cross.setAttribute("x2", best.x + best.w / 2);
+      cross.setAttribute("opacity", 0.9);
+      var r = runAt(best.t), when = new Date(best.t * 1000);
+      tip.innerHTML =
+        '<div class="r-run"><i class="' + (best.cos ? "cosmics" : "beam") + '"></i>'
+        + (r ? r.run : "sub-run") + "</div><dl>"
+        + "<dt>Started</dt><dd>" + DAYNAME[when.getDay()] + " " + clock(when) + "</dd>"
+        + "<dt>Ran for</dt><dd>" + hoursText(best.secs / 3600) + "</dd>"
+        + "<dt>Events</dt><dd>" + best.ev.toLocaleString("en-US") + "</dd>"
+        + "<dt>Mode</dt><dd>" + (best.cos ? "Cosmics" : "Beam") + "</dd></dl>";
+      tip.style.opacity = 1;
+      var lft = ev.clientX + 16, top = ev.clientY - tip.offsetHeight - 12;
+      if (lft + tip.offsetWidth > window.innerWidth - 8) lft = ev.clientX - tip.offsetWidth - 16;
+      if (top < 8) top = ev.clientY + 18;
+      tip.style.left = lft + "px";
+      tip.style.top = top + "px";
+    };
+    hit.onmouseleave = function () { tip.style.opacity = 0; cross.setAttribute("opacity", 0); };
+
+    var lo = new Date(t0 * 1000), hi = new Date(t1 * 1000);
+    $("runs-span").textContent =
+      DAYNAME[lo.getDay()] + " " + lo.getDate() + " " + MONNAME[lo.getMonth()] + " " + clock(lo)
+      + " → " + DAYNAME[hi.getDay()] + " " + hi.getDate() + " " + MONNAME[hi.getMonth()] + " " + clock(hi);
+
+    var tot = rh.totals || {};
+    // `runs` is the whole ledger now (it feeds the run list); this card's summary is
+    // about the drawn window, so restrict the search to runs that start inside it.
+    var longest = runs.reduce(function (a, b) {
+      if (b.t0_epoch < t0 || !b.physics) return a;
+      return (!a || b.h_air > a.h_air) ? b : a;
+    }, null);
+    var foot = [
+      "<span><b>" + compact(tot.events || 0) + "</b> events over <b>" + (tot.hours || 0).toFixed(0) + " h</b> live</span>",
+      "<span><b>" + (tot.n_runs || 0) + "</b> runs · <b>" + (tot.n_subruns || 0) + "</b> sub-runs</span>"
+    ];
+    if (tot.beam_uptime_pct !== null && tot.beam_uptime_pct !== undefined) {
+      foot.push("<span>Beam up <b>" + tot.beam_uptime_pct + "%</b> · "
+                + (tot.beam_off_h || 0).toFixed(1) + " h off</span>");
+    }
+    if (longest) {
+      foot.push("<span>Longest run <b>" + longest.run + "</b> · " + longest.h_air.toFixed(1) + " h</span>");
+    }
+    $("runs-foot").innerHTML = foot.join("");
+
+  }
+
+  // ── Run list ──────────────────────────────────────────────────────────────
+  var COLS = [
+    { key: "num",   label: "Run",      num: true,  cell: function (r) {
+        return '<td class="run-id">' + r.run + "</td>"; } },
+    { key: "mode",  label: "Mode",     num: false, cell: function (r) {
+        return '<td><span class="chip ' + r.mode + '"><i></i>'
+             + r.mode.charAt(0).toUpperCase() + r.mode.slice(1) + "</span></td>"; } },
+    { key: "t0",    label: "Started",  num: false, cell: function (r) {
+        return "<td>" + when(r.t0) + "</td>"; } },
+    { key: "t1_air", label: "Ended",   num: false, cell: function (r) {
+        return "<td>" + when(r.t1_air) + "</td>"; } },
+    { key: "n",     label: "Sub-runs", num: true,  cell: function (r) {
+        return "<td>" + r.n + "</td>"; } },
+    { key: "h",     label: "Live",     num: true,  cell: function (r) {
+        return "<td>" + r.h.toFixed(2) + " h</td>"; } },
+    { key: "h_air", label: "On air",   num: true,  cell: function (r) {
+        return "<td>" + r.h_air.toFixed(2) + " h"
+             + (r.trunc ? '<span class="dag" title="a changeover cut this run short">†</span>' : "")
+             + "</td>"; } },
+    { key: "ev",    label: "Events",   num: true,  cell: function (r) {
+        return '<td class="ev">' + r.ev.toLocaleString("en-US") + "</td>"; } },
+    { key: "rate",  label: "Events/h", num: true,  cell: function (r) {
+        return "<td>" + (r.rate === null ? "—" : r.rate.toLocaleString("en-US")) + "</td>"; } }
+  ];
+  // Newest first: a run list is read from the top, and the top is what just happened.
+  var listState = { runs: [], sort: "num", dir: -1, mode: "all", q: "" };
+
+  function when(iso) {
+    var d = new Date(iso.replace(" ", "T"));
+    return d.getDate() + " " + MONNAME[d.getMonth()] + " " + clock(d);
+  }
+
+  function drawRunList() {
+    var rows = listState.runs.filter(function (r) {
+      if (listState.mode !== "all" && r.mode !== listState.mode) return false;
+      return !listState.q || r.run.toLowerCase().indexOf(listState.q) >= 0;
+    });
+    var col = COLS.filter(function (c) { return c.key === listState.sort; })[0] || COLS[0];
+    rows.sort(function (a, b) {
+      var x = a[col.key], y = b[col.key];
+      if (x === null || x === undefined) x = col.num ? -Infinity : "";
+      if (y === null || y === undefined) y = col.num ? -Infinity : "";
+      if (x < y) return -listState.dir;
+      if (x > y) return listState.dir;
+      return 0;
+    });
+
+    $("runlist-head").innerHTML = COLS.map(function (c) {
+      var on = c.key === listState.sort;
+      return "<th" + (on ? ' aria-sort="' + (listState.dir > 0 ? "ascending" : "descending") + '"' : "")
+        + ' data-key="' + c.key + '" tabindex="0" role="button">' + c.label
+        + '<span class="arrow">' + (on && listState.dir > 0 ? "▲" : "▼") + "</span></th>";
+    }).join("");
+
+    var tb = $("runlist-table").querySelector("tbody");
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td class="empty" colspan="' + COLS.length + '">No run matches that filter.</td></tr>';
+    } else {
+      tb.innerHTML = rows.map(function (r) {
+        return "<tr>" + COLS.map(function (c) { return c.cell(r); }).join("") + "</tr>";
+      }).join("");
+    }
+
+    // Totals follow the filter — a total that ignores the filter above it is a lie.
+    var shown = rows.filter(function (r) { return r.physics; });
+    var sum = function (k) { return shown.reduce(function (a, r) { return a + r[k]; }, 0); };
+    var tf = $("runlist-table").querySelector("tfoot");
+    if (!rows.length) {
+      tf.innerHTML = "";
+    } else if (!shown.length) {
+      // Every visible row is non-physics, so a row of zeros would read as a bug
+      // rather than as "these are deliberately not counted".
+      tf.innerHTML = '<tr><td colspan="' + COLS.length + '" style="font-weight:400;color:var(--muted)">'
+        + "Not counted — non-physics runs are excluded from the statistics.</td></tr>";
+    } else {
+      tf.innerHTML = "<tr><td>" + shown.length + " runs</td><td></td><td></td><td></td>"
+        + "<td>" + sum("n") + "</td>"
+        + "<td>" + sum("h").toFixed(1) + " h</td>"
+        + "<td>" + sum("h_air").toFixed(1) + " h</td>"
+        + "<td>" + sum("ev").toLocaleString("en-US") + "</td><td></td></tr>";
+    }
+    $("runlist-count").textContent = rows.length + " of " + listState.runs.length + " runs";
+  }
+
+  function renderRunList(rh) {
+    var card = $("runlist-card");
+    if (!rh || !rh.runs || !rh.runs.length) { card.style.display = "none"; return; }
+    card.style.display = "";
+    listState.runs = rh.runs;
+
+    var a = rh.all_time || {};
+    $("runlist-caption").textContent =
+      "Every run in the ledger — " + (a.n_runs || 0) + " physics runs and "
+      + (a.n_subruns || 0) + " sub-runs from "
+      + (a.t_lo ? when(a.t_lo) : "?") + " to " + (a.t_hi ? when(a.t_hi) : "?")
+      + ", totalling " + compact(a.events || 0) + " events. Click a column to sort.";
+
+    var note = ["“Live” is DAQ live time as logged. “On air” is wall-clock to the next run’s "
+              + "start, which is shorter (†) wherever a changeover stopped a run early; rates use on-air time."];
+    if (a.n_other_runs) {
+      note.push(a.n_other_runs + " non-physics runs (saturating-pulser DAQ tests) are listed "
+              + "but excluded from every total.");
+    }
+    note.push("The ledger begins at run_67 — earlier runs were deleted before it existed.");
+    $("runlist-note").textContent = note.join(" ");
+
+    drawRunList();
+  }
+
+  $("runlist-head").addEventListener("click", function (e) { sortFromEvent(e); });
+  $("runlist-head").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sortFromEvent(e); }
+  });
+  function sortFromEvent(e) {
+    var th = e.target.closest ? e.target.closest("th") : null;
+    if (!th || !th.dataset.key) return;
+    if (listState.sort === th.dataset.key) listState.dir = -listState.dir;
+    else { listState.sort = th.dataset.key; listState.dir = -1; }
+    drawRunList();
+  }
+  $("runlist-modes").addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest("button") : null;
+    if (!btn) return;
+    listState.mode = btn.dataset.mode;
+    Array.prototype.forEach.call(this.querySelectorAll("button"), function (b) {
+      b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+    });
+    drawRunList();
+  });
+  $("runlist-search").addEventListener("input", function () {
+    listState.q = this.value.trim().toLowerCase();
+    drawRunList();
+  });
+
+  function syncRunHistory(stamp) {
+    if (!stamp || stamp === runsState.stamp || runsState.fetching) return;
+    runsState.fetching = true;
+    var sep = location.search ? location.search + "&" : "?";
+    fetch("runs.json" + sep + "_=" + encodeURIComponent(stamp), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (j) {
+        runsState.stamp = stamp;
+        runsState.data = j;
+        renderRuns(j);
+      })
+      .catch(function () { /* keep the previous timeline; the next poll retries */ })
+      .then(function () { runsState.fetching = false; });
   }
 
   function render(payload, history) {
@@ -600,6 +1131,8 @@
       tr.appendChild(th); tr.appendChild(td); tb.appendChild(tr);
     });
 
+    syncRunHistory(d.run_history_stamp);
+
     $("stamp").textContent = d.generated ? "DAQ timestamp " + d.generated + " (CERN local)" : "no timestamp";
   }
 
@@ -619,6 +1152,8 @@
   // Local preview (no web host): the Python previewer inlines a snapshot here.
   if (window.__PREVIEW__) {
     render(window.__PREVIEW__.latest, window.__PREVIEW__.history || []);
+    // The previewer inlines runs.json too — there is no host to fetch it from.
+    if (window.__PREVIEW__.runs) renderRuns(window.__PREVIEW__.runs);
   } else {
     poll();
     setInterval(poll, POLL_MS);

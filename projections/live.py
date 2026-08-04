@@ -18,7 +18,7 @@ projection that is already frozen — it only ever reads one, never creates one.
 import glob
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import run_stats
 import schedule as sched_mod
@@ -197,6 +197,152 @@ def cumulative_series(first_run=None, rate_first_run=None):
         "events_per_pulse": _f(rate.get("events_per_pulse")),
         "pulses_per_hour": _f(rate.get("pulses_per_hour")),
         "events_per_beam_hour": _f(rate.get("events_per_beam_hour")),
+    }
+
+
+def _run_mode(group):
+    """beam / cosmics / pulser for a whole run.
+
+    By majority, not by the first sub-run: a handful of rows carry beam_type
+    'unknown' because their run_config could not be read at scan time (9 of them in
+    run_72 and run_76 today), and those land on is_cosmic=False. Taking iloc[0]
+    would let one unreadable first sub-run relabel an entire cosmics run as beam."""
+    if group.beam_type.isin(run_stats.NON_PHYSICS_BEAM_TYPES).any():
+        return "pulser"
+    return "cosmics" if bool(group.is_cosmic.mean() > 0.5) else "beam"
+
+
+def run_history(days=7.0, now=None, min_gap_min=5.0, sync=False):
+    """The run list (everything) plus a drawable sub-run timeline (recent window).
+
+    Two different questions, so two different spans in one block:
+
+      `runs`  EVERY run in the ledger, per-run aggregate. This is the run list, and
+              it is small — the ledger starts at run_67, where the pre-ledger runs
+              had already been deleted from disk.
+      `subs`  only the last `days`, as flat [start_epoch, seconds, events, is_cosmic]
+              rows. A wall-clock timeline over the whole ledger would be unreadable,
+              and per-sub-run rows are the bulky part of the payload.
+
+    Two things the raw ledger will mislead you about, both fixed here:
+
+    `hours` is the sub-run's NOMINAL window, not how long it actually ran. When
+    mode_watcher changes over mid-sub-run it stops the run where it stands, so a
+    one-hour sub-run cut off after a minute still carries hours=1.0. Dividing events
+    by that invents a rate 60x too low and makes a perfectly healthy changeover look
+    like a dead detector. So every run also gets `h_air` — wall-clock from its own
+    start to the start of the next run, which is what actually elapsed — and `rate`
+    is computed on that. `trunc` marks the runs where the two disagree.
+
+    Sub-runs of consecutive runs OVERLAP in the ledger for the same reason (the old
+    run's nominal window outlives the changeover), so each sub-run's drawn width is
+    clipped to its run's real end. Without that the bars of a changeover pair sit on
+    top of each other.
+
+    Non-physics runs (the saturating-pulser DAQ characterisations, run_90/92/94) are
+    LISTED but flagged `physics: false` and left out of every total — a run list that
+    silently omits three run numbers is confusing, and folding 200 kHz pulser
+    sub-runs into the statistics would wreck them."""
+    now = now or datetime.now()
+    if sync:                        # refresh the ledger from disk before reading it
+        run_stats.load_stats(first_run=None, sync=True)
+    # Straight from the ledger, so the non-physics runs survive to be labelled rather
+    # than filtered out the way load_stats() does.
+    df = run_stats.load_ledger()
+    if not len(df):
+        return None
+    df = df.sort_values("t_start").reset_index(drop=True)
+
+    # Per-run aggregate over EVERY run. `t1_air` is capped by the next run's start,
+    # because that is where mode_watcher actually stopped this one.
+    runs = []
+    for name, g in df.groupby("run", sort=False):
+        mode = _run_mode(g)
+        runs.append({
+            "run": name,
+            "num": run_stats.run_number(name),
+            "mode": mode,
+            "physics": mode != "pulser",
+            "t0": g.t_start.min().to_pydatetime(),
+            "t1": g.t_end.max().to_pydatetime(),
+            "n": int(len(g)),
+            "h": round(float(g.hours.sum()), 2),
+            "ev": int(g.events.sum()),
+        })
+    runs.sort(key=lambda r: r["t0"])
+    for i, r in enumerate(runs):
+        cap = runs[i + 1]["t0"] if i + 1 < len(runs) else r["t1"]
+        r["t1_air"] = min(r["t1"], max(cap, r["t0"]))
+        r["h_air"] = round((r["t1_air"] - r["t0"]).total_seconds() / 3600.0, 2)
+        r["trunc"] = r["h_air"] < r["h"] - 0.05
+        # Below ~a minute the quotient is noise, not a rate.
+        r["rate"] = round(r["ev"] / r["h_air"]) if r["h_air"] > 0.02 else None
+
+    # Everything below this line is the recent window only.
+    phys = df[~df.beam_type.isin(run_stats.NON_PHYSICS_BEAM_TYPES)]
+    t_hi = phys.t_end.max().to_pydatetime()
+    t_lo = t_hi - timedelta(days=float(days))
+    win = phys[phys.t_end >= t_lo]
+
+    air_end = {r["run"]: r["t1_air"] for r in runs}
+    subs = []
+    for row in win.itertuples():
+        end = min(row.t_end.to_pydatetime(), air_end.get(row.run, row.t_end.to_pydatetime()))
+        secs = max(60.0, (end - row.t_start.to_pydatetime()).total_seconds())
+        subs.append([round(row.t_start.timestamp()), round(secs),
+                     int(row.events), int(bool(row.is_cosmic))])
+
+    # Measured beam-off intervals, same derivation the stop-duration study uses
+    # (logger-gap guarded, so a dead logger never reads as downtime).
+    gaps, off_s = [], 0.0
+    try:
+        for a, b in run_stats.load_actual_downtime(t_lo, t_hi):
+            secs = (b - a).total_seconds()
+            off_s += secs
+            if secs >= float(min_gap_min) * 60.0:
+                gaps.append([round(a.timestamp()), round(b.timestamp())])
+    except Exception as e:                                        # noqa: BLE001
+        print(f"[live] Downtime lookup failed: {e}")
+
+    def _totals(frame, extra=None):
+        out = {
+            "n_subruns": int(len(frame)),
+            "events": int(frame.events.sum()),
+            "beam_events": int(frame[~frame.is_cosmic].events.sum()),
+            "cosmic_events": int(frame[frame.is_cosmic].events.sum()),
+            "hours": round(float(frame.hours.sum()), 2),
+        }
+        out.update(extra or {})
+        return out
+
+    win_span_s = (t_hi - win.t_start.min().to_pydatetime()).total_seconds() if len(win) else 0
+    return {
+        "generated": now.isoformat(timespec="seconds"),
+        "days": float(days),
+        "min_gap_min": float(min_gap_min),
+        # Window (the timeline).
+        "t_lo": (win.t_start.min().to_pydatetime().isoformat(timespec="minutes")
+                 if len(win) else None),
+        "t_hi": t_hi.isoformat(timespec="minutes"),
+        "subs": subs,
+        "gaps": gaps,
+        "totals": _totals(win, {
+            "n_runs": len({r for r in win.run}),
+            "beam_off_h": round(off_s / 3600.0, 2),
+            "beam_uptime_pct": (round(100.0 * (1.0 - off_s / win_span_s), 1)
+                                if win_span_s > 0 else None),
+        }),
+        # All time (the run list).
+        "runs": [dict(r, t0=r["t0"].isoformat(timespec="minutes"),
+                      t1=r["t1"].isoformat(timespec="minutes"),
+                      t1_air=r["t1_air"].isoformat(timespec="minutes"),
+                      t0_epoch=round(r["t0"].timestamp())) for r in runs],
+        "all_time": _totals(phys, {
+            "n_runs": sum(1 for r in runs if r["physics"]),
+            "n_other_runs": sum(1 for r in runs if not r["physics"]),
+            "t_lo": df.t_start.min().to_pydatetime().isoformat(timespec="minutes"),
+            "t_hi": t_hi.isoformat(timespec="minutes"),
+        }),
     }
 
 

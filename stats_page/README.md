@@ -42,6 +42,86 @@ The page lives in a `x17/` subdirectory, so the existing landing page and
 | `../stats_page_watcher.py` | tmux entry point, matching the other watchers |
 | `../config/stats_page_config.example.json` | Copy to `stats_page_config.json` |
 
+Two files are published, not one: `data.json` (live status, every 60 s) and
+`runs.json` (the run-history timeline, only when it changes) — see below.
+
+## Tabs
+
+Two views, because live status and the run record are different questions asked at
+different cadences:
+
+| Tab | What is on it |
+|---|---|
+| **Live** | the hero, the tiles, the projection plot, IPC yield, services, field dump |
+| **Runs** | *Recent activity* (the sub-run timeline) and *All runs* (the run list) |
+
+The selected tab is in the hash (`#live` / `#runs`), so a view is linkable and
+survives a reload. The staleness banner sits above both — it applies to everything.
+
+## Run history
+
+The **Runs** tab holds two things, from one `runs.json`.
+
+**Recent activity** — every sub-run of the last week on a **true wall-clock axis**:
+one column per sub-run, width = how long it actually ran, height = events banked,
+blue for beam and orange for cosmics, with measured beam-off periods shaded behind.
+Hovering a column names its run.
+
+**All runs** — every run in the ledger, one row each, sortable on any column and
+filterable by mode or run name. Totals follow the filter. The ledger begins at
+run_67; earlier runs were deleted before it existed, so there is nothing older to
+list.
+
+Built by `projections/live.py: run_history()` off the ledger. Note the two spans in
+one block: `runs` is **every** run (the list), `subs` is only the last
+`run_history_days` (the timeline) — a wall-clock timeline over the whole ledger
+would be unreadable, and the per-sub-run rows are the bulky part of the payload.
+
+Two corrections it makes that matter, because the raw ledger will otherwise mislead
+you:
+
+- **`hours` is a nominal window, not elapsed time.** When `mode_watcher` changes
+  over mid-sub-run it stops the run where it stands, but the sub-run keeps its full
+  nominal `hours`. run_131 is logged as 0.25 h and actually lived 62 seconds — at
+  face value its 285 events read as a catastrophic detector failure instead of a
+  perfectly normal changeover. So every run also carries **`h_air`** (wall-clock to
+  the next run's start) and every rate is computed on that; `trunc` marks the runs
+  where the two disagree, shown as † in the table.
+- **Consecutive runs overlap in the ledger** for the same reason, so each sub-run's
+  drawn width is clipped to its run's real end. Without that the bars of a
+  changeover pair are drawn on top of each other.
+
+Beam-off bands come from `run_stats.load_actual_downtime()` — the same
+logger-gap-guarded derivation as the stop-duration study, so a dead logger can't
+read as downtime. Intervals shorter than `run_history_min_gap_min` (5 min) are
+counted in the totals but not drawn, since at a week per screen they are hairlines.
+
+**Non-physics runs are listed but not counted.** The saturating-pulser DAQ
+characterisations (run_90 / 92 / 94) carry `physics: false`, appear in the list under
+a Pulser chip, and are excluded from every total — a run list that silently skips
+three run numbers is confusing, but folding 200 kHz pulser sub-runs into the
+statistics would wreck them. This is why the list reads `runs.json` from
+`run_stats.load_ledger()` directly rather than `load_stats()`, which filters them out.
+
+Run mode is taken by **majority** of a run's sub-runs, not from the first one: a few
+rows carry `beam_type: unknown` because their run_config could not be read at scan
+time (9 today, in run_72 and run_76), and those default to `is_cosmic=False`. One
+unreadable first sub-run would otherwise relabel a whole cosmics run as beam.
+
+### Why it is a separate file
+
+A week of sub-runs is ~15 kB and it only changes when a sub-run completes (~hourly),
+while `data.json` is rewritten every 60 s. Folding it in would double `data.json`
+and — since **EOS versions every overwrite** — bank ~1,440 versioned copies a day of
+something that changed once an hour. So it rides in its own `runs.json`, pushed only
+when its stamp changes, exactly like the plot. `data.json` carries only the stamp
+(`run_history_stamp`); the page re-fetches `runs.json` when it sees that change, and
+otherwise leaves the card alone.
+
+Config: `run_history_enabled`, `run_history_days` (7), `run_history_min_gap_min` (5).
+The whole block is wrapped — if it fails, the card hides itself and the rest of the
+page is unaffected.
+
 ## Statistics and projection
 
 The page also carries cumulative statistics and the frozen projection from
