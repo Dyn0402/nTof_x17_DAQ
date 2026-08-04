@@ -191,6 +191,26 @@ Sort globally before use — a packet interleaves per-channel blocks.
 - Two consecutive harness alarms ⇒ Telegram + stop.
 - Disk guard: no segment is started below 25 GB free.
 
+### ⚠ Known failure mode: the cold-boot false wedge (open, recurs every reboot)
+
+A **host reboot** autostarts this supervisor ~14 s after boot, before the DREAM link is
+up. The first connect to .244 returns `OSError(113, 'No route to host')`, which
+`n1081b_session` classifies as `BoardWedgedError` and answers with a **6 h quarantine**.
+The one scheduled retry 10 min later is then blocked *by that same marker*, which counts
+as harness alarm #2 ⇒ **stop**. So one transient network error at boot reliably kills TT
+logging for good, with no self-recovery, and `.244` counter telemetry with it (§Exclusivity
+— `poll_modules` skips on the *session* name, not on whether the supervisor is alive).
+
+**The board is fine in this case.** Tell it apart by the previous segment's `stats.json`:
+`"finished": "signal"` + `"restored": true` = the last session ended cleanly with a
+verified restore, the opposite of a wedge. `"post_rates_all_hz": null` on such a segment is
+normal (the post-baseline is skipped when stopping), **not** evidence the restore failed —
+and the supervisor's `WARNING: segment did not verify the restore to counters` is
+misleading here.
+
+Recovery runbook, evidence and the not-yet-applied fix:
+**`HANDOFF_2026-07-30_tt_reboot_race.md`**.
+
 ## Operating it
 
 ```

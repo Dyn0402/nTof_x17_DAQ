@@ -101,6 +101,12 @@ STATE_EVERY_S = 10.0
 
 MIN_FREE_GB = 25.0         # refuse to start a segment below this much free space
 DISK_REST_S = 30 * 60.0    # rest this long when the disk guard trips
+
+# --- reachability gate (added 2026-07-30, see HANDOFF_2026-07-30_tt_reboot_race.md) ---
+BOARD_IP = "192.168.10.244"
+REACH_WAIT_S = 180.0       # patient wait for the DREAM link at boot, before segment 1
+REACH_POLL_S = 3.0         # ICMP only -- never touches the board's websocket server
+UNREACH_REST_S = 10 * 60.0 # rest this long when the board stays unreachable, then re-check
 KEEP_DAYS = 21             # prune segment dirs older than this
 LOG_MAX_BYTES = 20 * 1024 * 1024
 
@@ -231,6 +237,10 @@ class Supervisor:
         self.alarm_strikes = 0
         self.segments_ok = 0
         self.edges_total = 0
+        # Wall-clock start, used to tell a quarantine marker written by our OWN chain
+        # from one that predates us (see _own_quarantine).
+        self.t_start = time.time()
+        self._own_q_waits = 0
         # per-section counter-measured input rates from the latest segment baseline —
         # the only wall (A) / liq (B) rate record left while we own .244
         self.counter_hz = {}
@@ -447,6 +457,84 @@ class Supervisor:
 
     # ---------------- main loop ----------------
 
+    def _board_pingable(self):
+        """True if .244 answers ICMP (which also proves ARP resolves).
+
+        Deliberately ping and NOT a websocket connect: this runs before every segment,
+        so it must be something that cannot itself harm the board. ICMP never touches
+        libwebsock, so this is not the "reconnect churn" the board hygiene rules forbid
+        (n1081b/CLAUDE.md rule 7) -- no session is opened until the gate passes.
+        """
+        try:
+            return subprocess.run(["ping", "-c", "1", "-W", "1", BOARD_IP],
+                                  capture_output=True).returncode == 0
+        except Exception:
+            return False
+
+    def _reachable_ok(self):
+        """Gate every segment on the board actually being reachable.
+
+        This is the fix for the 2026-07-30 cold-boot false wedge: the supervisor
+        autostarted ~14 s after a host reboot, before the DREAM link was up, and its
+        first connect got OSError(113) -> "wedge" -> 6 h quarantine -> permanent stop,
+        on a healthy board.
+
+        Note the two things measured on 07-30 that rule out the simpler gates: the
+        `network-online.target` drop-in was ALREADY in place and did not help (nm-online
+        was satisfied by the CERN NIC while enp4s0 still had no carrier), and enp4s0's
+        IP was up 2.8 s BEFORE the failing connect -- the connect failed on unresolved
+        ARP because the switch port was not forwarding yet. So neither "network-online"
+        nor "link is up" is sufficient; only end-to-end reachability is.
+
+        Shaped like _disk_ok(): rest and re-check rather than alarm, so a link problem
+        (cf. `.242`, link-dead since 07-28) never burns alarm strikes and never stops
+        the chain for good. Returns False if no segment should start yet."""
+        if self._board_pingable():
+            return True
+        # Patient short wait first -- at boot the link comes up within seconds.
+        log(f"REACH GATE: {BOARD_IP} not answering; waiting up to "
+            f"{REACH_WAIT_S:.0f}s for the link (no board session opened)")
+        self._status = "waiting for board link"
+        self._publish(force=True)
+        deadline = time.time() + REACH_WAIT_S
+        while time.time() < deadline and not self._stop_requested():
+            time.sleep(REACH_POLL_S)
+            if self._board_pingable():
+                waited = REACH_WAIT_S - (deadline - time.time())
+                log(f"REACH GATE: {BOARD_IP} reachable after {waited:.0f}s — proceeding")
+                event('REACH_OK', ip=BOARD_IP, waited_s=f'{waited:.0f}')
+                return True
+        if self._stop_requested():
+            return False
+        log(f"REACH GATE: {BOARD_IP} still unreachable after {REACH_WAIT_S:.0f}s — "
+            f"resting {UNREACH_REST_S / 60:.0f} min (NOT a wedge; check cable/switch "
+            f"port and `ip neigh show {BOARD_IP}`)")
+        event('REACH_FAIL', ip=BOARD_IP, waited_s=f'{REACH_WAIT_S:.0f}',
+              action=f'resting {UNREACH_REST_S / 60:.0f} min, no segment started',
+              note='link/routing failure, not a wedge — resting will not fix a dead link')
+        telegram(f"M5 ({BOARD_IP}) is not reachable — TT streaming paused. This is a "
+                 f"LINK problem, not a board wedge: check the cable/switch port. "
+                 f"Retrying every {UNREACH_REST_S / 60:.0f} min.")
+        self._rest(UNREACH_REST_S, "board unreachable")
+        return False
+
+    def _own_quarantine(self):
+        """The quarantine record on .244 IF this supervisor's own chain wrote it.
+
+        Backstop for handoff fix (b). A quarantine written by our own previous segment
+        is NOT independent evidence of a second fault: the one allowed retry cannot
+        possibly succeed inside a 6 h window, so counting it as harness alarm #2
+        guaranteed a permanent stop 10 min after any single transient error. `since`
+        being after our start time is what makes it ours."""
+        try:
+            from n1081b.n1081b_session import quarantine_status
+            rec = quarantine_status(BOARD_IP)
+        except Exception:
+            return None
+        if rec and rec.get("since", 0) >= self.t_start:
+            return rec
+        return None
+
     def _disk_ok(self):
         """Refuse to open a stream we have nowhere to put. Rest and re-check rather
         than stopping: the disk is usually freed by the backup/space watchers."""
@@ -480,6 +568,11 @@ class Supervisor:
         while not self._stop_requested():
             if not self._disk_ok():
                 continue
+            # Reachability BEFORE the disk-free check would be equally valid; it goes
+            # after so the cheap local check runs first. Either way: no board session is
+            # opened until the board answers ICMP.
+            if not self._reachable_ok():
+                continue
             verdict = self.run_segment()
             if verdict == "stop":
                 break
@@ -489,6 +582,25 @@ class Supervisor:
                 time.sleep(SEG_GAP_S)
                 continue
             if verdict == "alarm":
+                # Handoff fix (b): being blocked by a quarantine THIS chain wrote is not
+                # independent evidence of a second fault. Wait the window out instead of
+                # spending it on a retry that cannot succeed and then stopping for good.
+                # Capped so a genuinely wedged board still ends in a human-facing alarm.
+                own_q = self._own_quarantine()
+                if own_q and self._own_q_waits < 2:
+                    self._own_q_waits += 1
+                    left = max(0.0, own_q["until"] - time.time())
+                    log(f"alarm was OUR OWN quarantine marker ({left / 60:.0f} min left) "
+                        f"— not counting it as an independent alarm; waiting it out")
+                    event('OWN_QUARANTINE_WAIT', wait_num=self._own_q_waits,
+                          minutes_left=f'{left / 60:.0f}',
+                          note='not counted toward the two-consecutive-alarms stop')
+                    telegram(f"TT chain is inside a quarantine it wrote itself "
+                             f"({left / 60:.0f} min left); waiting it out rather than "
+                             f"stopping. If .244 pings, this is the reboot race — see "
+                             f"HANDOFF_2026-07-30_tt_reboot_race.md.")
+                    self._rest(left + 30.0, "own quarantine")
+                    continue
                 self.alarm_strikes += 1
                 if self.alarm_strikes >= 2:
                     self._status = "stopped-alarm"

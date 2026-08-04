@@ -43,6 +43,10 @@ Usage (this is the whole API you need):
     except BoardWedgedError as e:
         print("board wedged -- leave it alone for hours:", e)
 
+Catch BoardUnreachableError BEFORE BoardWedgedError (it is a subclass) if you need to
+tell "the link is down / the host was never reached" apart from "the board is wedged".
+Only the latter is healed by rest, and only the latter writes a quarantine.
+
 DO NOT `from n1081b_sdk import N1081B` and open your own connection in a control
 script. DO NOT SIGKILL a process mid-session (the lock self-clears, but a killed
 connection is a DIRTY disconnect that damages the board). Use s.call() for every
@@ -87,6 +91,55 @@ class BoardWedgedError(RuntimeError):
 
 class BoardQuarantinedError(RuntimeError):
     """Board is in its post-wedge rest window. Do not connect until it elapses."""
+
+
+class BoardUnreachableError(BoardWedgedError):
+    """The board was never REACHED: no route / no ARP / local address not up yet.
+
+    This is a LINK or ROUTING failure, not a libwebsock wedge. The distinction is
+    operationally important and cost us the TT stream on 2026-07-30: a host reboot
+    raced the DREAM link, the first connect to .244 got
+    `OSError(113, 'No route to host')`, that was classified as a wedge, and a 6 h
+    quarantine + a permanent supervisor stop followed on a board that was perfectly
+    healthy. See `HANDOFF_2026-07-30_tt_reboot_race.md`.
+
+    The reasoning that makes this safe: if the SYN never reached the board, no
+    libwebsock session can have been created there, so there is nothing leaked and
+    nothing to heal -- quarantining is not just useless, it actively blocks recovery.
+    Resting also cannot help a dead link (cf. `.242`, link-dead since 07-28 and
+    mislabelled a wedge for exactly this reason). Compare
+    memory `feu-dropout-recovery-verification`: ARP state is what separates a
+    link-dead host from a hung one.
+
+    Deliberately a SUBCLASS of BoardWedgedError so that every existing
+    `except BoardWedgedError` handler keeps working unchanged and fails safe; callers
+    that want to tell the two apart catch this one FIRST. Wedge detection itself is
+    not weakened: this is raised only when the kernel says the packet had nowhere to
+    go. A board that is pingable but does not complete the upgrade, or completes it
+    and then hangs, still trips the normal wedge path.
+    """
+
+
+# errnos meaning "the packet never left / there is no path to the host". Note that
+# ECONNREFUSED is NOT here on purpose: an RST means the host's stack DID answer, so
+# the board is reachable and something else is wrong (see rule 7 in n1081b/CLAUDE.md --
+# reconnect churn produces transient ConnectionRefused).
+_UNREACHABLE_ERRNOS = frozenset((
+    errno.EHOSTUNREACH,    # 113 no ARP reply / no route to host
+    errno.ENETUNREACH,     # 101 no route to network
+    errno.ENETDOWN,        # 100 interface down
+    errno.EHOSTDOWN,       # 112 host down
+    errno.EADDRNOTAVAIL,   #  99 our OWN address isn't up yet (the cold-boot case)
+))
+
+
+def _is_unreachable(err):
+    """True if `err` chain says the host was never reached (link/routing, not a wedge)."""
+    while err is not None:
+        if isinstance(err, OSError) and err.errno in _UNREACHABLE_ERRNOS:
+            return True
+        err = err.__cause__ or err.__context__
+    return False
 
 
 def _ip_tag(ip):
@@ -256,6 +309,18 @@ class N1081BSession:
             ws = create_connection(url, timeout=self.connect_timeout_s)
         except (WebSocketException, OSError, socket.timeout) as e:
             self._consecutive_timeouts += 1
+            # A host we never reached cannot have leaked a session, so do NOT
+            # quarantine: that would lock everyone out of a healthy board and, worse,
+            # block its own recovery. See BoardUnreachableError. Only the FIRST
+            # connect is classified this way -- if the link drops mid-session the
+            # normal wedge path still applies, because by then a real session existed
+            # on the board and dropping it IS the dirty disconnect.
+            if _is_unreachable(e):
+                raise BoardUnreachableError(
+                    f"{self.ip}: host not reachable ({e!r}) -- this is a LINK/ROUTING "
+                    f"failure, NOT a wedge: the board was never contacted, so nothing "
+                    f"is quarantined. Check the cable/switch port and ARP "
+                    f"(`ip neigh show {self.ip}`); resting will not help.") from e
             self._maybe_quarantine(e)
             raise BoardWedgedError(
                 f"{self.ip}: websocket upgrade failed/timed out ({e!r}). Board is "

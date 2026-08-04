@@ -132,13 +132,52 @@ Quick check: `python -c "from n1081b.n1081b_session import quarantine_status; pr
   Sections A/B/D stay counters and are sampled at each 6 h segment boundary (rates in
   the segment's `stats.json`). Design + operating notes: `n1081b/TIMETAG_WATCHER.md`
   §The standing configuration.
-- **`.242` (M3) has been LINK-DEAD since ~2026-07-28 15:30** — ARP `FAILED`, no ping,
-  `OSError(113, 'No route to host')`; per [[feu-dropout-recovery-verification]] that is
-  link-dead (powered off / cable / switch port), **not** a libwebsock wedge, so resting
-  it will not help and it needs physical attention. Its **NIM logic is still running** —
-  M5.C still counts the sector coincidences M3 produces — so the trigger is unaffected;
-  what is lost is remote read/write of M3 (its per-sub-run snapshot rows and any
-  scan target on it; the current scan schedule touches only .241/.243/.245).
+  **A HOST reboot used to fake a .244 wedge — FIXED 2026-07-30 13:00.** The supervisor
+  autostarted ~14 s after boot, before the DREAM link was up, got
+  `OSError(113, 'No route to host')` → `BoardWedgedError` → **6 h quarantine**, and its one
+  retry was then blocked by its own marker ⇒ two alarms ⇒ **permanent stop**, taking M5
+  counter telemetry with it. Now: a **reachability gate** (`_reachable_ok()`) opens no
+  board session until `.244` answers ICMP; an unreachable host raises the new
+  `BoardUnreachableError` and writes **no quarantine**; and a quarantine the chain wrote
+  itself no longer counts as an independent alarm. ⚠ Note for anyone re-diagnosing this:
+  `network-online.target` does **not** help (it is satisfied by the CERN NIC while
+  enp4s0 has no carrier) and neither does link-up (the failing connect was 2.8 s *after*
+  enp4s0 got its IP — it was ARP). If you do see it, the board is healthy: the tell is the
+  previous segment's `stats.json` — `"finished": "signal"` + `"restored": true` means a
+  clean signalled shutdown with a verified restore (and `post_rates_all_hz: null` there is
+  normal, not a failed restore). Runbook + applied fix:
+  `n1081b/HANDOFF_2026-07-30_tt_reboot_race.md`.
+  **To reboot the host, use the GUI's Soft Shutdown button** (Overview → Run Control →
+  Host) rather than rebooting straight away: it stops the run, then gives the supervisor as
+  long as it needs to restore `.244` to counters. A plain `reboot` relies on the stream
+  winding down inside systemd's 90 s stop timeout, and a SIGKILL at that deadline is the
+  dirty disconnect that wedges the board. `bash_scripts/soft_shutdown.sh`.
+- **`.242` (M3) is FULLY HEALTHY again — verified 2026-07-30 13:15.** It had been
+  **LINK-DEAD since ~07-28 15:30** (ARP `FAILED`, no ping, `OSError(113)`) and was diagnosed
+  as needing physical attention. **Nobody went to the crate.** It came back across the
+  **07-30 11:37 host reboot**, which re-initialised the 10 GbE NIC (`atlantic` driver,
+  `link change old 0 new 10000`).
+  Health check run through `poll_modules._dump_board` (read-only, `auto_quarantine=False`,
+  the same path every per-sub-run snapshot uses), two passes 12 s apart:
+  **0 errors**, `login=True`, serial 49325, sw 2025.3.27.0 / zynq 22.10.07.00 /
+  fpga 23.11.10.00, all four sections `and`, `ip neigh` `lladdr 00:12:5e:00:1b:80 REACHABLE`
+  at 0.135 ms. Wall-leg ch0 reads `gate 20, delay 20, status True, invert False` on all four
+  sections — the standing `+20 ns` config, intact.
+  **Diffed against `snapshots/run79_asbuilt_2026-07-27.json` (pre-outage): ZERO config
+  differences**, and identical firmware/serial. So the board never lost its state and never
+  rebooted ⇒ **the fault was on the network path, host-side, not the board or the cable.**
+  ⚠ Generalise this: ARP `FAILED` correctly rules out a libwebsock wedge, but it does **not**
+  establish that the far end is at fault. Before concluding "needs someone at the crate",
+  consider bouncing the host's DREAM interface.
+  Note `get_function_results` returns `{"result": "none"}` on M3 — that is **normal for an
+  `and` section**, not a fault; there is no rate readout outside counter mode (getting rates
+  from M3 needs a counter-mode flip, which is a WRITE — see
+  memory `n1081b-m5-bypass-measurement-technique`). M3's logic liveness is instead proven
+  independently by **M5.C**, which streamed its four sector ANDs at ~67 Hz throughout.
+  Its **NIM logic ran throughout**, so the trigger was never affected; what was lost during
+  the outage was remote read/write of M3 (its per-sub-run snapshot rows and any scan target
+  on it; the scan schedule during the outage touched only .241/.243/.245).
+  **M3 can go back into the scan schedule / snapshot set.**
 - `.244` (M5) history: **fully HEALTHY** (2026-07-17 midday: power-cycled at closeout, standard
   cabling, all four sections `counter` + verified counting, login 0.06 s). The
   **"per-section TT wedge" turned out not to exist** — TT sections silently emit zero

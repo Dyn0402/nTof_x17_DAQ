@@ -1,5 +1,12 @@
 # Post-reboot checklist — recover .244 (M5) after a reboot
 
+> **This file is about rebooting the BOARD.** If what rebooted was the **host**, you are
+> probably looking at the cold-boot false wedge instead: the TT supervisor autostarts
+> before the DREAM link is up, gets `OSError(113, 'No route to host')`, and a 6 h
+> quarantine + permanent stop follows — the board itself is healthy and needs nothing.
+> Diagnosis and recovery: **`HANDOFF_2026-07-30_tt_reboot_race.md`**. Steps 1–4 of ROUND 1
+> below are still the right verification once the quarantine is cleared.
+
 > **ROUND 2 below is OBSOLETE (2026-07-17 midday):** the power-cycle happened and the
 > "A/B per-section TT wedge" was disproven — TT silence is a live input-rate ceiling
 > (~50 Hz streams, ~800 Hz silent), not a wedge; reboots are irrelevant to it. See

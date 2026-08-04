@@ -155,20 +155,39 @@ def _dump_board(ip):
 
 
 def _tt_watcher_running():
-    """True if the N1081B time-tag watcher tmux session is alive (it owns .244)."""
+    """True if the time-tag watcher is actually STREAMING .244 (so we must not poll it).
+
+    Both conditions are required: the tmux session must exist AND a supervisor process
+    must be alive inside it. The session alone is not enough -- when the supervisor
+    self-stops it leaves its pane sitting at an idle bash, and keying off the session
+    name alone then silently dropped .244 from every per-sub-run snapshot for as long as
+    that pane lived, so there was no wall-rate record at all and nothing said why
+    (2026-07-30, HANDOFF_2026-07-30_tt_reboot_race.md §4.1).
+
+    Fails SAFE: if the process check itself errors we assume it IS streaming and skip
+    the board, because polling a board that is mid-stream is the harmful direction.
+    """
     try:
         r = subprocess.run(["tmux", "has-session", "-t", TT_WATCHER_SESSION],
                            capture_output=True)
-        return r.returncode == 0
+        if r.returncode != 0:
+            return False
     except Exception:
         return False
+    try:
+        p = subprocess.run(["pgrep", "-f", "tt_stream_supervisor.py"],
+                           capture_output=True)
+        return bool(p.stdout.strip())
+    except Exception:
+        return True  # fail safe: assume streaming, skip the board
 
 
 def _exclude_tt_watcher_board(ips, logger=None):
     """Drop .244 from the poll list while the time-tag watcher is streaming it."""
     if TT_WATCHER_IP in ips and _tt_watcher_running():
         if logger:
-            logger(f"[n1081b] {TT_WATCHER_IP} owned by {TT_WATCHER_SESSION}; skipping it this poll")
+            logger(f"[n1081b] {TT_WATCHER_IP} owned by a live {TT_WATCHER_SESSION} "
+                   f"supervisor; skipping it this poll")
         return [ip for ip in ips if ip != TT_WATCHER_IP]
     return ips
 
