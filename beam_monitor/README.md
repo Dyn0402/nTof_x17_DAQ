@@ -12,11 +12,46 @@ from timber.cern.ch by hand.
 - `beam_intensity_controller.py` — the actual monitor class + shared paths.
   Import-safe from the Flask venv (pytimber is only imported inside the
   watcher process).
-- Per-day CSVs: `beam_monitor/logs/beam_intensity_YYYY-MM-DD.csv`
+- Per-day CSVs: `~/beam_july/slow_control/beam_intensity/beam_intensity_YYYY-MM-DD.csv`
   (`timestamp, unix_ts, intensity_e10`) — every TOF cycle NXCALS logs,
   zeros included, so this is the same record Timber would give you.
+  (They lived in `beam_monitor/logs/` at first; the path moved to the shared
+  slow-control tree with the other watchers.)
 - Published state: `../config/beam_state.json`, served by `/beam/status`
   and the Shift Overview "n_TOF Beam" card. History: `/beam/history?hours=6`.
+
+## Backfilling gaps — the CSVs are NOT self-healing
+
+The watcher only ever queries the last `LOOKBACK_S` (600 s), so **anything
+longer than 10 minutes of watcher downtime is a permanent hole in the CSV**
+even though NXCALS still holds the data. Every host reboot leaves one. Two
+smaller leaks exist too: rows arriving in NXCALS *after* the watcher has moved
+its `_last_logged_ts` past them are skipped forever (a handful per day), and
+the SPS spill rows near the trailing window edge get written with empty
+columns (see the header of the backfill script).
+
+Recover all of it after the fact:
+
+```bash
+# beam + SPS spill (this dir and sps_monitor/); refuses today unless --include-today
+/home/mx17/venvs/nxcals/bin/python sps_monitor/backfill_beam_nxcals.py \
+    --start 2026-07-18 --end 2026-07-22
+# the H4 barrier (TAX) is a separate variable and a separate script
+/home/mx17/venvs/nxcals/bin/python sps_monitor/backfill_tax_nxcals.py \
+    --start 2026-07-14 --end 2026-08-01
+```
+
+Both are idempotent (dedup on `unix_ts`), rewrite each day atomically, and are
+safe to run with the watchers live **as long as you stay off today's file** —
+each watcher seeds its resume point from the newest per-day CSV only, so older
+days cannot disturb it. Give each its own Spark `--driver-port`; 5001 is Flask
+and 5011 is the live watcher.
+
+A gap scan worth re-running before trusting the archive: sort every
+`unix_ts` in a dataset and flag consecutive differences over ~300 s. Done
+2026-08-02 for 07-01..08-02 — beam and spill are now gap-free. The H4 TAX shows
+132 such "gaps" that are **not** data loss: the position is logged on a
+deadband, and the barrier moves by at most 0.022 mm across any of them.
 
 ## The variable
 
