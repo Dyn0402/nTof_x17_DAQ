@@ -103,7 +103,14 @@ bash_scripts/start_tmux.sh stream1_watcher "python stream1_watcher.py" 5000
 # unchanged and still kill/restart these sessions.
 start_watcher_with_config backup_watcher    backup_watcher.py    backup_config.py    config/backup_config.json 5000 true
 start_watcher_with_config processor_watcher processor_watcher.py processor_config.py config/processor_config.json
-start_watcher_with_config qa_watcher        qa_watcher.py        qa_config.py        config/qa_config.json
+# qa_watcher: NOT auto-started (operator decision, 2026-07-30). Uncomment to restore.
+# The GUI's Start QA button is unchanged and still starts/stops it on demand.
+#start_watcher_with_config qa_watcher       qa_watcher.py        qa_config.py        config/qa_config.json
+# pedestal_watcher: standing as of 2026-07-30 (was GUI-start-only). Polls the
+# pedestals dir and runs scripts/pedestal_strip_check.py on each finished pedestal
+# run; owns no hardware and commands nothing, so it is safe to leave up. Session
+# name must stay `pedestal_watcher` — that is Flask's PED_QA_TMUX.
+start_watcher_with_config pedestal_watcher  pedestal_watcher.py  pedestal_qa_config.py config/pedestal_qa_config.json
 # SSD space watcher: keeps the raw staging disk (/home/mx17/july_dream/dream_run) above a
 # free-space floor by deleting the OLDEST runs that are verified SSD -> HDD -> EOS, newest
 # runs first to survive. Added 2026-07-22: nothing had ever pruned that disk and at the
@@ -134,10 +141,7 @@ fi
 # is missing it falls back to the built-in defaults, which are already correct for
 # this machine. See stats_page/README.md.
 bash_scripts/start_tmux.sh stats_page_watcher "python stats_page_watcher.py" 5000
-# NOT auto-started: pedestal_watcher (config/pedestal_qa_config.json). It is a
-# per-pedestal-run tool driven from the GUI, not a standing service, and an empty
-# 0-byte pedestal FDF deadlocks it — add a start_watcher_with_config line here if you
-# decide you want it standing.
+# (pedestal_watcher is started with the other watchers above, as of 2026-07-30.)
 # N1081B trigger-timestamp stream: sole owner of Module 5 (.244). Streams section C
 # (the four sector coincidences from M3) continuously as per-edge timestamps, for
 # offline DREAM event <-> trigger matching. Holds .244 in Time-Tag for as long as it
