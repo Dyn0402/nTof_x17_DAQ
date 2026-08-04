@@ -18,7 +18,8 @@ WHAT --go DOES, in order, with nothing left to the operator
      of a command you thought was read-mostly.
   2. **Allocates the next run number** = max existing `run_N` across both run trees, + 1.
   3. **Regenerates the run config** from that mode's generator at the settled operating point
-     (`OVR_WRN_HWM=1 OVR_WRN_LWM=0`, plus 15 min x 24 sub-runs for cosmics). The operating
+     (`OVR_WRN_HWM=1 OVR_WRN_LWM=0`, plus 15 min x 480 sub-runs = 120 h for cosmics, matching
+     the beam side's 60 min x 120). The operating
      point lives in MODES below, in ONE place, so it cannot drift between the two directions.
   4. Refuses if another process holds an N1081B board lock.
   5. Sanity-checks the beam against the mode: beam-with-no-beam gives empty sub-runs that are
@@ -112,9 +113,13 @@ MODES = {
         'expect': {'SEC_C': ('or', [0]), 'SEC_D': ('or', [1])},
         'config': 'run_config_cosmics_optimal_83.json',   # Hwm 1/Lwm 0, 0.50 MIP plastics
         'want_beam': False,
+        # 15 min x 480 = 120 h, matching the beam side. Both are open-ended by design:
+        # a changeover ends the run, not the sub-run list. At 24 sub-runs (6 h) a long
+        # beam-off left the DAQ idle once cosmics ran out — mode_watcher only reacts to a
+        # beam transition WITH a run live, so nothing restarted it (run_133, 08-04).
         'gen': ('run_configs/run_config_cosmics_optimal_80.py',
                 {'OVR_WRN_HWM': '1', 'OVR_WRN_LWM': '0',
-                 'SUBRUN_MIN': '15', 'N_SUBRUNS': '24'},
+                 'SUBRUN_MIN': '15', 'N_SUBRUNS': '480'},
                 'run_config_cosmics_optimal_{n}.json'),
         'gate': False,         # cosmics do not care about beam gaps
     },
