@@ -516,7 +516,26 @@
     </div>
     <div class="panel-body">
       <div id="ab-subdirs" class="d-flex flex-wrap gap-2"></div>
+      <div id="ab-reports" class="d-flex flex-wrap gap-2 mt-2"></div>
       <p id="ab-no-images" class="text-muted d-none mb-0 mt-2">No images in this directory.</p>
+    </div>
+  </div>
+
+  <!-- Inline HTML-report viewer. Hidden until a report is opened. The iframe is
+       sandboxed WITH allow-scripts (so reports can be interactive — plotly is
+       already vendored in static/) but WITHOUT allow-same-origin, which gives
+       the report an opaque origin: it cannot read this page's DOM, session or
+       cookies, and cannot call the DAQ's own endpoints. Relative <img>/<link>
+       URLs inside the report still resolve normally. -->
+  <div id="ab-report-panel" class="panel mt-3 d-none">
+    <div class="panel-header">
+      <span class="panel-title" id="ab-report-title">Report</span>
+      <a id="ab-report-newtab" class="btn btn-outline-info btn-sm ms-auto" target="_blank" rel="noopener">Open in new tab ↗</a>
+      <button id="ab-report-close" class="btn btn-outline-secondary btn-sm ms-2">Close</button>
+    </div>
+    <div class="panel-body p-0">
+      <iframe id="ab-report-frame" sandbox="allow-scripts allow-popups"
+              style="width:100%; height:78vh; border:0; background:transparent;"></iframe>
     </div>
   </div>
 
@@ -2878,7 +2897,37 @@ async function abBrowse(relPath, bustCache = false) {
     abCurrentPath = data.path;
     abRenderBreadcrumb(abCurrentPath);
     abRenderSubdirs(data.subdirs, abCurrentPath);
+    abRenderReports(data.reports || []);
     abRenderGallery(data.images, bustCache);
+}
+
+function abRenderReports(reports) {
+    const div = document.getElementById("ab-reports");
+    div.innerHTML = "";
+    // Changing directory should not leave the previous directory's report open.
+    abCloseReport();
+    reports.forEach(r => {
+        const btn = document.createElement("button");
+        btn.className = "btn btn-outline-info btn-sm";
+        btn.textContent = "📄 " + r.name;
+        btn.addEventListener("click", () => abOpenReport(r));
+        div.appendChild(btn);
+    });
+}
+
+function abOpenReport(report) {
+    document.getElementById("ab-report-title").textContent = report.name;
+    document.getElementById("ab-report-frame").src = report.url;
+    document.getElementById("ab-report-newtab").href = report.url;
+    document.getElementById("ab-report-panel").classList.remove("d-none");
+    document.getElementById("ab-report-panel").scrollIntoView({behavior: "smooth"});
+}
+
+function abCloseReport() {
+    const panel = document.getElementById("ab-report-panel");
+    panel.classList.add("d-none");
+    // Blank the src too, so a closed report stops running/polling.
+    document.getElementById("ab-report-frame").src = "about:blank";
 }
 
 function abRenderBreadcrumb(path) {
@@ -2973,6 +3022,7 @@ document.querySelector('a[href="#analysis-browser"]').addEventListener("click", 
 });
 
 document.getElementById("ab-reload").addEventListener("click", () => abBrowse(abCurrentPath, true));
+document.getElementById("ab-report-close").addEventListener("click", abCloseReport);
 
 
 // ---------------------------------------------------------------------------

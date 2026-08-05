@@ -1423,8 +1423,48 @@ def browse_analysis():
     images  = [f"/serve_png?dir={quote(target, safe='')}&file={quote(f, safe='')}"
                for f in sorted(os.listdir(target))
                if f.lower().endswith(".png")]
+    # HTML analysis reports living beside the plots. Served through
+    # /analysis_file/<relpath> (NOT /serve_png-style query args) so that a
+    # report can reference its figures with ordinary relative links —
+    # <img src="figures/x.png"> resolves against the report's own URL.
+    reports = [{"name": f,
+                "url": "/analysis_file/" + quote(f"{rel_path}/{f}".lstrip("/"))}
+               for f in sorted(os.listdir(target))
+               if f.lower().endswith((".html", ".htm"))]
 
-    return jsonify(success=True, subdirs=subdirs, images=images, path=rel_path)
+    return jsonify(success=True, subdirs=subdirs, images=images,
+                   reports=reports, path=rel_path)
+
+
+# Extensions an analysis report may pull in. The containment check below is the
+# real guard; this list just keeps the route from becoming a general file server
+# for anything that happens to sit under analysis/.
+REPORT_EXTS = {".html", ".htm", ".png", ".jpg", ".jpeg", ".gif", ".svg",
+               ".webp", ".css", ".js", ".json", ".csv", ".md", ".txt", ".pdf"}
+
+
+@app.route("/analysis_file/<path:relpath>")
+def analysis_file(relpath):
+    """Serve one file from the analysis tree by its path relative to
+    GENERAL_ANALYSIS_DIR.
+
+    Path-based (rather than ?dir=&file=) on purpose: an HTML report served at
+    /analysis_file/foo/report.html resolves its relative <img src="figures/…">
+    to /analysis_file/foo/figures/…, so reports are written the same way whether
+    they are opened from disk or through the DAQ page.
+    """
+    root = os.path.abspath(GENERAL_ANALYSIS_DIR)
+    target = os.path.normpath(os.path.join(root, relpath))
+    # Containment: os.path.normpath has already collapsed any '..', so a target
+    # outside the tree can only mean the request tried to escape it.
+    if target != root and not target.startswith(root + os.sep):
+        abort(403, "Path outside the analysis directory")
+    if os.path.splitext(target)[1].lower() not in REPORT_EXTS:
+        abort(403, "File type not served")
+    if not os.path.isfile(target):
+        abort(404, "File not found")
+    return send_from_directory(os.path.dirname(target),
+                               os.path.basename(target))
 
 
 @app.route("/get_config_py", methods=['GET'])
