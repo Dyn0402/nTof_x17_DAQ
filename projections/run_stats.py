@@ -21,6 +21,7 @@ log yet and is simply absent — never counted as a zero, which would drag the r
 down every time you look at it mid-sub-run.
 """
 
+import bisect
 import os
 import re
 import sys
@@ -223,6 +224,91 @@ def load_actual_downtime(t_from, t_to, csv_dir=BEAM_CSV_DIR):
         out.append((datetime.fromtimestamp(a), datetime.fromtimestamp(b)))
 
     return [(a, b) for a, b in out if b > t_from and a < t_to]
+
+
+def load_beam_class_minutes(t_from, t_to, csv_dir=BEAM_CSV_DIR):
+    """{minute_unix_ts: beam_class} in [t_from, t_to] from the beam watcher's
+    per-minute beam_class_*.csv (classes from beam_monitor/beam_class.py:
+    on / off_ntof / off_ps / no_data). Empty dict when no class CSVs cover the
+    window (they start 2026-07-01)."""
+    out = {}
+    day = t_from.date()
+    while day <= t_to.date():
+        path = os.path.join(csv_dir, f"beam_class_{day:%Y-%m-%d}.csv")
+        if os.path.exists(path):
+            try:
+                d = pd.read_csv(path, usecols=["unix_ts", "beam_class"])
+                for t, c in zip(d.unix_ts.values, d.beam_class.values):
+                    out[float(t)] = str(c)
+            except Exception as e:
+                print(f"[run_stats] Skipping {path}: {e}", file=sys.stderr)
+        day += timedelta(days=1)
+    lo, hi = t_from.timestamp(), t_to.timestamp()
+    return {t: c for t, c in out.items() if lo <= t <= hi}
+
+
+def classify_downtime(intervals, class_minutes, min_run_min=5):
+    """Tag each (start, end) datetime interval from load_actual_downtime with WHY
+    the beam was off: 'ps' (machine-side), 'ntof' (nTOF-side: access / pulled
+    from the supercycle) or None (no classification data).
+
+    An outage can genuinely change cause partway — 2026-08-04 was a requested
+    access from 08:43 whose afternoon was swallowed by a machine-wide outage —
+    so an interval whose per-minute classes switch is SPLIT at the transitions
+    and each piece labelled separately (the output can be longer than the
+    input). A majority label here would paint the whole 11 h band with whichever
+    cause lasted longer. Runs shorter than `min_run_min` minutes are absorbed
+    into their larger neighbour so one flickery minute (a sparse machine-alive
+    pulse just missing a bin) cannot shred a band into slivers."""
+    if not class_minutes:
+        return [(a, b, None) for a, b in intervals]
+    ts = sorted(class_minutes)
+    out = []
+    for a, b in intervals:
+        lo, hi = a.timestamp(), b.timestamp()
+        # Consecutive same-class runs of the off-classified minutes inside the
+        # stop ('on'/'no_data' minutes don't break a run — they carry no cause).
+        runs = []                      # [cls, first_minute_ts, n_minutes]
+        i = bisect.bisect_left(ts, lo - 60)
+        while i < len(ts) and ts[i] < hi:
+            c = class_minutes[ts[i]]
+            if c in ("off_ps", "off_ntof"):
+                if runs and runs[-1][0] == c:
+                    runs[-1][2] += 1
+                else:
+                    runs.append([c, ts[i], 1])
+            i += 1
+        # Smooth: fold every sub-threshold run into a neighbour (previous when
+        # there is one), re-coalescing as we go, until only real runs remain.
+        changed = True
+        while changed and len(runs) > 1:
+            changed = False
+            for k, r in enumerate(runs):
+                if r[2] >= min_run_min:
+                    continue
+                if k > 0:
+                    runs[k - 1][2] += r[2]
+                else:
+                    runs[1][1] = r[1]
+                    runs[1][2] += r[2]
+                del runs[k]
+                # Merging can leave two same-class neighbours — coalesce.
+                for j in range(len(runs) - 1, 0, -1):
+                    if runs[j][0] == runs[j - 1][0]:
+                        runs[j - 1][2] += runs[j][2]
+                        del runs[j]
+                changed = True
+                break
+        if not runs:
+            out.append((a, b, None))
+            continue
+        # Sub-interval boundaries sit where the next run's first minute starts;
+        # the outer edges keep the pulse-measured stop boundaries.
+        marks = [a] + [datetime.fromtimestamp(r[1]) for r in runs[1:]] + [b]
+        for (lo_dt, hi_dt), r in zip(zip(marks[:-1], marks[1:]), runs):
+            if hi_dt > lo_dt:
+                out.append((lo_dt, hi_dt, "ntof" if r[0] == "off_ntof" else "ps"))
+    return out
 
 
 def add_pulse_counts(df, pulses):

@@ -294,13 +294,52 @@ def run_history(days=7.0, now=None, min_gap_min=5.0, sync=False):
 
     # Measured beam-off intervals, same derivation the stop-duration study uses
     # (logger-gap guarded, so a dead logger never reads as downtime).
+    # The timeline's axis runs from the first sub-run in the window, not from t_lo,
+    # and beam_uptime_pct is measured against that same span -- so downtime is
+    # queried and clipped on the axis, or the numerator and denominator would be
+    # over different intervals.
+    axis_lo = win.t_start.min().to_pydatetime() if len(win) else t_lo
+    # Downtime is loaded over the WHOLE ledger span (not just the drawn window)
+    # so the per-run off-time split below covers every run in the list. Each
+    # interval is tagged with WHY the beam was off ('ps' machine-side / 'ntof'
+    # our side / None before the class record starts) from the per-minute
+    # beam_class CSVs — see beam_monitor/beam_class.py.
+    ledger_lo = df.t_start.min().to_pydatetime()
     gaps, off_s = [], 0.0
+    off_split = {"ps": 0.0, "ntof": 0.0, None: 0.0}
+    for r in runs:
+        r["off_ps_h"] = r["off_ntof_h"] = r["off_unk_h"] = 0.0
     try:
-        for a, b in run_stats.load_actual_downtime(t_lo, t_hi):
-            secs = (b - a).total_seconds()
-            off_s += secs
-            if secs >= float(min_gap_min) * 60.0:
-                gaps.append([round(a.timestamp()), round(b.timestamp())])
+        # classify_downtime SPLITS a stop whose cause changed partway, so every
+        # (a, b, cls) piece is single-cause and attribution is a straight sum.
+        down = run_stats.classify_downtime(
+            run_stats.load_actual_downtime(ledger_lo, t_hi),
+            run_stats.load_beam_class_minutes(ledger_lo, t_hi))
+        for a, b, cls in down:
+            # load_actual_downtime returns every interval that OVERLAPS the window,
+            # unclipped: a two-day stop that began before t_lo would otherwise put
+            # 48 h of downtime into a 7-day window that contains only a few hours of
+            # it, understating uptime (and able to drive it negative). It would also
+            # be drawn past the left edge of the timeline, over the y-axis labels.
+            a2, b2 = max(a, axis_lo), min(b, t_hi)
+            secs = (b2 - a2).total_seconds()
+            if secs > 0:
+                off_s += secs
+                off_split[cls] += secs
+                if secs >= float(min_gap_min) * 60.0:
+                    gaps.append([round(a2.timestamp()), round(b2.timestamp()), cls])
+            # Per-run split, on the same real-elapsed span the rate uses.
+            for r in runs:
+                ra = max(a, r["t0"])
+                rb = min(b, r["t1_air"])
+                s = (rb - ra).total_seconds()
+                if s <= 0:
+                    continue
+                key = {"ps": "off_ps_h", "ntof": "off_ntof_h"}.get(cls, "off_unk_h")
+                r[key] += s / 3600.0
+        for r in runs:
+            for k in ("off_ps_h", "off_ntof_h", "off_unk_h"):
+                r[k] = round(r[k], 2)
     except Exception as e:                                        # noqa: BLE001
         print(f"[live] Downtime lookup failed: {e}")
 
@@ -315,7 +354,7 @@ def run_history(days=7.0, now=None, min_gap_min=5.0, sync=False):
         out.update(extra or {})
         return out
 
-    win_span_s = (t_hi - win.t_start.min().to_pydatetime()).total_seconds() if len(win) else 0
+    win_span_s = (t_hi - axis_lo).total_seconds() if len(win) else 0
     return {
         "generated": now.isoformat(timespec="seconds"),
         "days": float(days),
@@ -329,6 +368,8 @@ def run_history(days=7.0, now=None, min_gap_min=5.0, sync=False):
         "totals": _totals(win, {
             "n_runs": len({r for r in win.run}),
             "beam_off_h": round(off_s / 3600.0, 2),
+            "beam_off_ps_h": round(off_split["ps"] / 3600.0, 2),
+            "beam_off_ntof_h": round(off_split["ntof"] / 3600.0, 2),
             "beam_uptime_pct": (round(100.0 * (1.0 - off_s / win_span_s), 1)
                                 if win_span_s > 0 else None),
         }),

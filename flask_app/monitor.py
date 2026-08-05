@@ -864,6 +864,13 @@ class DaqMonitor:
                         f"(data gap; wall clock {gap:.0f} s).")
             else:
                 head = f"n_TOF beam has been OFF for {gap_min:.0f} min."
+            # WHY it is off, from the watcher's PS-telegram classification (see
+            # beam_monitor/beam_class.py). Not available in the first ~minute of
+            # an outage (per-minute bins + NXCALS settling), on a stale block, or
+            # on a pre-upgrade watcher — then say nothing rather than guess.
+            why = self._beam_off_reason(st)
+            if why:
+                head += f"\n{why}"
             # No changeover/cosmics commentary here, at any severity (2026-07-31, on
             # the first alert seen in the field). This rule says exactly one thing —
             # the beam is gone — and rule_mode_changeover says exactly one thing back
@@ -873,6 +880,29 @@ class DaqMonitor:
         return False, (f"beam on (last pulse {gap:.0f}s ago"
                        + (f", data gap {observed:.0f}s" if isinstance(observed, (int, float)) else "")
                        + ")")
+
+    @staticmethod
+    def _beam_off_reason(st):
+        """One line saying WHY the beam is off (PS-side vs n_TOF-side), from the
+        beam_class block in beam_state.json, or None when it can't be trusted:
+        missing/stale block, class still 'on' (classification lags ~2-3 min
+        behind the pulse detector), or no telegram data."""
+        bc = st.get("beam_class") or {}
+        cls = bc.get("window_class") or bc.get("class")
+        try:
+            age = (datetime.now()
+                   - datetime.fromisoformat(bc["updated"])).total_seconds()
+        except Exception:
+            age = None
+        if age is None or age > 300:
+            return None
+        if cls == "off_ps":
+            return ("Cause: PS/machine-side — no user in the PS complex is "
+                    "getting beam (CCC problem, not ours).")
+        if cls == "off_ntof":
+            return ("Cause: nTOF-side — other users ARE getting beam; TOF is out "
+                    "of the supercycle (access or operator removal).")
+        return None
 
     def _beam_off_hold(self, reason):
         """Replay rule_beam_off's last known severity instead of clearing it when the
@@ -1539,22 +1569,27 @@ class DaqMonitor:
         emergency_h = float(opts.get("emergency_hours", 0.5))
         eta_clock = (now + timedelta(hours=ttf_h)).strftime("%a %H:%M")
 
-        detail = (f"HDD (/mnt/data) projected empty in {disk_forecast.human_duration(ttf_h)} "
-                  f"(~{eta_clock}) at {hdd.get('inflow_gb_per_hr', 0):.1f} GB/hr — "
-                  f"{hdd.get('free', 0) / gb:.0f} GB free. Floor {threshold_h:.1f} h ({basis}); "
-                  f"nothing prunes this disk automatically.")
+        def _detail(fired):
+            return (f"HDD (/mnt/data) projected empty in {disk_forecast.human_duration(ttf_h)} "
+                    f"(~{eta_clock}) at {hdd.get('inflow_gb_per_hr', 0):.1f} GB/hr — "
+                    f"{hdd.get('free', 0) / gb:.0f} GB free. {fired}; "
+                    f"nothing prunes this disk automatically.")
 
         # Both gates are evaluated; the louder one wins, so the overnight tightening
-        # can never DOWNgrade an absolute-floor critical (or vice versa).
+        # can never DOWNgrade an absolute-floor critical (or vice versa). Name the gate
+        # that ACTUALLY fired: quoting the time-of-day floor on an alert raised by the
+        # absolute one reads as "8.0 h floor" on a disk with 3 h left, which is the one
+        # message where a misleading number costs the most.
         candidates = []
         if ttf_h < emergency_h:
-            candidates.append("emergency")
+            candidates.append(("emergency", f"Below the {emergency_h:.1f} h emergency floor"))
         elif ttf_h < critical_h:
-            candidates.append("critical")
+            candidates.append(("critical", f"Below the {critical_h:.1f} h critical floor"))
         if ttf_h < threshold_h:
-            candidates.append(tod_severity)
+            candidates.append((tod_severity, f"Below the {threshold_h:.1f} h floor ({basis})"))
         if candidates:
-            return max(candidates, key=_severity_rank), detail
+            sev, fired = max(candidates, key=lambda c: _severity_rank(c[0]))
+            return sev, _detail(fired)
         return False, (f"HDD (/mnt/data) OK — {disk_forecast.human_duration(ttf_h)} until full "
                        f"(~{eta_clock}), above the {threshold_h:.1f} h floor ({basis})")
 
@@ -1844,6 +1879,10 @@ class DaqMonitor:
                             if mode == "cosmics" else
                             f"Beam is back — last pulse {gap:.0f} s ago "
                             f"({bst.get('last_pulse_e10')}e10).")
+            if mode == "cosmics":
+                why = self._beam_off_reason(bst)
+                if why:
+                    bits.append(why)
         except Exception:                                       # noqa: BLE001
             pass
 

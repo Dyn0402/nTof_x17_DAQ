@@ -13,6 +13,10 @@ covers the H4 barrier, this one covers the two beam datasets:
 
     beam    beam_intensity_YYYY-MM-DD.csv   FTN.BCT477 -> ~/beam_july/slow_control/beam_intensity
     spill   sps_spill_YYYY-MM-DD.csv        SPSQC:*    -> ~/beam_july/slow_control/sps_spill
+    class   beam_class_YYYY-MM-DD.csv       CPS.TGM:DEST + F16.BCT372.TOF
+                                            -> ~/beam_july/slow_control/beam_intensity
+            (per-minute PS-fault vs n_TOF-side-stop classification,
+             see beam_monitor/beam_class.py)
 
 Deliberately NOT named `backfill_nxcals.py`: the banco fork already has a file by
 that name whose `sps_spill` schema is 17 columns (9 base + h4_bend/h4_gif/
@@ -58,6 +62,7 @@ _REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO_DIR)
 
 from beam_monitor.beam_intensity_controller import BEAM_VARIABLE, BEAM_LOG_DIR
+from beam_monitor.beam_class import fetch_class_minutes, CLASS_CSV_FIELDS
 from sps_monitor.sps_spill_controller import (SPS_LOG_DIR, SPSQC_VARS,
                                               EXTRACTED_SCALE_E10, _nearest)
 
@@ -157,11 +162,27 @@ def fetch_spill_day(db, t0, t1):
     return rows
 
 
+def fetch_class_day(db, t0, t1):
+    """Per-minute beam-state classification rows (see beam_monitor/beam_class.py):
+    was the beam off because of a PS/machine problem or an n_TOF-side stop?
+    The aggregation lives in beam_class so the live watcher writes the exact
+    same rows."""
+    return fetch_class_minutes(db, t0, t1)
+
+
 DATASETS = {
     "beam": {"prefix": "beam_intensity_", "dir": BEAM_LOG_DIR,
              "fields": BEAM_CSV_FIELDS, "fetch": fetch_beam_day},
     "spill": {"prefix": "sps_spill_", "dir": SPS_LOG_DIR,
               "fields": SPILL_CSV_FIELDS, "fetch": fetch_spill_day},
+    # recompute=True: class rows are derived aggregates, so an NXCALS-recomputed
+    # row REPLACES what is on disk when they differ. The live watcher can write
+    # a minute before the telegram's batch ingestion finished (measured 8 of 29
+    # cycles at +2.5 min, 2026-08-04) and appends are permanent — re-running
+    # this backfill over a day is the repair path.
+    "class": {"prefix": "beam_class_", "dir": BEAM_LOG_DIR,
+              "fields": CLASS_CSV_FIELDS, "fetch": fetch_class_day,
+              "recompute": True},
 }
 
 
@@ -170,8 +191,11 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--start", required=True, help="first day, YYYY-MM-DD")
     ap.add_argument("--end", default=None, help="last day, YYYY-MM-DD (default: yesterday)")
-    ap.add_argument("--datasets", default="beam,spill",
-                    help="comma-separated subset of: beam, spill")
+    ap.add_argument("--datasets", default="beam,class",
+                    help="comma-separated subset of: beam, spill, class "
+                         "(spill left out of the default since the SPS add-on "
+                         "was retired 2026-08-05 — still available for "
+                         "backfilling the historical record)")
     ap.add_argument("--beam-out", default=None, help=f"override beam dir (default {BEAM_LOG_DIR})")
     ap.add_argument("--spill-out", default=None, help=f"override spill dir (default {SPS_LOG_DIR})")
     ap.add_argument("--include-today", action="store_true",
@@ -236,6 +260,14 @@ def main():
                 old = existing.get(ts)
                 if old is None:
                     existing[ts] = row
+                    continue
+                if spec.get("recompute"):
+                    # Derived dataset: recomputed values replace differing rows
+                    # (counts as a blank-fill in the day summary).
+                    if any(str(old.get(k, "")) != str(row.get(k, ""))
+                           for k in spec["fields"]):
+                        existing[ts] = row
+                        filled += 1
                     continue
                 if args.no_fill_blanks:
                     continue

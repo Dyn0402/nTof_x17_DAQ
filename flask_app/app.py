@@ -49,14 +49,11 @@ from he3_pressure_reader.he3_pressure_controller import (HE3_PRESSURE_LOG_DIR,
                                                          PRESS_UNIT, clamp_period,
                                                          MIN_SAMPLE_PERIOD_S,
                                                          MAX_SAMPLE_PERIOD_S)
+from beam_monitor.beam_class import (CLASS_LABELS as _BEAM_CLASS_LABELS,
+                                     CLASS_LABELS_SHORT as _BEAM_CLASS_LABELS_SHORT)
 from beam_monitor.beam_intensity_controller import (BEAM_LOG_DIR, BEAM_STATE_PATH,
                                                     NXCALS_PYTHON, BEAM_UNIT,
                                                     PULSE_THRESHOLD_E10)
-# TEMPORARY (2026-07-23) — SPS spill test tab. Remove with the sps_monitor package.
-from sps_monitor.sps_spill_controller import (SPS_LOG_DIR, SPS_STATE_PATH, SPS_UNIT,
-                                              EXTRACTED_DEST, H4_TAX_VAR,
-                                              H4_TAX_OPEN_MAX, H4_TAX_BLOCK_MIN,
-                                              tax_blocked_intervals)
 from n1081b.timetag_watcher_controller import (N1081B_TT_LOG_DIR, N1081B_TT_STATE_PATH,
                                                N1081B_TT_CONFIG_PATH)
 from stream1_monitor.stream1_size_controller import (STREAM1_LOG_DIR, STREAM1_STATE_PATH,
@@ -558,6 +555,48 @@ def restart_all():
 SOFT_SHUTDOWN_STATE = f"{BASE_DIR}/config/soft_shutdown_state.json"
 
 
+def _read_soft_shutdown_state():
+    try:
+        with open(SOFT_SHUTDOWN_STATE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _soft_shutdown_running(state):
+    """Is the shutdown recorded in `state` still running RIGHT NOW?
+
+    A bare /proc/<pid> check is not enough: the state file deliberately survives
+    the reboot it exists to enable, PIDs are low and dense just after boot, and the
+    recorded pid belongs to a short-lived boot-era shell. An unrelated process
+    inheriting that pid would otherwise make /soft_shutdown answer 409 "already
+    running" and the GUI show "⏳ <old phase>…" forever, with no way to clear it.
+    So the pid only counts on the boot that recorded it, and only if it is still
+    the shutdown script."""
+    if not state:
+        return False
+    pid = state.get("pid")
+    if not pid or not os.path.exists(f"/proc/{pid}"):
+        return False
+    boot = state.get("boot_id")
+    if boot and boot != _current_boot_id():
+        return False
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            cmdline = f.read().decode("utf-8", "replace")
+    except OSError:
+        return False
+    return "soft_shutdown" in cmdline
+
+
+def _current_boot_id():
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
 @app.route("/soft_shutdown", methods=["POST"])
 def soft_shutdown():
     """Bring the DAQ down cleanly ahead of a host reboot. Does NOT reboot.
@@ -573,25 +612,22 @@ def soft_shutdown():
     Shift Overview EMERGENCY STOP is the endpoint that takes those down."""
     log_event('SOFT_SHUTDOWN', 'flask_button', remote_addr=_client_ip())
     try:
-        if os.path.exists(SOFT_SHUTDOWN_STATE):
-            try:
-                with open(SOFT_SHUTDOWN_STATE) as f:
-                    prev = json.load(f)
-                pid = prev.get("pid")
-                # Refuse to start a second pass on top of a live one: two of these
-                # racing would have each other's sessions disappearing mid-wait.
-                if (pid and not prev.get("safe_to_reboot")
-                        and os.path.exists(f"/proc/{pid}")):
-                    return jsonify({"success": False,
-                                    "message": f"A soft shutdown is already running "
-                                               f"(phase: {prev.get('phase')})"}), 409
-            except (ValueError, OSError):
-                pass
+        prev = _read_soft_shutdown_state() or {}
+        # Refuse to start a second pass on top of a live one: two of these racing
+        # would have each other's sessions disappearing mid-wait.
+        if not prev.get("safe_to_reboot") and _soft_shutdown_running(prev):
+            return jsonify({"success": False,
+                            "message": f"A soft shutdown is already running "
+                                       f"(phase: {prev.get('phase')})"}), 409
         os.makedirs(f"{LOG_DIR}", exist_ok=True)
         subprocess.Popen([f"{BASH_DIR}/soft_shutdown.sh"],
                          cwd=BASE_DIR, stdout=subprocess.DEVNULL,
                          stderr=subprocess.STDOUT, start_new_session=True)
+        # The caller polls /soft_shutdown/status, which for a second or two still
+        # serves the PREVIOUS run's file. Hand back that file's timestamp so the GUI
+        # can tell a leftover "safe_to_reboot" from progress this run actually made.
         return jsonify({"success": True,
+                        "state_epoch_before": int(prev.get("updated_epoch") or 0),
                         "message": "Soft shutdown started — watch the progress list. "
                                    "Wait for SAFE TO REBOOT before rebooting."})
     except Exception as e:
@@ -601,14 +637,11 @@ def soft_shutdown():
 @app.route("/soft_shutdown/status")
 def soft_shutdown_status():
     """Progress of an in-flight or finished soft shutdown (see /soft_shutdown)."""
-    try:
-        with open(SOFT_SHUTDOWN_STATE) as f:
-            state = json.load(f)
-    except (OSError, ValueError):
+    state = _read_soft_shutdown_state()
+    if state is None:
         return jsonify({"success": True, "running": False, "state": None})
-    pid = state.get("pid")
-    running = bool(pid) and os.path.exists(f"/proc/{pid}")
-    return jsonify({"success": True, "running": running, "state": state})
+    return jsonify({"success": True, "running": _soft_shutdown_running(state),
+                    "state": state})
 
 
 @app.route("/restart_flask", methods=["POST"])
@@ -2148,118 +2181,44 @@ def beam_history():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-# ---------------------------------------------------------------------------
-# SPS slow-extraction spill — TEMPORARY TEST TAB (added 2026-07-23)
-# ---------------------------------------------------------------------------
-# Companion to the n_TOF beam monitor, answering "is the SPS pause/spill/pause
-# structure visible the way the n_TOF pulse train is?". The NXCALS polling is
-# done inside the SAME beam_watcher process (it borrows that Spark session);
-# Flask only reads the published state file and the per-cycle CSVs.
-#
-# TO REMOVE: delete this section, the two routes, the sps_monitor import, the
-# #sps tab in base.html + index.html, and the _sps hooks in
-# beam_monitor/beam_intensity_controller.py.
-
-def _sps_read_state():
-    """The SPS monitor's latest published state, or a disconnected stub."""
-    try:
-        with open(SPS_STATE_PATH) as f:
-            return json.load(f)
-    except Exception:
-        return {"connected": False, "last_error": "beam watcher not running "
-                                                  "(the SPS monitor rides along with it)",
-                "unit": SPS_UNIT, "spill_on": None}
-
-
-@app.route("/sps/status")
-def sps_status():
-    """Latest SPS spill summary, including the stitched extraction-rate timeline
-    and the newest single-cycle spill profile."""
-    return jsonify(_sps_read_state())
-
-
-@app.route("/sps/history")
-def sps_history():
-    """Per-cycle spill history from the CSVs: extracted intensity, effective
-    spill length and duty factor, one row per SPS cycle."""
+@app.route("/beam/class_history")
+def beam_class_history():
+    """Beam-state classification intervals (WHY the beam was off) from the
+    per-minute beam_class_*.csv files the beam_watcher writes — see
+    beam_monitor/beam_class.py for the classes. Consecutive same-class minutes
+    are merged into intervals so the plots can shade them as bands."""
     import glob
     hours = request.args.get("hours", default=6.0, type=float)
-    max_points = request.args.get("max_points", default=3000, type=int)
     try:
-        files = sorted(glob.glob(os.path.join(SPS_LOG_DIR, "sps_spill_*.csv")))
+        files = sorted(glob.glob(os.path.join(BEAM_LOG_DIR, "beam_class_*.csv")))
+        # Per-day files: enough of the newest ones to cover the window.
+        n_files = max(2, int(hours // 24) + 2)
         if not files:
-            return jsonify({"success": True, "time": [], "extracted": [],
-                            "spill_len_ms": [], "duty": [], "unit": SPS_UNIT})
-        df = pd.concat([pd.read_csv(f) for f in files[-2:]], ignore_index=True)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-        df = df.dropna(subset=["timestamp"])
-        df = df.sort_values("timestamp").drop_duplicates(subset=["timestamp"])
+            return jsonify({"success": True, "intervals": [], "note": "no class CSVs yet"})
+        df = pd.concat([pd.read_csv(f) for f in files[-n_files:]], ignore_index=True)
+        df = df.dropna(subset=["unix_ts", "beam_class"])
+        df = df.sort_values("unix_ts").drop_duplicates(subset=["unix_ts"])
         if hours and hours > 0:
-            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
-        # Only extracting cycles carry a spill; dump/other cycles are plotted as
-        # zero-intensity markers so the supercycle gaps stay visible.
-        if len(df) > max_points:
-            df = df.iloc[:: (len(df) // max_points) + 1]
-        ext = df[df["destination"] == EXTRACTED_DEST]
+            df = df[df["unix_ts"] >= time.time() - hours * 3600]
+        intervals = []
+        cur = None   # [start_ts, end_ts, class]
+        for t, cls in zip(df["unix_ts"], df["beam_class"]):
+            t = float(t)
+            if cur is not None and cls == cur[2] and t - cur[1] <= 120:
+                cur[1] = t + 60
+            else:
+                if cur is not None:
+                    intervals.append(cur)
+                cur = [t, t + 60, cls]
+        if cur is not None:
+            intervals.append(cur)
+        fmt = lambda t: datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M:%S")
         return jsonify({
             "success": True,
-            "time": df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
-            "extracted": df["extracted_e10"].fillna(0).round(1).tolist(),
-            "spill_time": ext["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
-            "spill_len_ms": ext["spill_len_ms"].round(0).where(
-                ext["spill_len_ms"].notna(), None).tolist(),
-            "duty": ext["duty_factor"].round(4).where(
-                ext["duty_factor"].notna(), None).tolist(),
-            "unit": SPS_UNIT,
-        })
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
-
-
-@app.route("/sps/tax_history")
-def sps_tax_history():
-    """H4 barrier position over time, plus the spans where H4 was not open.
-
-    Those spans are ACCESS CANDIDATES, not confirmed accesses: the TAX position
-    says the line is blocked, it does not say why. Confirmation needs the H4
-    flux counters (see docs/H4_ACCESS_INFERENCE.md)."""
-    import glob
-    hours = request.args.get("hours", default=24.0, type=float)
-    max_points = request.args.get("max_points", default=4000, type=int)
-    try:
-        files = sorted(glob.glob(os.path.join(SPS_LOG_DIR, "h4_tax_*.csv")))
-        if not files:
-            return jsonify({"success": True, "time": [], "position_mm": [],
-                            "intervals": [], "var": H4_TAX_VAR,
-                            "open_max_mm": H4_TAX_OPEN_MAX,
-                            "block_min_mm": H4_TAX_BLOCK_MIN,
-                            "note": "no h4_tax CSVs yet — the watcher writes "
-                                    "them once it has polled"})
-        # a day of TAX samples is ~20 k rows; keep enough files to cover `hours`
-        keep = max(2, int(hours // 24) + 2)
-        df = pd.concat([pd.read_csv(f) for f in files[-keep:]], ignore_index=True)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-        df = df.dropna(subset=["timestamp", "position_mm"])
-        df = df.sort_values("timestamp").drop_duplicates(subset=["unix_ts"])
-        if hours and hours > 0:
-            df = df[df["timestamp"] >= datetime.now() - timedelta(hours=hours)]
-        # Derive the intervals from the FULL series, then thin only for plotting
-        # — decimating first can step straight over a stroke and lose a span.
-        ivs = tax_blocked_intervals(list(zip(df["unix_ts"].astype(float),
-                                             df["position_mm"].astype(float))))
-        for iv in ivs:
-            iv["start_str"] = datetime.fromtimestamp(iv["start"]).strftime("%Y-%m-%d %H:%M")
-            iv["end_str"] = datetime.fromtimestamp(iv["end"]).strftime("%Y-%m-%d %H:%M")
-            iv["minutes"] = round(iv["seconds"] / 60.0, 1)
-        plot = df.iloc[:: (len(df) // max_points) + 1] if len(df) > max_points else df
-        return jsonify({
-            "success": True,
-            "var": H4_TAX_VAR,
-            "time": plot["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist(),
-            "position_mm": plot["position_mm"].round(2).tolist(),
-            "intervals": ivs,
-            "open_max_mm": H4_TAX_OPEN_MAX,
-            "block_min_mm": H4_TAX_BLOCK_MIN,
+            "intervals": [{"start": fmt(a), "end": fmt(b), "start_unix": round(a),
+                           "end_unix": round(b), "class": c}
+                          for a, b, c in intervals],
+            "classes": _BEAM_CLASS_LABELS_SHORT,
         })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
@@ -2779,7 +2738,8 @@ def _shift_beam():
            "avg_pulse_e10": st.get("avg_pulse_e10"),
            "unit": st.get("unit", BEAM_UNIT),
            "krb_valid_until": st.get("krb_valid_until"),
-           "last_error": st.get("last_error")}
+           "last_error": st.get("last_error"),
+           "beam_class": st.get("beam_class")}
     if not out["connected"]:
         return out
     try:

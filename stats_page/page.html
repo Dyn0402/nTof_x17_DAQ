@@ -206,6 +206,8 @@
   .runs .key .k-beam i { background:var(--series-1); }
   .runs .key .k-cosmics i { background:var(--series-2); }
   .runs .key .k-off i { background:var(--grid); border:1px solid var(--ring); }
+  .runs .key .k-off-ps i { background:var(--critical); opacity:.4; }
+  .runs .key .k-off-ntof i { background:var(--series-1); opacity:.4; }
   .runs .plot-scroll { overflow-x:auto; }
   .runs svg { display:block; width:100%; min-width:640px; height:auto; overflow:visible; }
   .runs .tick { font-size:11px; fill:var(--muted); font-variant-numeric:tabular-nums; }
@@ -218,6 +220,11 @@
   .runs .bar-beam { fill:var(--series-1); }
   .runs .bar-cosmics { fill:var(--series-2); }
   .runs .band-off { fill:var(--grid); }
+  /* Outage type, when the beam_class record can say: red = PS/machine fault,
+     blue = our own stop (access / TOF pulled from the supercycle). Plain grey
+     stays for intervals with no classification. */
+  .runs .band-off.ps { fill:var(--critical); fill-opacity:.14; }
+  .runs .band-off.ntof { fill:var(--series-1); fill-opacity:.16; }
   .runs .crosshair { stroke:var(--axis); stroke-width:1; }
   .runs .foot { display:flex; flex-wrap:wrap; gap:4px 18px; margin-top:8px;
                 font-size:12.5px; color:var(--ink-2); }
@@ -362,8 +369,10 @@
   <p class="caption">
     Every sub-run of the last week on a wall-clock axis: each column is one sub-run,
     its width the time it actually ran and its height the events it banked. Shaded
-    bands are measured beam-off periods — where one is wide, the orange columns under
-    it are the automatic changeover to cosmics. Hover a column for its run.
+    bands are measured beam-off periods, coloured by cause — red when the PS complex
+    delivered beam to nobody (machine fault), blue when only nTOF was stopped
+    (access / removed from the supercycle) — where one is wide, the orange columns
+    under it are the automatic changeover to cosmics. Hover a column for its run.
   </p>
   <div class="card runs" id="runs-card" style="display:none">
     <div class="head">
@@ -371,7 +380,9 @@
       <span class="key">
         <span class="k-beam"><i></i>Beam</span>
         <span class="k-cosmics"><i></i>Cosmics</span>
-        <span class="k-off"><i></i>Beam off</span>
+        <span class="k-off-ps"><i></i>PS outage</span>
+        <span class="k-off-ntof"><i></i>nTOF stop</span>
+        <span class="k-off"><i></i>Off (unclassified)</span>
       </span>
     </div>
     <div class="plot-scroll">
@@ -762,11 +773,13 @@
     svg.setAttribute("viewBox", "0 0 " + W + " " + H);
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-    // Beam-off bands go down first: they are ground, not a mark.
+    // Beam-off bands go down first: they are ground, not a mark. g[2] (when
+    // present) says WHY the beam was off: "ps" machine fault / "ntof" our stop.
     (rh.gaps || []).forEach(function (g) {
       var a = X(g[0]), b = X(g[1]);
+      var cls = g[2] === "ps" ? "band-off ps" : g[2] === "ntof" ? "band-off ntof" : "band-off";
       svgEl("rect", { x: a, y: PADT, width: Math.max(1.5, b - a), height: PH,
-                      "class": "band-off" }, svg);
+                      "class": cls }, svg);
     });
 
     for (var v = 0; v <= yMax; v += step) {
@@ -864,8 +877,13 @@
       "<span><b>" + (tot.n_runs || 0) + "</b> runs · <b>" + (tot.n_subruns || 0) + "</b> sub-runs</span>"
     ];
     if (tot.beam_uptime_pct !== null && tot.beam_uptime_pct !== undefined) {
+      var offBits = "";
+      if (tot.beam_off_ps_h || tot.beam_off_ntof_h) {
+        offBits = " (" + (tot.beam_off_ps_h || 0).toFixed(1) + " h PS · "
+                + (tot.beam_off_ntof_h || 0).toFixed(1) + " h nTOF)";
+      }
       foot.push("<span>Beam up <b>" + tot.beam_uptime_pct + "%</b> · "
-                + (tot.beam_off_h || 0).toFixed(1) + " h off</span>");
+                + (tot.beam_off_h || 0).toFixed(1) + " h off" + offBits + "</span>");
     }
     if (longest) {
       foot.push("<span>Longest run <b>" + longest.run + "</b> · " + longest.h_air.toFixed(1) + " h</span>");
@@ -896,7 +914,17 @@
     { key: "ev",    label: "Events",   num: true,  cell: function (r) {
         return '<td class="ev">' + r.ev.toLocaleString("en-US") + "</td>"; } },
     { key: "rate",  label: "Events/h", num: true,  cell: function (r) {
-        return "<td>" + (r.rate === null ? "—" : r.rate.toLocaleString("en-US")) + "</td>"; } }
+        return "<td>" + (r.rate === null ? "—" : r.rate.toLocaleString("en-US")) + "</td>"; } },
+    // Beam-off time inside the run's on-air span, split by WHY it was off
+    // (measured PS-side / nTOF-side, from the beam_class record).
+    { key: "off_ps_h", label: "Off PS/nTOF", num: true, cell: function (r) {
+        var ps = r.off_ps_h, nt = r.off_ntof_h;
+        if (ps === undefined || ps === null) return "<td>—</td>";
+        if (!ps && !nt && !r.off_unk_h) return '<td class="ev">0</td>';
+        var txt = ps.toFixed(1) + " / " + nt.toFixed(1) + " h";
+        if (r.off_unk_h) txt += " (+" + r.off_unk_h.toFixed(1) + "?)";
+        return '<td title="beam-off hours during this run: PS/machine-side / nTOF-side'
+             + (r.off_unk_h ? " (+unclassified)" : "") + '">' + txt + "</td>"; } }
   ];
   // Newest first: a run list is read from the top, and the top is what just happened.
   var listState = { runs: [], sort: "num", dir: -1, mode: "all", q: "" };
@@ -939,7 +967,7 @@
 
     // Totals follow the filter — a total that ignores the filter above it is a lie.
     var shown = rows.filter(function (r) { return r.physics; });
-    var sum = function (k) { return shown.reduce(function (a, r) { return a + r[k]; }, 0); };
+    var sum = function (k) { return shown.reduce(function (a, r) { return a + (r[k] || 0); }, 0); };
     var tf = $("runlist-table").querySelector("tfoot");
     if (!rows.length) {
       tf.innerHTML = "";
@@ -953,7 +981,8 @@
         + "<td>" + sum("n") + "</td>"
         + "<td>" + sum("h").toFixed(1) + " h</td>"
         + "<td>" + sum("h_air").toFixed(1) + " h</td>"
-        + "<td>" + sum("ev").toLocaleString("en-US") + "</td><td></td></tr>";
+        + "<td>" + sum("ev").toLocaleString("en-US") + "</td><td></td>"
+        + "<td>" + sum("off_ps_h").toFixed(1) + " / " + sum("off_ntof_h").toFixed(1) + " h</td></tr>";
     }
     $("runlist-count").textContent = rows.length + " of " + listState.runs.length + " runs";
   }
@@ -972,7 +1001,9 @@
       + ", totalling " + compact(a.events || 0) + " events. Click a column to sort.";
 
     var note = ["“Live” is DAQ live time as logged. “On air” is wall-clock to the next run’s "
-              + "start, which is shorter (†) wherever a changeover stopped a run early; rates use on-air time."];
+              + "start, which is shorter (†) wherever a changeover stopped a run early; rates use on-air time.",
+              "“Off PS/nTOF” splits the measured beam-off hours inside each run by cause: "
+              + "PS/machine-side outage vs nTOF-side stop (access or removal from the supercycle)."];
     if (a.n_other_runs) {
       note.push(a.n_other_runs + " non-physics runs (saturating-pulser DAQ tests) are listed "
               + "but excluded from every total.");
@@ -1025,7 +1056,7 @@
 
   function render(payload, history) {
     var d = payload || {};
-    var run = d.run || {}, trg = d.triggers || {}, beam = d.beam || {}, sps = d.sps || {};
+    var run = d.run || {}, trg = d.triggers || {}, beam = d.beam || {};
 
     // Freshness is the first thing to trust: a stale page must never read as a quiet beam.
     var age = (Date.now() / 1000) - (d.generated_epoch || 0);
@@ -1095,7 +1126,11 @@
     grade($("beam-grade"), beamWin.avg, (ref.beam || {}).protons_per_day_p99, sci);
 
     var bs = beam.on;
-    var bits = [bs === true ? "beam on" : bs === false ? "beam off" : "beam unknown"];
+    // When off, say WHY when the classification knows (PS-side vs our own stop).
+    var offWhy = { off_ps: "beam off — PS outage", off_ntof: "beam off — nTOF stop" };
+    var bits = [bs === true ? "beam on"
+                : bs === false ? (offWhy[beam.off_class] || "beam off")
+                : "beam unknown"];
     if (typeof beam.pulses_10min === "number") bits.push(beam.pulses_10min + " pulses/10 min");
     $("beam-note").textContent = bits.join(" · ");
     $("beam-alt").textContent = e10Win.avg !== null ? Math.round(e10Win.avg) + " e10/pulse" : "";

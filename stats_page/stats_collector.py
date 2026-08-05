@@ -20,7 +20,7 @@ already computed and published:
   * http://localhost:5001/status  — the Flask GUI's own status endpoint (GET is
     never auth-gated), which already does the run/sub-run/event bookkeeping. We
     read it rather than re-deriving it, so the page can never disagree with the GUI.
-  * config/beam_state.json, config/sps_state.json — the beam and SPS watchers.
+  * config/beam_state.json — the beam watcher.
 
 Safe to start and stop at any time; it owns no hardware and commands nothing.
 """
@@ -59,7 +59,6 @@ HISTORY_PATH = os.path.join(REPO_DIR, "config", "stats_page_history.json")
 STATE_PATH = os.path.join(REPO_DIR, "config", "stats_page_state.json")
 BEAM_STATE = os.path.join(REPO_DIR, "config", "beam_state.json")
 BEAM_CSV_DIR = "/home/mx17/beam_july/slow_control/beam_intensity"
-SPS_STATE = os.path.join(REPO_DIR, "config", "sps_state.json")
 PAGE_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 
 SCHEMA = 1
@@ -313,6 +312,17 @@ def take_fresh_run_history():
     return _run_history_cache["data"]
 
 
+def mark_run_history_dirty():
+    """Re-arm the timeline for the next push after an upload failed.
+
+    Callers take the block as an argument (`runs=take_fresh_run_history()`), which
+    consumes the fresh flag before the push is known to have worked. xrdcp wedges a
+    few percent of the time, and without this the timeline would then be dropped
+    until the next sub-run completes -- up to an hour of a stale card."""
+    if _run_history_cache["data"] is not None:
+        _run_history_cache["fresh"] = True
+
+
 def _tail_lines(path, max_bytes):
     """Last ~max_bytes of a text file as complete lines.
 
@@ -398,7 +408,6 @@ def collect(cfg):
         "run": {},
         "triggers": {},
         "beam": {},
-        "sps": {},
         "tracks": None,      # placeholder — see README "Tracks"
         "services": [],
     }
@@ -450,6 +459,9 @@ def collect(cfg):
         })
 
     beam = _read_json(BEAM_STATE)
+    # WHY the beam is off, from the watcher's PS-telegram classification
+    # (beam_monitor/beam_class.py): "off_ps" machine-side / "off_ntof" our side.
+    beam_cls = (beam.get("beam_class") or {})
     payload["beam"] = {
         # beam_on is tri-state: null means UNKNOWN (watcher transient), not OFF.
         "on": beam.get("beam_on"),
@@ -457,15 +469,11 @@ def collect(cfg):
         "protons_10min_e10": beam.get("protons_10min_e10"),
         "last_pulse_e10": beam.get("last_pulse_e10"),
         "seconds_since_pulse": beam.get("seconds_since_pulse"),
+        "off_class": beam_cls.get("window_class") or beam_cls.get("class"),
     }
 
-    sps = _read_json(SPS_STATE)
-    payload["sps"] = {                            # note: never the timeline arrays
-        "spill_on": sps.get("spill_on"),
-        "spills_10min": sps.get("spills_10min"),
-        "last_extracted_e10": sps.get("last_extracted_e10"),
-        "supercycle_period_s": sps.get("supercycle_period_s"),
-    }
+    # (SPS spill block retired 2026-08-05 — the SPS is off for the rest of the
+    # year and the data never concerned n_TOF. The page ignores a missing key.)
 
     payload["beam_history"] = beam_history(cfg)
     # Best-achieved references the page grades against. Regenerate with
@@ -566,6 +574,8 @@ def push_eos(cfg, payload, history, with_page=True, png=None, runs=None):
             json.dump({"latest": payload, "history": history}, f)
         ok, msg = _xrdcp(data_path, f"{www}/data.json", cfg)
         if not ok:
+            if runs is not None:
+                mark_run_history_dirty()   # never uploaded — try again next push
             return False, msg
         # Push runs.json before the page on a first push, so a freshly uploaded page
         # never polls for a timeline that isn't there yet.
@@ -578,6 +588,7 @@ def push_eos(cfg, payload, history, with_page=True, png=None, runs=None):
             if not ok:
                 # The live status is already published; the timeline card will keep
                 # showing its previous fetch and go stale rather than the push failing.
+                mark_run_history_dirty()   # retry on the next push, not next sub-run
                 print(f"[stats_page] Run history upload failed: {msg}", file=sys.stderr)
         if with_page:
             page_path = os.path.join(tmpdir, "index.html")

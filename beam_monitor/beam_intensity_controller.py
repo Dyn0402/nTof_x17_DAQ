@@ -131,11 +131,30 @@ BEAM_OFF_GAP_S = 80.0    # no pulse for this long -> beam considered OFF.
                          # still flags every real stop. Do not go below ~65 s.
                          # Validated on a real stop 07-27 13:55: OFF at 86 s, no
                          # false OFF (max reading while correctly ON = 73.6 s).
-SPS_POLL_EVERY = 2       # run the (heavier) SPS spill poll every Nth beam poll, so
-                         # speeding up the beam loop does not multiply SPS load.
-                         # 2 x 12 s + its own ~6-10 s query lands the SPS tab back on
-                         # the ~30-40 s cadence it had when the loop ran at 30 s.
 KRB_RENEW_S = 4 * 3600.0  # try `kinit -R` this often to keep the ticket alive
+
+# Beam-state classification (WHY is the beam off): per-minute telegram + BCT372
+# aggregation from beam_class.py, logged to beam_class_YYYY-MM-DD.csv next to the
+# intensity CSVs. The classes are per-minute, so polling faster than ~1/min buys
+# nothing; keep it off the hot path like the SPS add-on.
+CLASS_POLL_EVERY = 5     # every 5th beam poll (~1/min at the 12 s cadence)
+CLASS_LOOKBACK_S = 900.0
+CLASS_FINAL_S = 300.0    # a minute is only WRITTEN to the CSV once it ended this
+                         # long ago. The PS telegram is batch-ingested: measured
+                         # 2026-08-04, a minute read 2.5 min after its end held 8
+                         # of its eventual 29 cycles, complete only ~5 min later.
+                         # Wrongly-written rows are permanent (append-only), so
+                         # the CSV waits; re-running the class backfill over a
+                         # day recomputes and REPLACES rows, which also heals any
+                         # that still slipped through short.
+CLASS_SETTLE_S = 120.0   # the LIVE state block tolerates partially-ingested
+                         # minutes this fresh: the classes it feeds are only
+                         # consulted when the pulse detector already says the
+                         # beam is off, and the 5-min window vote absorbs one
+                         # thin minute.
+CLASS_WINDOW_MIN = 5     # smoothing window for the published class: the parked
+                         # "machine alive" dump pulses during an access arrive
+                         # only ~1/min, so single minutes flicker off_ntof/off_ps.
 
 
 class BeamIntensityMonitor:
@@ -156,19 +175,15 @@ class BeamIntensityMonitor:
         self._last_point = None      # (unix_ts, value) newest point of any size
         self._last_pulse = None      # (unix_ts, value) newest point >= threshold
         self._last_krb_renew = 0.0
-        # TEMPORARY (2026-07-23): SPS slow-extraction spill monitor. It has no
-        # Spark session of its own — pytimber is a ~1.3 GB JVM and one is
-        # already running right here, so it borrows self.db. Every call into it
-        # is wrapped: an SPS failure must never disturb n_TOF beam logging.
-        # To remove: delete this attribute, the _poll_sps() call in
-        # run_blocking(), and the sps_monitor package.
-        self._sps = None
-        self._sps_tick = 0
-        try:
-            from sps_monitor.sps_spill_controller import SpsSpillMonitor
-            self._sps = SpsSpillMonitor(logger=self.log)
-        except Exception as e:
-            self.log(f"SPS spill monitor unavailable (n_TOF unaffected): {e}")
+        # (The SPS spill add-on that used to ride along here was retired
+        # 2026-08-05: it served the North-Area beam test, not n_TOF, and the SPS
+        # is off for the rest of the year. The sps_monitor package stays for the
+        # historical CSVs and the backfill tooling.)
+        # Beam-state classification (PS fault vs n_TOF-side stop): borrows
+        # self.db, wrapped so a failure can never disturb the intensity logging.
+        self._class_tick = 0
+        self._last_class_ts = self._newest_class_ts()
+        self._class_state = None
 
     # ---------------- NXCALS session ----------------
 
@@ -311,6 +326,9 @@ class BeamIntensityMonitor:
             "query_s": round(query_s, 2),
             "krb_valid_until": krb_exp.isoformat(timespec="seconds") if krb_exp else None,
             "csv_path": self._csv_path(),
+            # Latest beam-state classification (see _poll_class). None until the
+            # first class poll of the session completes; consumers must .get().
+            "beam_class": self._class_state,
             "last_error": None,
         }
         return state
@@ -398,28 +416,94 @@ class BeamIntensityMonitor:
             "last_error": self.last_error,
         })
 
-    # ---------------- SPS spill monitor (TEMPORARY, borrows self.db) ----------
+    # ---------------- beam-state classification (borrows self.db) ------------
 
-    def _poll_sps(self):
-        """Run one SPS spill poll on our Spark session. Swallows everything: this
-        is a bolted-on test monitor and must not be able to break n_TOF logging
-        or the reconnect logic. Delete along with self._sps to remove."""
-        if self._sps is None:
-            return
-        # Decimated: the SPS pass pulls intra-cycle arrays (~1800 floats/cycle) and
-        # is far heavier than the n_TOF query, so it keeps its own ~30 s cadence
-        # (about one SPS supercycle) no matter how fast the beam loop runs.
-        self._sps_tick += 1
-        if self._sps_tick % SPS_POLL_EVERY:
+    def _class_csv_path(self, day=None):
+        day = day or datetime.now().strftime("%Y-%m-%d")
+        return os.path.join(self.log_dir, f"beam_class_{day}.csv")
+
+    def _newest_class_ts(self):
+        """Largest unix_ts already in the newest beam_class CSV (0.0 if none)."""
+        try:
+            files = sorted(f for f in os.listdir(self.log_dir)
+                           if f.startswith("beam_class_") and f.endswith(".csv"))
+        except OSError:
+            return 0.0
+        if not files:
+            return 0.0
+        newest = 0.0
+        try:
+            with open(os.path.join(self.log_dir, files[-1]), newline="") as f:
+                for row in csv.DictReader(f):
+                    try:
+                        newest = max(newest, float(row["unix_ts"]))
+                    except (KeyError, TypeError, ValueError):
+                        pass
+        except OSError:
+            return 0.0
+        return newest
+
+    def _poll_class(self):
+        """Classify recent minutes (PS fault vs n_TOF-side stop), append the
+        complete ones to the per-day class CSV and cache a summary block for
+        beam_state.json. Swallows everything — this add-on must never disturb
+        the intensity logging or the reconnect logic."""
+        self._class_tick += 1
+        if (self._class_tick - 1) % CLASS_POLL_EVERY:
             return
         try:
-            self._sps.poll(self.db)
+            from beam_monitor import beam_class as bc
+            now = time.time()
+            t2 = datetime.now()
+            t1 = t2 - timedelta(seconds=CLASS_LOOKBACK_S)
+            rows = bc.fetch_class_minutes(self.db, t1, t2)
+            # Two horizons: the CSV only takes minutes old enough to be fully
+            # ingested (CLASS_FINAL_S); the live state block may use fresher,
+            # possibly still-filling minutes (CLASS_SETTLE_S) — see constants.
+            final = [rows[b] for b in sorted(rows)
+                     if b + 60 <= now - CLASS_FINAL_S]
+            complete = [rows[b] for b in sorted(rows)
+                        if b + 60 <= now - CLASS_SETTLE_S]
+            new = [r for r in final if r["unix_ts"] > self._last_class_ts]
+            if new:
+                os.makedirs(self.log_dir, exist_ok=True)
+                by_day = {}
+                for r in new:
+                    day = datetime.fromtimestamp(r["unix_ts"]).strftime("%Y-%m-%d")
+                    by_day.setdefault(day, []).append(r)
+                for day, day_rows in by_day.items():
+                    path = self._class_csv_path(day)
+                    new_file = not os.path.exists(path)
+                    with open(path, "a", newline="") as f:
+                        w = csv.DictWriter(f, fieldnames=bc.CLASS_CSV_FIELDS)
+                        if new_file:
+                            w.writeheader()
+                        for r in day_rows:
+                            w.writerow(r)
+                self._last_class_ts = max(r["unix_ts"] for r in new)
+            if complete:
+                latest = complete[-1]
+                window = complete[-CLASS_WINDOW_MIN:]
+                win_class = bc.classify_counts(
+                    sum(r["cycles"] for r in window),
+                    sum(r["ntof_sched"] for r in window),
+                    sum(r["ntof_beam"] for r in window),
+                    sum(r["other_beam"] for r in window))
+                self._class_state = {
+                    "minute": latest["timestamp"],
+                    "minute_unix": latest["unix_ts"],
+                    "class": latest["beam_class"],
+                    "window_class": win_class,
+                    "window_min": len(window),
+                    "ntof_sched_win": sum(r["ntof_sched"] for r in window),
+                    "ntof_beam_win": sum(r["ntof_beam"] for r in window),
+                    "other_beam_win": sum(r["other_beam"] for r in window),
+                    "updated": datetime.now().isoformat(timespec="seconds"),
+                    "csv_path": self._class_csv_path(),
+                }
         except Exception as e:
-            self.log(f"SPS poll failed (n_TOF unaffected): {e}")
-            try:
-                self._sps.write_error(e)
-            except Exception:
-                pass
+            self.log(f"beam-class poll failed (intensity logging unaffected): {e}")
+            _log_throttled('class_failed', 'CLASS_POLL_FAILED', error=str(e)[:300])
 
     # ---------------- poll loop ----------------
 
@@ -441,9 +525,9 @@ class BeamIntensityMonitor:
                 self._renew_kerberos()
                 state = self._poll_once()
                 self._write_state(state)
-                # n_TOF state is published FIRST, so the SPS add-on can only ever
-                # delay the next poll, never withhold a beam update.
-                self._poll_sps()
+                # n_TOF state is published FIRST, so the class add-on can only
+                # ever delay the next poll, never withhold a beam update.
+                self._poll_class()
             except Exception as e:
                 # Query died (kerberos expiry, network blip, Spark session loss).
                 # Renew the ticket now and rebuild the session on the next pass.

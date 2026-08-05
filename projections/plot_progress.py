@@ -45,6 +45,8 @@ SURFACE = "#fcfcfb"
 ACTUAL = "#2a78d6"       # categorical slot 1 (blue) — beam
 PROJECTION = "#5598e7"   # light blue — projection line, distinct from ACTUAL's beam blue
 COSMIC = "#eb6834"       # categorical slot 2 (orange) — cosmics, everywhere
+NTOF_DOWN = "#4d7be8"    # blue — measured beam-off that was OUR stop (access /
+                         # TOF pulled from the supercycle), not a machine fault
 ACTUAL_DOWN = "#e34948"  # categorical slot 8 (red) — measured beam-off, kept off
                          # the blues/orange already claimed by data lines above
 MILLION = 1e6
@@ -119,17 +121,29 @@ def shade_downtime(ax, sched, t_lo, t_hi, label=True, now=None, yspan=SCHED_YSPA
 
 
 def shade_actual_downtime(ax, intervals, t_lo, t_hi, label=True, yspan=ACTUAL_YSPAN):
-    """Red-tint MEASURED beam-off periods (from the beam-intensity pulse record),
+    """Tint MEASURED beam-off periods (from the beam-intensity pulse record),
     stacked below the grey scheduled band rather than overlaid on it, so the two
-    are readable as two separate strips instead of a blended tint."""
-    first = True
-    for a, b in intervals:
+    are readable as two separate strips instead of a blended tint.
+
+    Intervals are (start, end, cls) from run_stats.classify_downtime: red for a
+    PS/machine-side outage, blue for an nTOF-side stop (access / pulled from the
+    supercycle), and the plain red of old for intervals with no classification
+    (before the beam_class record starts, or an NXCALS gap)."""
+    styles = {
+        "ps": (ACTUAL_DOWN, "Beam off — PS/machine (measured)"),
+        "ntof": (NTOF_DOWN, "Beam off — nTOF side (access, measured)"),
+        None: ("#8f8d86", "Beam off (measured, unclassified)"),
+    }
+    seen = set()
+    for iv in intervals:
+        a, b, cls = iv if len(iv) == 3 else (iv[0], iv[1], None)
         if b <= t_lo or a >= t_hi:
             continue
+        color, lab = styles.get(cls, styles[None])
         ax.axvspan(max(a, t_lo), min(b, t_hi), ymin=yspan[0], ymax=yspan[1],
-                   color=ACTUAL_DOWN, alpha=0.24, linewidth=0,
-                   label="Actual beam off (measured)" if (first and label) else None)
-        first = False
+                   color=color, alpha=0.24, linewidth=0,
+                   label=lab if (label and cls not in seen) else None)
+        seen.add(cls)
 
 
 def _fitted_label(runs):
@@ -168,7 +182,11 @@ def main():
     t_lo = beam.t_start.min().to_pydatetime()
     now = datetime.now()
     # Measured stops only exist up to now, never into the projected future.
-    actual_downtime = run_stats.load_actual_downtime(t_lo, min(t_end, now))
+    # Each is tagged with WHY the beam was off (PS fault vs our own access)
+    # from the per-minute beam_class record.
+    actual_downtime = run_stats.classify_downtime(
+        run_stats.load_actual_downtime(t_lo, min(t_end, now)),
+        run_stats.load_beam_class_minutes(t_lo, min(t_end, now)))
 
     fig, (ax, axr, axc) = plt.subplots(
         3, 1, figsize=(11.5, 10.4), height_ratios=[3.0, 1.5, 1.2], sharex=True,
