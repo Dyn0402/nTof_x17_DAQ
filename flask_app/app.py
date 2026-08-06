@@ -515,11 +515,19 @@ def stop_run():
         # isn't "running". stop_dream.sh safely no-ops if RunCtrl isn't running.
         # (Previously this fell back to stop_sub_run.sh when the DAQ wasn't actively
         # taking data, which only stopped the current sub-run and let the run go on.)
+        #
+        # --full because this is the OPERATOR stop: it also stops beam_gate and disarms
+        # mode_watcher, so nothing auto-restarts a run or re-asserts .pause_run behind
+        # you. Automation stays off until you re-arm it from the Run Mode card. The
+        # changeover path (switch_mode -> stop_run.sh) deliberately does NOT pass --full,
+        # or an automatic changeover would disarm the watcher that ordered it.
         dream_running = is_dream_daq_running()
         log_event('STOP_RUN', 'flask_button', remote_addr=request.remote_addr,
-                  dream_running=dream_running)
-        subprocess.Popen([f"{BASH_DIR}/stop_run.sh"])
-        return jsonify({"success": True, "message": "Stopping Run"})
+                  dream_running=dream_running, full=True)
+        subprocess.Popen([f"{BASH_DIR}/stop_run.sh", "--full"])
+        return jsonify({"success": True,
+                        "message": "Stopping Run — beam_gate stopped and auto mode-switch "
+                                   "disarmed. Re-arm it from the Run Mode card when ready."})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
@@ -2939,9 +2947,12 @@ def emergency_stop():
         results["gas"] = {"ok": False, "detail": str(e)}
 
     # 2. Stop the whole run (flag + stop_dream; daq_control shuts down cleanly).
+    # --full: an emergency stop must also take down the auto-switch machinery, or
+    # mode_watcher would cheerfully start a fresh run into whatever caused the e-stop.
     try:
-        subprocess.Popen([f"{BASH_DIR}/stop_run.sh"])
-        results["run"] = {"ok": True, "detail": "stop_run dispatched"}
+        subprocess.Popen([f"{BASH_DIR}/stop_run.sh", "--full"])
+        results["run"] = {"ok": True, "detail": "stop_run --full dispatched "
+                                                "(beam_gate stopped, mode_watcher disarmed)"}
     except Exception as e:
         results["run"] = {"ok": False, "detail": str(e)}
 

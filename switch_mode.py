@@ -62,13 +62,13 @@ import fcntl
 import json
 import os
 import re
-import signal
 import subprocess
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import run_num  # noqa: E402 — the single run-number allocator, shared with the GUI
+import beam_gate  # noqa: E402 — the single beam_gate lifecycle owner (stop_all)
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 PY = os.path.join(REPO, '.venv', 'bin', 'python')
@@ -353,51 +353,23 @@ def verify_applied_cfg(run_num, timeout_s=180):
     return ok
 
 
-def gate_pids():
-    """PIDs of any running beam_gate.py, matched on argv."""
-    out = []
-    for pid in os.listdir('/proc'):
-        if not pid.isdigit():
-            continue
-        try:
-            with open(f'/proc/{pid}/cmdline', 'rb') as f:
-                argv = [a.decode('utf-8', 'replace') for a in f.read().split(b'\0') if a]
-        except OSError:
-            continue
-        if any(os.path.basename(a) == 'beam_gate.py' for a in argv):
-            out.append(int(pid))
-    return out
-
-
 def stop_beam_gate():
     """Stop any running beam_gate and WAIT for it, so it releases a hold it owns.
 
     ⚠ This matters most when switching TO COSMICS. beam_gate holds .pause_run whenever beam
     is off — which is exactly when a cosmic run is taking data — so a gate surviving into a
     cosmic run would stall it at its first sub-run boundary and it would never resume.
-    beam_gate releases its own hold on SIGTERM, so a clean stop is enough.
+
+    Delegates to beam_gate.stop_all(), which owns the /proc scan, the SIGTERM-and-wait and
+    the rules about whose .pause_run may be cleared. This was a second copy of all three,
+    and the copy was the weaker one: it returned early when no gate process was running, so
+    a gate SIGKILLed mid-hold left .beam_gate_hold behind with nobody to release it — which
+    pins the next run exactly as hard as a live gate would. stop_all() adopts that orphan,
+    while still refusing to touch a .pause_run that is not a gate's (operator pause, or a
+    daq_control n1081b retry).
     """
-    pids = gate_pids()
-    if not pids:
-        return
-    print(f'[gate]  stopping beam_gate.py {pids} — it must not outlive a beam run')
-    for pid in pids:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
-    t0 = time.time()
-    while gate_pids() and time.time() - t0 < 30:
-        time.sleep(1)
-    left = gate_pids()
-    if left:
-        print(f'[gate]  ⚠ beam_gate {left} did not exit — check .pause_run by hand')
-    else:
-        print('[gate]  beam_gate stopped')
-    try:
-        os.remove(os.path.join(REPO, '.beam_gate.pid'))
-    except FileNotFoundError:
-        pass
+    if beam_gate.stop_all() != 0:
+        print('[gate]  ⚠ a beam_gate did not exit — check .pause_run by hand')
 
 
 def start_beam_gate():
@@ -409,8 +381,10 @@ def start_beam_gate():
     with open(log, 'a') as gl:
         p = subprocess.Popen([PY, gate, '--poll', '10'], cwd=REPO,
                              stdout=gl, stderr=subprocess.STDOUT, start_new_session=True)
-    with open(os.path.join(REPO, '.beam_gate.pid'), 'w') as f:
-        f.write(str(p.pid) + '\n')
+    # No .beam_gate.pid file: nothing ever read it, and a pid file outlives the process it
+    # names, so the one thing it could do was lie. `beam_gate.py --status` reports the truth
+    # from /proc instead. Two sources of truth about a gate is how this whole class of bug
+    # started.
     print(f'[gate]  beam_gate.py pid {p.pid} — holds .pause_run across beam-off '
           f'(log: logs/beam_gate.log)')
 

@@ -29,6 +29,22 @@ CO-OPERATIVE BY CONSTRUCTION — it will not stamp on anyone else's hold
 
   A sidecar left behind by a crashed instance is adopted on startup rather than orphaned.
 
+IT MUST NOT OUTLIVE ITS RUN  (2026-08-06)
+  A gate started for run_147 survived a manual Stop Run. daq_control clears `.pause_run`
+  when a run STARTS ("never start a run already paused"), so the gate's RE-ASSERT put the
+  hold straight back — onto an unrelated pedestal run that had just started. That pedestal
+  sat parked at its first sub-run boundary for 11 minutes, never reached `Subrun started`,
+  and left an empty directory that then crashed the next cosmics run when `pedestals:
+  'latest'` resolved to it.
+
+  So the gate now has a RUN-SCOPED LIFETIME. It latches onto the `daq_control.py` PID it
+  first sees and stands down — releasing its hold — once that PID is gone. Scoping is by
+  IDENTITY, not liveness: run_147 ended and the pedestal run started in the same second,
+  so "is a run live?" never answered no, and only "is it still MY run?" catches it. It
+  latches only after actually observing a run, so a gate started a moment before its own
+  daq_control cannot exit on that startup race. `--stop` is the explicit version, used by
+  the operator stop (`stop_run.sh --full`).
+
 UNKNOWN IS NOT OFF
   `beam_on: null` means the beam monitor could not determine the state — a Kerberos/NXCALS
   hiccup, not a beam stop. A stale `beam_state.json` (monitor down) means the same thing.
@@ -42,6 +58,7 @@ Usage
   .venv/bin/python beam_gate.py &            # alongside a beam run
   .venv/bin/python beam_gate.py --dry-run    # log decisions, touch nothing
   .venv/bin/python beam_gate.py --status     # one-shot: what would it do right now?
+  .venv/bin/python beam_gate.py --stop       # stop every gate, release any orphaned hold
 """
 import argparse
 import json
@@ -60,6 +77,7 @@ STOP_RUN_FLAG = os.path.join(REPO_ROOT, '.stop_run')
 POLL_S = 10.0
 STALE_S = 180.0      # beam_state older than this -> the monitor is down -> UNKNOWN
 CONFIRM_READS = 2    # consecutive agreeing reads before we act
+RUN_GONE_READS = 3   # consecutive reads with no daq_control before we stand down
 
 ON, OFF, UNKNOWN = 'ON', 'OFF', 'UNKNOWN'
 
@@ -103,6 +121,88 @@ def read_beam_state(path=BEAM_STATE, now=None):
 
 def i_hold():
     return os.path.exists(HOLD_MARKER)
+
+
+def _pids_of(script, exclude_self=True):
+    """PIDs whose argv mentions `script`, matched on basename — the same /proc discipline
+    switch_mode.gate_pids() uses, so both agree on what 'running' means."""
+    me = os.getpid()
+    out = []
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        p = int(pid)
+        if exclude_self and p == me:
+            continue
+        try:
+            with open(f'/proc/{pid}/cmdline', 'rb') as f:
+                argv = [a.decode('utf-8', 'replace') for a in f.read().split(b'\0') if a]
+        except OSError:      # process exited between listdir and open
+            continue
+        if any(os.path.basename(a) == script for a in argv):
+            out.append(p)
+    return out
+
+
+def run_pids():
+    """PIDs of the live daq_control.py run, as a set.
+
+    ⚠ IDENTITY, NOT LIVENESS. On 2026-08-06 run_147 ended and a pedestal run started in
+    the SAME SECOND (RUN_END 14:28:51 / START 14:28:51), so "is any daq_control running?"
+    never once answered no. A gate that only checked liveness would have sailed straight
+    through the handover and pinned the pedestal exactly as the real one did. daq_control
+    is launched fresh per run and exits with it, so its PID *is* the run's identity.
+
+    Exact basename match, so dream_daq_control.py (a long-lived server) is not mistaken
+    for a run — `pgrep -f daq_control.py` does make that mistake.
+    """
+    return set(_pids_of('daq_control.py'))
+
+
+def stop_all(timeout=30.0):
+    """Stop every other beam_gate and make sure no hold is left behind.
+
+    Each gate releases its own hold on SIGTERM, so a clean stop is normally enough. But a
+    gate that was SIGKILLed leaves `.beam_gate_hold` (and therefore `.pause_run`) with
+    nobody left to release it, which pins the next run just as surely. Since this is the
+    explicit operator 'get out of the way' call, adopt and release that orphan too.
+
+    Returns the process exit status (0 = everything is clear).
+    """
+    pids = _pids_of('beam_gate.py')
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    if pids:
+        log(f'--stop: SIGTERM to beam_gate {pids}, waiting for them to release')
+        t0 = time.time()
+        while _pids_of('beam_gate.py') and time.time() - t0 < timeout:
+            time.sleep(0.5)
+        left = _pids_of('beam_gate.py')
+        if left:
+            log(f'!! beam_gate {left} did not exit within {timeout:g}s — '
+                f'check .pause_run and .beam_gate_hold by hand')
+            return 1
+        log('--stop: all beam_gates stopped')
+    else:
+        log('--stop: no beam_gate running')
+
+    # Orphaned hold from a killed gate (or one that could not clean up).
+    if os.path.exists(HOLD_MARKER):
+        for p in (PAUSE_FLAG, HOLD_MARKER):
+            try:
+                os.remove(p)
+            except FileNotFoundError:
+                pass
+        log('--stop: released an orphaned .beam_gate_hold (a gate died without cleaning up)')
+    elif os.path.exists(PAUSE_FLAG):
+        # Somebody else's hold — the operator's own pause, or daq_control retrying an
+        # n1081b apply. Never ours to clear; say so rather than stamping on it.
+        log('--stop: .pause_run exists but is NOT a beam_gate hold '
+            '(operator pause, or daq_control n1081b retry) — leaving it alone')
+    return 0
 
 
 def acquire(dry_run=False):
@@ -155,12 +255,19 @@ def main():
     ap.add_argument('--status', action='store_true', help='one-shot report, then exit')
     ap.add_argument('--stop-with-run', action='store_true',
                     help='exit when .stop_run appears (releasing our hold first)')
+    ap.add_argument('--stop', action='store_true',
+                    help='stop every running beam_gate and release any orphaned hold, then exit')
     args = ap.parse_args()
+
+    if args.stop:
+        return stop_all()
 
     state, detail = read_beam_state()
     if args.status:
         held = 'ours' if i_hold() else ('someone else' if os.path.exists(PAUSE_FLAG) else 'none')
         print(f'beam      : {state}  ({detail})')
+        _r = sorted(run_pids())
+        print(f'run       : {"daq_control pid(s) " + str(_r) if _r else "NONE — a gate here would stand down"}')
         print(f'.pause_run: {held}')
         print(f'action    : ' + {
             OFF: 'would HOLD' if held == 'none' else ('already holding' if held == 'ours'
@@ -184,6 +291,7 @@ def main():
     log(f'beam is {state} ({detail})')
 
     last, streak = None, 0
+    my_run, gone = set(), 0
     try:
         while not stopping['now']:
             state, detail = read_beam_state()
@@ -198,6 +306,32 @@ def main():
                 elif state == ON:
                     release(args.dry_run)
                 # UNKNOWN: deliberately do nothing -- hold whatever state we are in
+
+            # RUN-SCOPED LIFETIME — never outlive the run we were started for. We latch
+            # onto the daq_control PID(s) we first see and stand down when they are gone.
+            # Latching only after we have actually seen a run means a gate started a
+            # moment before its own daq_control cannot exit on that startup race.
+            # `finally` releases our hold on the way out.
+            live = run_pids()
+            if not my_run:
+                if live:
+                    my_run = live
+                    log(f'scoped to daq_control pid(s) {sorted(my_run)} — this gate dies with it')
+            elif my_run & live:
+                gone = 0                      # our run is still there
+            else:
+                other = live - my_run
+                if other:
+                    # A DIFFERENT run is already up. No debounce: this is unambiguous, and
+                    # every extra second is a second we could pin a run that is not ours.
+                    log(f'run {sorted(my_run)} is gone and a DIFFERENT run {sorted(other)} '
+                        f'is live — standing down rather than pinning it')
+                    break
+                gone += 1
+                if gone >= RUN_GONE_READS:
+                    log(f'no daq_control for {gone * args.poll:.0f}s — the run this gate was '
+                        f'started for is over; standing down so it cannot pin the next one')
+                    break
 
             if args.stop_with_run and os.path.exists(STOP_RUN_FLAG):
                 log('.stop_run seen — exiting')

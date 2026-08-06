@@ -11,7 +11,7 @@ Created as Cosmic_Bench_DAQ_Control/daq_control.py
 import sys
 import shutil
 import traceback
-from time import sleep
+from time import sleep, monotonic
 from contextlib import nullcontext
 
 from Client import Client
@@ -34,6 +34,7 @@ _LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 def _log(event, **details):
     log_event(_LOG_FILE, event, 'daq_control', **details)
 
+
 # Stop-request flags dropped by bash_scripts/stop_run.sh and stop_sub_run.sh.
 # Using flag files (instead of racing Ctrl-C into the tmux pane) makes stopping
 # deterministic: daq_control checks them between/after sub-runs and stops the DAQ
@@ -44,6 +45,30 @@ STOP_SUBRUN_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.st
 # When present, daq_control waits at the next sub-run boundary until it's cleared
 # (Resume). One-shot: clearing it lets the run continue without re-pausing.
 PAUSE_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.pause_run')
+# beam_gate's ownership sidecar (beam_gate.HOLD_MARKER). Read-only here: it tells us WHO
+# parked the run, which is the one thing a park does not otherwise reveal.
+BEAM_GATE_HOLD = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.beam_gate_hold')
+# How often to re-log while parked. A park is silent by nature — no data, no errors, no
+# output — so an unattributed one hides in plain sight: on 2026-08-06 a beam_gate that
+# outlived its run pinned a pedestal run here for 11 minutes and the only trace was a
+# single line printed at the start of the wait.
+PAUSE_NUDGE_S = 120
+
+
+def _pause_holder():
+    """Best-effort attribution for a .pause_run hold. Three parties can set it: beam_gate
+    (which leaves an ownership sidecar), the operator via the Flask pause button, and
+    daq_control itself while retrying an n1081b apply."""
+    if os.path.exists(BEAM_GATE_HOLD):
+        return 'beam_gate — beam is off'
+    try:
+        with open(PAUSE_FLAG) as f:
+            note = f.read().strip()
+        if note:
+            return note.splitlines()[0][:120]
+    except OSError:
+        pass
+    return 'operator pause, or an n1081b apply retry'
 
 # Abort the run after this many CONSECUTIVE sub-runs record zero data bytes. Two
 # rather than one so a single odd sub-run does not kill an overnight grid, but the
@@ -327,14 +352,28 @@ def main():
                 # sub-run. HV stays at its current setpoint. Interruptible by Stop Run;
                 # clearing the flag (Resume) continues the run (one-shot).
                 if os.path.exists(PAUSE_FLAG):
-                    print('[pause] Paused after sub-run — waiting for Resume...')
+                    holder = _pause_holder()
+                    print(f'[pause] Paused after sub-run — waiting for Resume... '
+                          f'(held by: {holder})')
+                    _log('PAUSED', run=config.run_name, sub_run=sub_run.get('sub_run_name'),
+                         holder=holder)
+                    t0, nudges = monotonic(), 0
                     while os.path.exists(PAUSE_FLAG) and not os.path.exists(STOP_RUN_FLAG):
                         sleep(1)
+                        waited = monotonic() - t0
+                        if waited >= (nudges + 1) * PAUSE_NUDGE_S:
+                            nudges += 1
+                            print(f'[pause] still parked after {waited / 60:.0f} min — '
+                                  f'held by: {_pause_holder()}. NO DATA is being taken.')
+                    waited = monotonic() - t0
                     if os.path.exists(STOP_RUN_FLAG):
                         print('[stop] Stop-run requested during pause — ending run.')
-                        _log('STOP_REQUESTED', run=config.run_name, when='during pause')
+                        _log('STOP_REQUESTED', run=config.run_name, when='during pause',
+                             parked_s=round(waited))
                         break
-                    print('[pause] Resumed.')
+                    print(f'[pause] Resumed after {waited / 60:.1f} min.')
+                    _log('RESUMED', run=config.run_name,
+                         sub_run=sub_run.get('sub_run_name'), parked_s=round(waited))
                 sub_run_name = sub_run['sub_run_name']
                 # sub_run_dir = f'{config.dream_daq_info["run_directory"]}{sub_run_name}/'
                 # create_dir_if_not_exist(sub_run_dir)  # Means DAQ runs on Dream CPU! Can fix, need config template in dream_daq control!
