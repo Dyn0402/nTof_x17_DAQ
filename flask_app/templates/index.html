@@ -691,6 +691,54 @@
       </div>
     </div>
   </div>
+
+  <!-- Argon bottle: model vs measured gauge readings -->
+  <div class="panel mt-3">
+    <div class="panel-header">
+      <span class="panel-title">Argon Bottle — Model vs Measured</span>
+      <span class="panel-header-note">every gauge reading against the calibrated model</span>
+      <span id="gas-bottle-fit" class="ms-auto panel-header-note">—</span>
+    </div>
+    <div class="panel-body">
+      <div class="row g-3">
+        <div class="col-12 col-xl-7">
+          <div id="gas-bottle-plot" style="width:100%;height:330px;"></div>
+          <div id="gas-bottle-resid" style="width:100%;height:180px;"></div>
+        </div>
+        <div class="col-12 col-xl-5">
+          <div class="table-responsive">
+            <table class="table table-dark table-sm mb-0" style="background:transparent;font-size:0.85rem;">
+              <thead><tr>
+                <th>reading</th><th class="text-end">gauge</th><th class="text-end">model</th>
+                <th class="text-end">resid</th><th>source</th>
+              </tr></thead>
+              <tbody id="gas-bottle-table">
+                <tr><td colspan="5" class="text-muted">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <p class="text-muted small mb-0 mt-3" id="gas-bottle-note">
+        The bottle has no electrical pressure readout, so the gauge on the panel gets
+        read by hand and logged to
+        <span class="font-monospace">calibrations/gas_bottle/argon_bottle_pressure.csv</span>
+        (photo → <span class="font-monospace">update.sh</span>, or straight in via
+        <span class="font-monospace">add_reading.py</span>). Those readings are what the
+        model is fitted to, so this plot is the check on the pressure shown above: if the
+        points drift off the line, the number on the card is stale. Readings before the
+        <span id="gas-bottle-drying">drying event</span> are drawn but
+        <em>not</em> fitted — that argon bypassed the flow meter, so the model cannot
+        account for it. Dial precision is ~±5 bar, so judge the fit by the spread of many
+        points, not by any single one. The dotted projection runs the bottle down at the
+        <em>current</em> draw rate with the mixer never stopping, so it is a worst case
+        for the date it empties — any beam-off period pushes that out. The run-end marker
+        is <span class="font-monospace">run_end</span> from
+        <span class="font-monospace">projections/schedule.json</span>, the same date the
+        statistics projection uses; edit it there, not here.
+      </p>
+    </div>
+  </div>
 </div>
 
 
@@ -3680,11 +3728,26 @@ async function gasUpdateUsage() {
   document.getElementById("gas-argon-empty").textContent = gasDaysToEmpty(a.days_to_empty, a.empty_date);
   const calibEl = document.getElementById("gas-argon-calib");
   if (calibEl) {
-    calibEl.textContent = a.calibration
-      ? `effective start ${gasNum(a.calibration.effective_start_bar, 0)} bar, ` +
+    let calibText = "fit pending (need ≥2 gauge readings)";
+    if (a.calibration) {
+      calibText =
+        `effective start ${gasNum(a.calibration.effective_start_bar, 0)} bar, ` +
         `leak +${gasNum(a.calibration.effective_leak_pct, 1)}% vs. logged flow ` +
-        `(fit ±${gasNum(a.calibration.rms_residual_bar, 1)} bar, ${a.calibration.n_fit_points} photos)`
-      : "fit pending (need ≥2 gauge photos)";
+        `(fit ±${gasNum(a.calibration.rms_residual_bar, 1)} bar, ${a.calibration.n_fit_points} readings)`;
+      // One-off draws that bypassed the flow meter. Spelled out separately from
+      // the leak because they are steps, not a rate — and a fitted step the
+      // readings were too coarse to see must not read as a measured one.
+      for (const ev of a.calibration.untracked_draws || []) {
+        const when = ev.when.slice(5, 10);
+        if (ev.source === "fit" && !ev.resolvable) {
+          calibText += ` · untracked draw ${when}: too small to resolve`;
+        } else {
+          calibText += ` · untracked draw ${when}: ${gasNum(ev.bar_equiv, 1)} bar ` +
+            (ev.source === "fit" ? "(fitted)" : "(assumed)");
+        }
+      }
+    }
+    calibEl.textContent = calibText;
   }
 
   document.getElementById("gas-iso-liquid").textContent =
@@ -3701,11 +3764,167 @@ async function gasUpdateUsage() {
   if (el) el.textContent = u.start ? `since ${u.start} · ${gasNum(u.logged_hours, 0)} h logged` : "";
 }
 
+// Argon bottle: the model curve against every hand-read gauge value, plus the
+// residuals and the table of readings. Series colours are #3987e5 / #199e70 /
+// #d95926 — checked for colour-blind separation as a set (worst adjacent-pair
+// OKLab dE 9.4 under deuteranopia); don't swap one for a nearby hue casually.
+async function gasRenderBottleHistory() {
+  if (typeof Plotly === "undefined") return;
+  if (!document.getElementById("gas-bottle-plot")) return;
+  let h;
+  try { h = await (await fetch("/gas/bottle_history")).json(); } catch (e) { return; }
+  if (!h || !h.success) return;
+
+  const C_MEAS = "#3987e5", C_MODEL = "#199e70", C_RAW = "#d95926", C_MUTED = "#8b96a5";
+  const SURFACE = "#151a21";   // panel background: the ring that separates overlapping marks
+  const axis = { gridcolor: "#242e39", zerolinecolor: "#38434f", linecolor: "#38434f" };
+  const base = {
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: "#8b96a5" }, hoverlabel: { bgcolor: "#1b222b", bordercolor: "#38434f" },
+  };
+  const cfg = { responsive: true, displaylogo: false };
+  const fit = h.readings.filter(r => r.in_fit), pre = h.readings.filter(r => !r.in_fit);
+  const c = h.calibration;
+
+  // Untracked draws and the drying cutoff as vertical rules: both are moments where
+  // the model's inputs change, and a reader comparing points to the curve has to know
+  // where they are.
+  const rules = [], notes = [];
+  const rule = (x, colour, text, dash) => {
+    rules.push({ type: "line", x0: x, x1: x, yref: "paper", y0: 0, y1: 1,
+                 line: { color: colour, width: 1, dash: dash || "dot" } });
+    // Inside the plot, not above it: above is where Plotly floats the modebar on
+    // hover, which would sit on top of these labels exactly when a user is reading them.
+    notes.push({ x: x, yref: "paper", y: 0.97, text: text, showarrow: false,
+                 font: { size: 10, color: colour }, xanchor: "left", yanchor: "top" });
+  };
+  rule(h.drying_event_end, C_MUTED, " fit starts", "dash");
+  for (const ev of h.events || []) rule(ev.when, C_RAW, " untracked draw");
+  const stop = h.planned_stop, fc = h.forecast;
+  if (stop) {
+    // Time shown, not just the date: this marker comes from the projection schedule,
+    // and the hour is exactly what drifts out of date when the plan moves.
+    rule(stop.when, C_MEAS, ` run ends ${stop.when.slice(5, 16)}`, "dash");
+    // Direct-labelled because it is the one number this panel exists to answer:
+    // does the bottle outlast the run?
+    notes.push({ x: stop.when, y: stop.bar, ax: 34, ay: -30, showarrow: true,
+                 arrowhead: 0, arrowcolor: C_MUTED, arrowwidth: 1,
+                 text: stop.reaches_empty_first ? "<b>empty before run end</b>"
+                                                : `<b>${stop.bar.toFixed(0)} bar</b> at run end`,
+                 font: { size: 11, color: "#cbd5e1" }, bgcolor: "rgba(21,26,33,0.85)",
+                 borderpad: 3 });
+  }
+
+  // The residual panel sits directly under the pressure panel and is read as one
+  // figure with it, so the two time axes MUST cover the same span. They are separate
+  // Plotly divs, so `matches` cannot do it -- the range is pinned on both by hand.
+  // Spans the readings as well as the model curve: the first two gauge readings were
+  // taken the morning the flow log started, i.e. BEFORE its first sample, and a range
+  // taken from the curve alone slices them off against the left edge.
+  const stamps = h.time.concat(h.readings.map(r => r.t), fc ? fc.time : []);
+  const xrange = [stamps.reduce((a, b) => a < b ? a : b),
+                  stamps.reduce((a, b) => a > b ? a : b)];
+  // Autorange clips a marker sitting at the data maximum to half a circle against the
+  // plot edge -- and the highest points here are the excluded ones, whose distance
+  // above the curve is the thing being shown. Pad the range instead. The floor is
+  // pinned at 0 so "how far from empty" is read against the axis, not guessed.
+  const ys = h.readings.map(r => r.bar).concat(h.model_uncalibrated_bar, h.model_bar);
+  const yhi = Math.max(...ys), pad = yhi * 0.06;
+
+  Plotly.react("gas-bottle-plot", [
+    // Uncalibrated first so the calibrated curve and the points draw over it.
+    { x: h.time, y: h.model_uncalibrated_bar, name: "Model, uncalibrated",
+      mode: "lines", line: { color: C_RAW, width: 1.5, dash: "dash" },
+      hovertemplate: "%{y:.1f} bar (uncal)<extra></extra>" },
+    { x: h.time, y: h.model_bar, name: "Model, calibrated",
+      mode: "lines", line: { color: C_MODEL, width: 2 },
+      hovertemplate: "%{y:.1f} bar<extra></extra>" },
+    { x: pre.map(r => r.t), y: pre.map(r => r.bar), name: "Reading (not fitted)",
+      mode: "markers", marker: { color: "rgba(0,0,0,0)", size: 9,
+        line: { color: C_MUTED, width: 1.5 } },
+      hovertemplate: "%{y:.0f} bar · before cutoff<extra></extra>" },
+    { x: fit.map(r => r.t), y: fit.map(r => r.bar), name: "Reading (fitted)",
+      mode: "markers", marker: { color: C_MEAS, size: 9, line: { color: SURFACE, width: 2 } },
+      hovertemplate: "%{y:.0f} bar measured<extra></extra>" },
+    // Same entity as the calibrated model, so the same colour — dotted marks it as
+    // projection rather than history. Straight continuation at the current draw rate:
+    // it assumes the mixer keeps running exactly as it is now.
+    ...(fc ? [{ x: fc.time, y: fc.bar, name: "Projected at current draw",
+      mode: "lines", line: { color: C_MODEL, width: 2, dash: "dot" },
+      hovertemplate: "%{y:.1f} bar projected<extra></extra>" }] : []),
+  ], {
+    ...base, margin: { t: 24, r: 16, b: 30, l: 56 }, hovermode: "x unified",
+    uirevision: "gas-bottle", shapes: rules, annotations: notes,
+    legend: { orientation: "h", y: -0.16 },
+    // Tick labels live on the residual panel below, which shares this exact range:
+    // one date axis for the pair, not the same dates twice 150 px apart.
+    xaxis: { ...axis, range: xrange, showticklabels: false },
+    yaxis: { title: { text: "Bottle pressure (bar)", font: { size: 13, color: "#cbd5e1" } },
+             range: [0, yhi + pad], ...axis },
+  }, cfg);
+
+  // Residuals: fitted points only. The pre-cutoff ones run to +13 bar (that IS the
+  // unlogged drying draw) and would flatten the +-3 bar detail that matters here.
+  const band = c ? c.rms_residual_bar : null;
+  Plotly.react("gas-bottle-resid", [
+    { x: fit.map(r => r.t), y: fit.map(r => r.residual_bar), type: "bar",
+      marker: { color: C_MEAS }, width: 14 * 3600 * 1000,
+      hovertemplate: "%{y:+.1f} bar from model<extra></extra>" },
+  ], {
+    ...base, margin: { t: 10, r: 16, b: 30, l: 56 }, uirevision: "gas-bottle",
+    showlegend: false,
+    // The +-rms band says what "close" means: inside it the point is as near the
+    // model as the fit's own scatter, i.e. indistinguishable from a good fit.
+    shapes: band ? [{ type: "rect", xref: "paper", x0: 0, x1: 1, y0: -band, y1: band,
+                      fillcolor: "rgba(139,150,165,0.13)", line: { width: 0 }, layer: "below" }] : [],
+    annotations: band ? [{ xref: "paper", x: 0.005, y: band, text: `±${band.toFixed(1)} bar fit scatter`,
+                           showarrow: false, xanchor: "left", yanchor: "bottom",
+                           font: { size: 10, color: C_MUTED } }] : [],
+    xaxis: { ...axis, range: xrange },
+    yaxis: { title: { text: "Reading − model (bar)", font: { size: 13, color: "#cbd5e1" } }, ...axis },
+  }, cfg);
+
+  const hdr = document.getElementById("gas-bottle-fit");
+  if (hdr) {
+    let txt = c
+      ? `fit ±${gasNum(c.rms_residual_bar, 1)} bar · leak +${gasNum(c.effective_leak_pct, 1)}% · `
+        + `${c.n_fit_points} of ${h.readings.length} readings fitted`
+      : "not enough readings to fit";
+    if (stop) txt += ` · ${gasNum(stop.bar, 0)} bar (${(stop.frac_remaining * 100).toFixed(0)}%) at run end`;
+    if (fc && fc.empty_when) txt += ` · empty ${fc.empty_when.slice(0, 10)}`;
+    hdr.textContent = txt;
+  }
+  const dry = document.getElementById("gas-bottle-drying");
+  if (dry) dry.textContent = `drying event (${h.drying_event_end})`;
+
+  // Newest first: the last reading is the one that says whether the card is stale.
+  const tbody = document.getElementById("gas-bottle-table");
+  if (tbody) {
+    tbody.innerHTML = h.readings.slice().reverse().map(r => {
+      const resid = r.residual_bar == null ? "—"
+        : `${r.residual_bar > 0 ? "+" : ""}${r.residual_bar.toFixed(1)}`;
+      // Outside the fit's own scatter is worth a second look, so it is marked with
+      // weight and a symbol — never colour alone.
+      const out = c && r.in_fit && Math.abs(r.residual_bar) > c.rms_residual_bar;
+      return `<tr${r.in_fit ? "" : ' class="text-muted"'}>`
+        + `<td class="font-monospace">${r.t}</td>`
+        + `<td class="text-end font-monospace">${r.bar.toFixed(0)}</td>`
+        + `<td class="text-end font-monospace">${r.model_bar == null ? "—" : r.model_bar.toFixed(1)}</td>`
+        + `<td class="text-end font-monospace"${out ? ' style="font-weight:600;"' : ""}>`
+        + `${resid}${out ? " ›" : ""}</td>`
+        + `<td>${r.in_fit ? r.source : "not fitted"}</td></tr>`;
+    }).join("");
+  }
+}
+
 // shown — the container then has real dimensions. Plots pull history from the CSV, so
 // they come up fully populated rather than filling in live.
 ["#overview", "#gas-mixer"].forEach(sel =>
   document.querySelector(`a[href="${sel}"]`).addEventListener("shown.bs.tab", gasRenderPlot));
-document.querySelector('a[href="#gas-mixer"]').addEventListener("shown.bs.tab", gasUpdateUsage);
+document.querySelector('a[href="#gas-mixer"]').addEventListener("shown.bs.tab", () => {
+  gasUpdateUsage();
+  gasRenderBottleHistory();
+});
 
 // Refresh the history plots on a timer, but only while a tab that shows them is visible.
 setInterval(() => {
@@ -3719,7 +3938,12 @@ setInterval(gasUpdateStatus, 2000);
 gasRenderPlot();   // initial draw (Overview is the default-active tab at load)
 gasUpdateUsage();
 setInterval(() => {
-  if (document.getElementById("gas-mixer").classList.contains("active")) gasUpdateUsage();
+  if (document.getElementById("gas-mixer").classList.contains("active")) {
+    gasUpdateUsage();
+    // Cheap to re-poll (the model caches its CSV parses) and it only moves when a
+    // reading is added, but that is exactly when someone is watching this panel.
+    gasRenderBottleHistory();
+  }
 }, 30000);
 
 // ---------------------------------------------------------------------------

@@ -66,6 +66,36 @@ Then commit the CSV. Set `PHOTOS=/some/other/dir` to point it elsewhere.
 
 Tooling and the full method: `gas_mixer_control/bottle_gauge_reader/`.
 
+### Readings taken without a photo
+
+When the gauge was read at the panel and written down rather than photographed,
+there is nothing to review — add the row directly:
+
+```bash
+python3 calibrations/gas_bottle/add_reading.py                          # interactive
+python3 calibrations/gas_bottle/add_reading.py "2026-08-03 14:20" 122   # or inline
+```
+
+These land as `source=manual-entry` (distinct from `manual`, which means a photo
+*was* on screen and its guess was typed over) with a `manual:<timestamp>`
+placeholder in `file`. The placeholder is required, not cosmetic: `review_gauge.py`
+keys rows by filename and drops any row without one. Both paths write the same
+CSV and can be used in any order.
+
+## Untracked draws
+
+Argon taken off the panel without passing the mixer's flow meter is invisible to
+`bottle_usage.py`'s integration, so the readings after it drop below the model
+for a reason the model has no term for. Each such event is declared in that
+file's `UNTRACKED_DRAWS`, which subtracts it as a **step** from the mole count —
+not as a faster leak, which would smear it backwards over every earlier reading.
+Its size can be fitted from the readings that bracket it.
+
+Note the scale before reading anything into a fitted step: 1 bar in the 50 L
+bottle is ~50 normal litres, and readings are only good to ~±5 bar. A draw of a
+few tens of litres is therefore **not measurable here at all** — the model
+reports it as unresolved rather than pretending otherwise.
+
 ## Two panels — check the label
 
 There is more than one of these panels in the area (`LP 1230` and `LP 1232` at

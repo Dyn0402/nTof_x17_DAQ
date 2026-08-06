@@ -1881,6 +1881,18 @@ def gas_usage():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/gas/bottle_history")
+def gas_bottle_history():
+    """The argon model as a curve plus every gauge reading and its residual — the
+    "is the model still tracking the gauge" view behind /gas/usage's single number.
+    Cheap after the first call: bottle_usage caches its per-day CSV parses."""
+    from gas_mixer_control.bottle_usage import compute_bottle_history
+    try:
+        return jsonify(compute_bottle_history(GAS_LOG_DIR))
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
 # --- 3He target pressure gauge (Keithley 2000 over GPIB) ---
 # The GPIB link is owned by the separate he3_pressure_watcher process (see
 # he3_pressure_reader/he3_pressure_controller.py). Flask only reads the watcher's
