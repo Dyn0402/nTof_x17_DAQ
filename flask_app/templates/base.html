@@ -470,6 +470,10 @@
         .shift-card.lv-stale { border-top-color: var(--info); }
         .shift-card.lv-bad   { border-top-color: var(--bad); }
         .shift-card.lv-idle  { border-top-color: var(--sec); }
+        /* One step past lv-bad: the whole card flashes. Reserved for the states a
+           shifter has minutes (not hours) to react to — currently "a disk fills in
+           under half an hour", which stops data taking when it lands. */
+        .shift-card.lv-crit  { border-top-color: var(--bad); animation: shift-alarm 1s ease-in-out infinite; }
         .shift-card-head {
             display: flex; justify-content: space-between; align-items: baseline;
             gap: 0.5rem; margin-bottom: 0.5rem;
@@ -484,6 +488,36 @@
         .lv-stale .shift-card-state { color: var(--info); }
         .lv-bad   .shift-card-state { color: var(--bad); }
         .lv-idle  .shift-card-state { color: var(--sec); }
+        .lv-crit  .shift-card-state { color: var(--bad); animation: shift-blink 1s step-end infinite; }
+        @keyframes shift-blink { 50% { opacity: 0.15; } }
+
+        /* Time-till-full cells (shift System card), SSD and HDD side by side so the
+           card stays one row tall. The ETA is the headline and percent-full is
+           demoted to the small print: a disk at 90% that nothing is writing to is
+           fine, and one at 60% taking 40 GB/hr is not. */
+        .sys-ttf-pair { display: flex; gap: 6px; margin-top: 5px; }
+        .sys-ttf-pair .ttf-cell {
+            flex: 1 1 0; min-width: 0;
+            border: 1px solid var(--border); border-radius: 6px;
+            padding: 3px 7px; line-height: 1.25;
+        }
+        .ttf-cell .k {
+            color: var(--muted); font-size: 0.62rem;
+            text-transform: uppercase; letter-spacing: 0.08em; margin-right: 4px;
+        }
+        .ttf-cell .v { font-family: var(--mono); font-size: 1rem; font-weight: 700; white-space: nowrap; }
+        .ttf-cell .s {
+            display: block; color: #5c6774; font-size: 0.64rem;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        /* Note is normally empty (the card has no room to spare) — it only carries
+           the one-line "what to do" when a disk is actually running out. */
+        #shift-sys-note:empty { display: none; }
+        .ttf-ok   { color: var(--ok); }
+        .ttf-warn { color: var(--warn); }
+        .ttf-bad  { color: var(--bad); }
+        .ttf-crit { color: var(--bad); animation: shift-blink 1s step-end infinite; }
+        .ttf-idle { color: var(--muted); }
 
         /* value / expected rows */
         .shift-rows { display: flex; flex-direction: column; gap: 3px; font-family: var(--mono); font-size: 0.88rem; }

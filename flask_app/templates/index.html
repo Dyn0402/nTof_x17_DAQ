@@ -81,8 +81,7 @@
           <span class="shift-card-state" id="shift-sys-state">—</span>
         </div>
         <div id="shift-sys-body" class="sys-rows"></div>
-        <div class="shift-note">DAQ machine. If the SSD (system) or HDD (run data) fills up,
-          data taking stops — if one passes 80&#37;, warn the expert.</div>
+        <div class="shift-note" id="shift-sys-note"></div>
       </div>
     </div>
   </div>
@@ -4869,22 +4868,96 @@ function shiftRenderBeam(b) {
   }
 }
 
+// Shifter-facing disk health is TIME TILL FULL, not percent full: an 88%-full HDD
+// that nothing is writing to needs nobody, and a 60%-full one taking 40 GB/hr needs
+// somebody now. Hours of headroom left (from /space/forecast's gross-inflow fit,
+// cached in sysForecast), worst disk wins:
+//   >= 2 h  green    < 2 h  yellow    <= 1 h  red    < 30 min  flashing
+const SHIFT_TTF_WARN_H = 2.0, SHIFT_TTF_BAD_H = 1.0, SHIFT_TTF_CRIT_H = 0.5;
+const SHIFT_LVL_RANK = { ok: 0, warn: 1, bad: 2, crit: 3 };
+
+// Level for one disk's forecast, or null when there is no ETA to grade (disk idle,
+// or too little history to fit a rate) — the caller falls back to percent then.
+function shiftTtfLevel(f) {
+  if (!f || f.trend !== "filling" || f.time_to_full_h == null) return null;
+  const h = f.time_to_full_h;
+  if (h < SHIFT_TTF_CRIT_H) return "crit";
+  if (h <= SHIFT_TTF_BAD_H) return "bad";
+  if (h < SHIFT_TTF_WARN_H) return "warn";
+  return "ok";
+}
+
 function shiftRenderSystem(s) {
   const card = document.getElementById("shift-sys-card");
   const state = document.getElementById("shift-sys-state");
   const body = document.getElementById("shift-sys-body");
+  const note = document.getElementById("shift-sys-note");
   if (!s || !s.mem) { state.textContent = "—"; return; }
 
-  const rows = [["Mem", s.mem], ["SSD", s.ssd], ["HDD", s.hdd]];
-  let worst = 0;
-  body.innerHTML = rows.map(([label, d]) => {
-    if (!d) return sysMakeBar(label, 0, "n/a");
-    worst = Math.max(worst, d.percent);
-    return sysMakeBar(label, d.percent, sysFormatBytes(d.used) + "/" + sysFormatBytes(d.total));
-  }).join("");
-  const lvl = worst < 80 ? "ok" : worst < 90 ? "warn" : "bad";
-  shSetLevel(card, lvl);
-  state.textContent = { ok: "OK", warn: "FILLING UP", bad: "NEARLY FULL" }[lvl];
+  // Forecast comes from the shared 60 s /space/forecast poll (it is fitted over
+  // hours, so it does not need the 2 s shift cadence); the live percent/bytes ride
+  // in on /shift/status as before.
+  const disks = (typeof sysForecast !== "undefined" && sysForecast && sysForecast.disks)
+              ? sysForecast.disks : {};
+  let worstLvl = "ok", worstName = null, worstEta = null;
+  const bump = (lvl, name, eta) => {
+    if (SHIFT_LVL_RANK[lvl] > SHIFT_LVL_RANK[worstLvl]) {
+      worstLvl = lvl; worstName = name; worstEta = eta;
+    }
+  };
+
+  // One disk cell: big "N h left", with percent full + inflow as the small print.
+  // The two cells sit side by side (.sys-ttf-pair) to keep the card one row tall.
+  const diskCell = (key, label, live) => {
+    const f = disks[key];
+    const lvl = shiftTtfLevel(f);
+    const pct = (f && f.percent != null) ? f.percent : (live ? live.percent : null);
+    const pctTxt = pct != null ? `${pct.toFixed(0)}% full` : "";
+    let value, cls, sub;
+    if (lvl) {
+      bump(lvl, label, f.eta_full);
+      value = `${f.eta_full} left`;
+      cls = "ttf-" + lvl;
+      sub = `${pctTxt} · +${f.inflow_gb_per_hr} GB/hr`;
+    } else if (f && f.trend === "idle") {
+      value = "steady"; cls = "ttf-idle"; sub = pctTxt || "not filling";
+    } else {
+      // No fill-rate fit (forecast endpoint down, fresh log). Fall back to the old
+      // percent gate so a full disk can never read as a quiet green card.
+      if (pct != null && pct >= 95) bump("bad", label, null);
+      else if (pct != null && pct >= 90) bump("warn", label, null);
+      value = "—"; cls = "ttf-idle";
+      sub = pctTxt ? `${pctTxt} · rate unknown` : "fill rate unknown";
+    }
+    return `<div class="ttf-cell"><span class="k">${label}</span><span class="v ${cls}">${value}</span>
+              <span class="s">${sub}</span></div>`;
+  };
+
+  // Memory has no fill forecast — keep it as the bar it was, and let it raise the
+  // card only when it is genuinely tight.
+  const mem = s.mem;
+  if (mem.percent >= 95) bump("warn", "Memory", null);
+  body.innerHTML =
+    sysMakeBar("Mem", mem.percent, sysFormatBytes(mem.used) + "/" + sysFormatBytes(mem.total)) +
+    `<div class="sys-ttf-pair">${diskCell("ssd", "SSD", s.ssd)}${diskCell("hdd", "HDD", s.hdd)}</div>`;
+
+  shSetLevel(card, worstLvl);
+  state.textContent = { ok: "OK", warn: "FILLING", bad: "NEARLY FULL",
+                        crit: "FULL VERY SOON" }[worstLvl];
+
+  // Nothing under the card while all is well — the card has no height to spare.
+  // The "what to do" line only appears once a disk is actually running out.
+  if (worstLvl === "ok") {
+    note.innerHTML = "";
+  } else {
+    const which = worstName === "Memory" ? "Memory is nearly exhausted"
+                : worstEta ? `${worstName} fills in ${worstEta}`
+                : `${worstName} is nearly full`;
+    const act = worstLvl === "warn"
+      ? "tell the expert / on-call now — freeing space takes a while."
+      : "CALL THE EXPERT NOW — data taking stops when it lands.";
+    note.innerHTML = `<span class="shift-flag-bad">${which} — ${act}</span>`;
+  }
 }
 
 async function shiftUpdate() {
