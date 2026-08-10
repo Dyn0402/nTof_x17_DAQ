@@ -58,6 +58,10 @@ mkdir -p "$REPO_DIR/logs" "$REPO_DIR/config"
 STEP_JSON=""
 PHASE="starting"
 SAFE="false"
+# Published with the pid: this state file outlives the reboot it exists to enable,
+# and after a reboot some unrelated process will eventually hold that pid. The GUI
+# only trusts the pid on the boot that recorded it (flask_app/app.py).
+BOOT_ID="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)"
 
 _now () { date '+%Y-%m-%d %H:%M:%S'; }
 
@@ -75,6 +79,7 @@ publish () {
   "updated": "$(_now)",
   "updated_epoch": $(date +%s),
   "pid": $$,
+  "boot_id": "$BOOT_ID",
   "steps": [$STEP_JSON]
 }
 EOF

@@ -107,6 +107,7 @@ BOARD_IP = "192.168.10.244"
 REACH_WAIT_S = 180.0       # patient wait for the DREAM link at boot, before segment 1
 REACH_POLL_S = 3.0         # ICMP only -- never touches the board's websocket server
 UNREACH_REST_S = 10 * 60.0 # rest this long when the board stays unreachable, then re-check
+UNREACH_NOTIFY_S = 6 * 3600.0  # ...but only Telegram about it this often (see _reachable_ok)
 KEEP_DAYS = 21             # prune segment dirs older than this
 LOG_MAX_BYTES = 20 * 1024 * 1024
 
@@ -241,6 +242,9 @@ class Supervisor:
         # from one that predates us (see _own_quarantine).
         self.t_start = time.time()
         self._own_q_waits = 0
+        # Last time the "board unreachable" Telegram went out, so a dead link is not
+        # re-announced every UNREACH_REST_S (see _reachable_ok).
+        self._unreach_notified_at = 0.0
         # per-section counter-measured input rates from the latest segment baseline —
         # the only wall (A) / liq (B) rate record left while we own .244
         self.counter_hz = {}
@@ -368,6 +372,12 @@ class Supervisor:
                     self.silent_strikes = 0
                     self.probe_fails = 0
                     self.alarm_strikes = 0
+                    # Same reason the strike count resets: edges are flowing, so
+                    # whatever the last fault was, the chain recovered from it.
+                    # Without this the own-quarantine backstop is a LIFETIME budget
+                    # of two, and on a supervisor meant to run for weeks a transient
+                    # in week 1 plus another in week 3 disarms it for good.
+                    self._own_q_waits = 0
                 elif (t_s >= SILENT_START_S and pre_hz is not None
                       and pre_hz >= MIN_EXPECT_HZ and not stalled):
                     stalled = True
@@ -490,6 +500,7 @@ class Supervisor:
         (cf. `.242`, link-dead since 07-28) never burns alarm strikes and never stops
         the chain for good. Returns False if no segment should start yet."""
         if self._board_pingable():
+            self._link_back()
             return True
         # Patient short wait first -- at boot the link comes up within seconds.
         log(f"REACH GATE: {BOARD_IP} not answering; waiting up to "
@@ -503,6 +514,7 @@ class Supervisor:
                 waited = REACH_WAIT_S - (deadline - time.time())
                 log(f"REACH GATE: {BOARD_IP} reachable after {waited:.0f}s — proceeding")
                 event('REACH_OK', ip=BOARD_IP, waited_s=f'{waited:.0f}')
+                self._link_back()
                 return True
         if self._stop_requested():
             return False
@@ -512,11 +524,28 @@ class Supervisor:
         event('REACH_FAIL', ip=BOARD_IP, waited_s=f'{REACH_WAIT_S:.0f}',
               action=f'resting {UNREACH_REST_S / 60:.0f} min, no segment started',
               note='link/routing failure, not a wedge — resting will not fix a dead link')
-        telegram(f"M5 ({BOARD_IP}) is not reachable — TT streaming paused. This is a "
-                 f"LINK problem, not a board wedge: check the cable/switch port. "
-                 f"Retrying every {UNREACH_REST_S / 60:.0f} min.")
+        # Announce a dead link once, then at most every UNREACH_NOTIFY_S. The retry
+        # loop is 10-minutely and a link can stay down for days (.242 was ARP-FAILED
+        # 07-28 -> 07-30), which unthrottled is ~144 identical messages a day —
+        # exactly the flood that trains people to ignore the channel.
+        now = time.time()
+        if now - self._unreach_notified_at >= UNREACH_NOTIFY_S:
+            first = self._unreach_notified_at == 0.0
+            self._unreach_notified_at = now
+            telegram(f"M5 ({BOARD_IP}) is not reachable — TT streaming paused. This is a "
+                     f"LINK problem, not a board wedge: check the cable/switch port. "
+                     f"Retrying every {UNREACH_REST_S / 60:.0f} min"
+                     + ("." if first else f"; still down, next update in "
+                                          f"{UNREACH_NOTIFY_S / 3600:.0f} h."))
         self._rest(UNREACH_REST_S, "board unreachable")
         return False
+
+    def _link_back(self):
+        """Clear the unreachable-notification throttle, and say so if we had announced
+        the link was down — an alarm that is never closed out is worse than no alarm."""
+        if self._unreach_notified_at:
+            self._unreach_notified_at = 0.0
+            telegram(f"M5 ({BOARD_IP}) is reachable again — TT streaming resuming.")
 
     def _own_quarantine(self):
         """The quarantine record on .244 IF this supervisor's own chain wrote it.

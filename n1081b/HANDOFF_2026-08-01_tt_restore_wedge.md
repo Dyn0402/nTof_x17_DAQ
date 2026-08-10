@@ -1,9 +1,30 @@
 # HANDOFF 2026-08-01 — .244 wedged on the segment-boundary *restore*, not on streaming
 
-> **STATUS: board genuinely wedged (18:10:27). Supervisor stopped itself cleanly at
-> 18:20:51 and nothing has touched `.244` since. No remote recovery attempted — user
-> is power-cycling the crate on Monday 2026-08-03. The `rule_n1081b_tt_stream_dead`
-> Telegram alert is DISABLED until then (see §6 — it must be re-enabled after recovery).**
+> **✅ RESOLVED 2026-08-04 20:57.** The user power-cycled the crate on 2026-08-04 (not
+> the 08-03 originally planned). `POST_REBOOT_244_CHECKLIST.md` ROUND 1 then ran clean:
+> bounded login probe replied in **0.0 s** → stale quarantine marker cleared (it had
+> already lapsed 08-02 00:10) → all four sections restored to `counter` → verified
+> counting with beam off (SEC_A 55–67 Hz, B 17–33, C 5.8–6.5, D 23.7 — **D idx 1 reads
+> 0.5 Hz**, see below) → supervisor restarted in the existing `n1081b_timetag_watcher`
+> tmux pane → segment 1 `sup_secC_0804_2056_seg1` streaming ~26 Hz on all four sector
+> channels, max packet gap 0.2 s, no alarm. The `rule_n1081b_tt_stream_dead` Telegram
+> alert was **re-enabled** via the endpoint (§6.1). §6.2 (alerting on two consecutive
+> `restored=False`) is still NOT implemented.
+>
+> **SEC_D counter idx 1 at 0.5 Hz vs 23.7 Hz on its neighbours is NORMAL — not a fault.**
+> Noted here because it looks alarming and was briefly mis-flagged during this recovery.
+> Unlike SEC_A/B/C (which each tap four like-for-like channels — walls, liq, sectors),
+> **M5.SEC_D taps four *different* stages of M4** (`n1081b_module_map.py::_module5`):
+> idx 0 = **Singles** (M4.A out1, OR of sectors), idx 1 = **Doubles** (M4.B out2, ≥2-of-4
+> in a 50 ns window), idx 2 = gated trigger (M4.C out1), idx 3 = master trigger (M4.D
+> out1). idx 1 is therefore the *coincidence* rate and belongs far below idx 0.
+> The Doubles/Singles ratio is stable and unremarkable: **1.8 %** beam-on 08-01
+> (`[254.7, 4.5, …]`, and 3.1–3.4 Hz on segs 9–11) vs **2.1 %** in cosmics now
+> (`[23.7, 0.5, 23.7, 23.7]`) — i.e. unchanged across the power cycle.
+> ⚠ Do not read SEC_D as four of a kind; only A/B/C are.
+>
+> Original status, kept for the record: board genuinely wedged (18:10:27); supervisor
+> stopped itself cleanly at 18:20:51 and nothing touched `.244` until the power cycle.
 
 ## 1. Summary
 
