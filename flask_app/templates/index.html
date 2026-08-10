@@ -2744,16 +2744,28 @@ async function updateMonitorStatus() {
 
   const state = document.getElementById("monitor-state");
   const btn = document.getElementById("monitor-toggle");
-  if (d.running) {
+  if (d.stopping) {
+    // stop() only flips a flag — the loop is still inside an in-flight rule pass
+    // (a rule that just tripped sends a Telegram message with a 10s timeout, and
+    // a full pass can trip several) and won't notice until it returns. Without
+    // this the button looked like the click did nothing for up to tens of seconds.
+    state.textContent = "Stopping…";
+    state.className = "fw-bold me-1 text-warning";
+    btn.textContent = "Stop";
+    btn.className = "btn btn-sm btn-outline-danger";
+    btn.disabled = true;
+  } else if (d.running) {
     state.textContent = "Running";
     state.className = "fw-bold me-1 text-success";
     btn.textContent = "Stop";
     btn.className = "btn btn-sm btn-outline-danger";
+    btn.disabled = false;
   } else {
     state.textContent = "Stopped";
     state.className = "fw-bold me-1 text-danger";
     btn.textContent = "Start";
     btn.className = "btn btn-sm btn-outline-success";
+    btn.disabled = false;
   }
 
   const lastCheck = document.getElementById("monitor-last-check");
@@ -2768,11 +2780,29 @@ async function updateMonitorStatus() {
 
   const chatIdEl = document.getElementById("monitor-chat-id");
   chatIdEl.textContent = d.chat_id ? `${d.chat_id}` : "(not set)";
+
+  return d;
 }
+
+let monitorStoppingPoll = null;
 
 document.getElementById("monitor-toggle").addEventListener("click", async () => {
   await fetch("/monitor/toggle", { method: "POST" });
-  await updateMonitorStatus();
+  const d = await updateMonitorStatus();
+
+  // If the loop is mid-pass, keep polling every second (instead of the usual 10s)
+  // so "Stopping…" actually resolves to "Stopped" on screen instead of sitting
+  // there until the next slow poll.
+  if (monitorStoppingPoll) clearInterval(monitorStoppingPoll);
+  if (d.stopping) {
+    monitorStoppingPoll = setInterval(async () => {
+      const d2 = await updateMonitorStatus();
+      if (!d2.stopping) {
+        clearInterval(monitorStoppingPoll);
+        monitorStoppingPoll = null;
+      }
+    }, 1000);
+  }
 });
 
 async function renderMonitorRules() {

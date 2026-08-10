@@ -545,6 +545,16 @@ class DaqMonitor:
     def is_running(self):
         return self._thread is not None and self._thread.is_alive()
 
+    @property
+    def is_stopping(self):
+        """True once stop() has been called but the loop hasn't exited yet — it's
+        still inside the in-flight _check_all_rules() pass (which can run long: a
+        rule that just tripped sends a Telegram message with a 10 s timeout, and a
+        full pass can trip several). The loop only re-checks _stop_event between
+        passes, so this can stay True for a while; the UI polls it to show
+        "Stopping..." instead of looking like the click did nothing."""
+        return self._stop_event.is_set() and self.is_running
+
     # ---------------------------------------------------------------
     # Monitor loop
     # ---------------------------------------------------------------
@@ -692,6 +702,7 @@ class DaqMonitor:
         ]
         return {
             "running": self.is_running,
+            "stopping": self.is_stopping,
             "enabled": self.enabled,
             "chat_id_set": self.chat_id is not None,
             "chat_id": self.chat_id,
