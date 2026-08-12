@@ -1,0 +1,22 @@
+[Unit]
+Description=Mount EOS ntof/x17 dataset via XRootD FUSE
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=mx17
+Environment=KRB5CCNAME=FILE:/tmp/krb5cc_1000
+ExecStartPre=-/bin/fusermount -uz /eos/experiment/ntof/data/x17
+# Ensure the mount point exists and is owned by mx17 before mounting.
+# The '+' prefix runs these as root (User=mx17 cannot mkdir under the
+# root-owned /eos/experiment/ntof/data/). Without this the mount fails on
+# any boot where the dir is missing ("bad mount point" / "no write access").
+ExecStartPre=+/bin/mkdir -p /eos/experiment/ntof/data/x17
+ExecStartPre=+/bin/chown mx17:mx17 /eos/experiment/ntof/data/x17
+ExecStart=/usr/bin/xrootdfs -o rdr=root://eospublic.cern.ch//eos/experiment/ntof/data/x17,uid=1000,nonempty /eos/experiment/ntof/data/x17
+ExecStop=/bin/fusermount -u /eos/experiment/ntof/data/x17
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

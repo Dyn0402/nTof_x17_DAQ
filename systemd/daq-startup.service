@@ -1,0 +1,15 @@
+[Unit]
+Description=DAQ Startup Script
+After=network.target
+
+[Service]
+Type=forking
+User=mx17
+WorkingDirectory=/home/mx17/PycharmProjects/nTof_x17_DAQ/
+ExecStart=/bin/bash /home/mx17/PycharmProjects/nTof_x17_DAQ/start_servers.sh
+Restart=on-failure
+KillMode=none
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

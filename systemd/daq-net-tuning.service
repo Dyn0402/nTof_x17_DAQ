@@ -1,0 +1,11 @@
+[Unit]
+Description=DAQ NIC ring + CPU governor tuning (mx17-daq, ZS/IPD study 2026-07-18)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/daq-net-tuning-boot.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
