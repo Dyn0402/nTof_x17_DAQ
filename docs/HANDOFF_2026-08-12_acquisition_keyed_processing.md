@@ -52,6 +52,41 @@ Affected runs: **3, 9, 33, 34, 37, 71**. Runs 34 and 71 were reported *complete*
 by the QA table, because both of their acquisitions did get a (mixed) combined
 file — the deficit that flags a run as "partial" never appeared.
 
+## 1a. The same bug's other victim: pedestals inside the physics combines
+
+Runs 1-3 took their pedestals as an ordinary acquisition, so the files are named
+`Mx17_pedestals_datrun_*` and carry **file number 000** — the same number as the
+first data acquisition of the sub-run. The `_pedestals_` guards in
+`_is_data_fdf` and `_get_feu_hits_map` were added *after* those runs were
+processed, so the combiner treated the pedestal acquisition as just another
+source of FEUs.
+
+`run_2/run0`'s combined file, measured per FEU:
+
+| FEU | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| in the combined file | 81052 | 83562 | **602970** | 34791 | 60491 | 71825 | **861778** | 68915 |
+| the acquisition's own hits | 81052 | 83562 | 51722 | 34791 | 60491 | 71825 | 57418 | 68915 |
+
+FEUs 3 and 7 are the pedestal run's hits — 1.36 M of the file's 1.87 M entries.
+`run_1/run0` is worse: 3 732 189 entries against 6 489 of real data.
+
+**19 combined files across runs 1, 2 and 3** were contaminated this way. Only
+those three runs carry pedestal products at all (108 sub-runs of 2702), so the
+guard landed early and nothing later is exposed. All 117 combined files in the
+three runs were rebuilt from the non-pedestal hits — cheaper than being clever
+about which 19, and idempotent for the rest.
+
+The `Mx17_pedestals_datrun_*_feu-combined_hits.root` files are left in place.
+They are pedestal products, correctly named as such, and no data product points
+at them.
+
+Neither the file-count survey nor the mixture check finds this: the file counts
+are right, and the mixture check only looks at file numbers shared by two *data*
+acquisitions. It takes comparing a combined file's entry count against the sum
+of its own acquisition's per-FEU hits, which is what `check_acquisitions.py`
+does.
+
 ## 2. What was incomplete, and why
 
 Sub-runs whose backlog the watcher never returned to (`stale_run_days: 1` plus
