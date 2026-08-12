@@ -318,6 +318,10 @@ config/.switch_mode.lock
 config/.mode_watcher_disarmed
 config/mode_watcher_state.json
 
+# progress/verdict of the last soft_shutdown.sh run — runtime state, and it carries
+# a pid + boot_id that mean nothing on any other boot.
+config/soft_shutdown_state.json
+
 # watcher pid files (runtime)
 .beam_gate.pid
 .beam_return_watcher.pid
