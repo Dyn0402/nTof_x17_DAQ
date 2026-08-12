@@ -6,13 +6,20 @@ accurately simulating independent clients (CAENGECO, hv_control, etc.).
 
 Run when NO other processes are connected to the crate.
 """
+import os
 import time
 import multiprocessing as mp
 from caen_hv_py.CAENHVController import CAENHVController
 
+# Credentials come from hv_creds.txt (gitignored), same file run_config_beam.Config
+# reads: line 1 = username, line 2 = password. Resolved relative to the repo root so
+# this works from any cwd.
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+with open(os.path.join(_REPO, 'hv_creds.txt')) as _f:
+    _creds = _f.read().splitlines()
+USER, PASS = _creds[0].strip(), _creds[1].strip()
+
 IP = '128.141.177.244'
-USER = 'user'
-PASS = '***REMOVED***'
 HOLD_SECONDS = 4  # how long each process holds its connection open
 
 

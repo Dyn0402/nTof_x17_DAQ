@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
+import os
 import time
 from caen_hv_py.CAENHVController import CAENHVController
 
+# Credentials come from hv_creds.txt (gitignored), same file run_config_beam.Config
+# reads: line 1 = username, line 2 = password. Resolved relative to the repo root so
+# this works from any cwd.
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+with open(os.path.join(_REPO, 'hv_creds.txt')) as _f:
+    _creds = _f.read().splitlines()
+USER, PASS = _creds[0].strip(), _creds[1].strip()
+
 IP = '128.141.177.244'
-USER = 'user'
-PASS = '***REMOVED***'
 N = 10
 
 print('--- Rapid reconnect (no sleep) ---')
